@@ -128,6 +128,10 @@ class Scenario:
     # optional money view for the report: {currency, cost: {conversion: per person},
     # value: {conversion: per person}, fixed_cost}
     economics: dict[str, Any] = field(default_factory=dict)
+    persuasion: float = 0.35          # how far one round of exposure moves an open-minded person
+    targets: dict[str, float] = field(default_factory=dict)  # goals for forecasts, e.g. {buy: 50}
+    # force decision outcomes that are already known (votes are still simulated)
+    fixed_polls: dict[str, bool] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -291,6 +295,14 @@ def validate(sc: Scenario) -> None:
     for v in sc.voices:
         if not isinstance(v, dict) or v.get("segment") not in names or not v.get("persona"):
             raise ScenarioError("Each voice needs a known 'segment' and a 'persona'")
+    for name in sc.fixed_polls:
+        if name not in polls:
+            raise ScenarioError(f"fixed_polls: unknown decision '{name}'")
+    for name in sc.targets:
+        if name not in conv_names:
+            raise ScenarioError(f"targets: unknown action '{name}'")
+    if not 0 <= sc.persuasion <= 1:
+        raise ScenarioError("persuasion must be between 0 and 1")
     if sc.rounds < 1 or sc.round_hours <= 0:
         raise ScenarioError("rounds must be >= 1 and round_hours > 0")
 

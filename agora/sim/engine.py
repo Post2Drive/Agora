@@ -200,7 +200,7 @@ class Simulation:
                 done = [self._apply(a, x, r, t0, opens[a.id], rng, out) for x in d["actions"]]
                 self._remember(a, feed, [x for x in done if x], d["thoughts"], now)
             else:
-                a.stance = opinion.update_stance(w, a, feed, rng)
+                a.stance = opinion.update_stance(w, a, feed, rng, mu=sc.persuasion)
                 for x in opinion.crowd_engagement(w, a, feed, rng):
                     self._apply(a, x, r, t0, opens[a.id], rng, out)
                 for c in opens[a.id]:
@@ -304,6 +304,8 @@ class Simulation:
         yes = sum(v for _, v, _ in results)
         no = len(results) - yes
         passed = bool(results) and yes / len(results) >= ev.threshold
+        if ev.name in self.sc.fixed_polls:          # outcome already known in real life
+            passed = bool(self.sc.fixed_polls[ev.name])
         w.poll_results[ev.name] = passed
         for aid, v, why in results:
             out.polls.append((ev.name, aid, v, why))
