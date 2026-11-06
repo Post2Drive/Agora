@@ -20,9 +20,10 @@ will say and do, with numbers you can check.
   same result.
 - **Reproducible.** The same seed gives the same world. Model replies are cached in the project.
 
-> **Status: Phases 1–3 are done**: the engine; upload, graph and setup; and the report and
-> interaction. Next is calibration against real data, with backtests and probability
-> ranges (4), then installers and polish (5). See [ROADMAP.md](ROADMAP.md).
+> **Status: Phases 1–4 are done**: the engine; upload, graph and setup; the report and
+> interaction; MiroFish-level conversations, memory and report tools; elections; and
+> calibration, backtests and probability ranges. Next is installers and polish (5).
+> See [ROADMAP.md](ROADMAP.md).
 
 ## Quick start: the website
 
@@ -113,6 +114,30 @@ agora feed my-run --platform whatsapp # read what people said
 ```
 
 To use another server, set it in `scenario.yaml`, or pass `--backend openai --url http://localhost:8080 --model <name>`.
+
+## What you can predict
+
+- **Reactions and actions:** will people register, buy, sign up or complain, and how many?
+  These are actions with windows, prerequisites and eligibility.
+- **Choices between named options:** elections, product A vs B, policy options. Each
+  person has a preference for every option and decides whether to turn out. Results are
+  weighted to the real electorate. Try the demo with `agora new my-vote --from election`.
+- **How opinion moves:** by group, by app and over time. You can add news shocks in the
+  middle of a run to test "what if".
+
+## Calibrate with real data
+
+```bash
+agora data my-study observations polls.csv    # e.g. day,Asha Rao,Daniel Okafor,turnout
+agora data my-study reviews reviews.csv       # text,rating,segment
+agora calibrate my-study --apply              # fit assumptions to what really happened
+agora backtest my-study                       # fit on early days, predict later ones
+agora forecast my-study --runs 50             # ranges, win chances, what matters most
+```
+
+Calibration and forecasts use fast runs: the same engine, but the AI voices are
+replaced by rule-based stand-ins, so they take minutes instead of hours. After
+calibrating, do one full run with the model for the posts, quotes and report.
 
 ## Platforms
 
