@@ -61,13 +61,14 @@ class World:
         self.agents: list[Agent] = []
         self.by_handle: dict[str, Agent] = {}
         self.posts: list[Post] = []
-        self.following: dict[int, set[int]] = defaultdict(set)
-        self.followers: dict[int, set[int]] = defaultdict(set)
+        # follow graphs are per feed platform: following[platform][agent] -> {agents}
+        self.following: dict[str, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
+        self.followers: dict[str, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
         self.member_of: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
         self.members: dict[tuple[str, str], list[int]] = defaultdict(list)
         self.space_posts: dict[tuple[str, str], list[int]] = defaultdict(list)
         self.author_posts: dict[int, list[int]] = defaultdict(list)
-        self.x_posts: list[int] = []
+        self.feed_posts: dict[str, list[int]] = defaultdict(list)
         self.engaged: set[tuple[int, int, str]] = set()
         self.news: list[str] = []
         self.poll_results: dict[str, bool] = {}
@@ -78,11 +79,11 @@ class World:
         self.agents.append(a)
         self.by_handle[a.handle] = a
 
-    def add_follow(self, src: int, dst: int) -> bool:
-        if src == dst or dst in self.following[src]:
+    def add_follow(self, platform: str, src: int, dst: int) -> bool:
+        if src == dst or dst in self.following[platform][src]:
             return False
-        self.following[src].add(dst)
-        self.followers[dst].add(src)
+        self.following[platform][src].add(dst)
+        self.followers[platform][dst].add(src)
         return True
 
     def add_member(self, agent: int, platform: str, space: str) -> None:
@@ -94,8 +95,8 @@ class World:
         assert p.id == len(self.posts)
         self.posts.append(p)
         self.author_posts[p.author].append(p.id)
-        if p.platform == "x":
-            self.x_posts.append(p.id)
+        if not p.space:
+            self.feed_posts[p.platform].append(p.id)
         else:
             self.space_posts[(p.platform, p.space)].append(p.id)
         if p.parent is not None:
@@ -138,8 +139,8 @@ class World:
                               stubbornness=stub, activity=act, influence=infl, openness=opn,
                               attrs=json.loads(attrs), stance=st[0], memory=json.loads(st[1]),
                               converted=set(json.loads(st[2])), last_seen=st[3]))
-        for s, d in store.rows("SELECT src, dst FROM follows ORDER BY rowid"):
-            w.add_follow(s, d)
+        for plat, s, d in store.rows("SELECT platform, src, dst FROM follows ORDER BY rowid"):
+            w.add_follow(plat, s, d)
         for a, p, sp in store.rows("SELECT agent, platform, space FROM memberships ORDER BY rowid"):
             w.add_member(a, p, sp)
         for row in store.rows("SELECT * FROM posts ORDER BY id"):

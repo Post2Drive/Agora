@@ -1,12 +1,11 @@
-"""Simulated platforms. Each one decides what an agent sees (its feed) and which
-actions make sense there.
+"""Feeds: what each agent sees on each platform this round.
 
-  x         - public feed: follows + trending + recommendations; post, reply, like, repost, follow
-  reddit    - communities with threads ranked by votes; post thread, comment, upvote, downvote
-  whatsapp  - private groups, chronological, unread since last visit; message, reply, forward, react
+  feed platforms  - posts from people you follow (boosted) + trending, decaying with age
+  forum platforms - hot threads in your communities, each with its best comments
+  chat platforms  - unread messages in your groups, newest first
 
-The feed index is rebuilt once per round, so per-agent feeds stay cheap even with
-tens of thousands of crowd agents.
+The index is rebuilt once per round from a snapshot, so per-agent feeds stay cheap even
+with tens of thousands of crowd agents. Platform behaviour comes from `agora.platforms`.
 """
 from __future__ import annotations
 
@@ -14,16 +13,12 @@ import math
 
 import numpy as np
 
+from ...platforms import REGISTRY
 from ..world import Agent, Post, World
 
-ACTIONS = {
-    "x": ("post", "reply", "like", "repost", "follow"),
-    "reddit": ("post", "reply", "upvote", "downvote"),
-    "whatsapp": ("post", "reply", "like", "forward"),
-}
-X_WINDOW_H = 48.0
-REDDIT_WINDOW_H = 120.0
-X_HALF_LIFE_H = 10.0
+
+def actions_for(platform: str) -> tuple[str, ...]:
+    return REGISTRY[platform].actions
 
 
 class FeedIndex:
@@ -33,27 +28,33 @@ class FeedIndex:
         self.world = world
         self.t = t
         posts = world.posts
-        # X: recent posts, scored once
-        recent = [pid for pid in reversed(world.x_posts) if t - posts[pid].t <= X_WINDOW_H]
-        self.x_score: dict[int, float] = {}
-        for pid in recent:
-            p = posts[pid]
-            src = posts[p.root]
-            author = world.agents[p.author]
-            age = max(0.0, t - p.t)
-            self.x_score[pid] = ((1 + math.log1p(max(0, src.engagement)))
-                                 * math.exp(-age * math.log(2) / X_HALF_LIFE_H)
-                                 * math.sqrt(max(0.05, author.influence)))
-        self.x_trending = sorted(self.x_score, key=self.x_score.get, reverse=True)[:top_n]
-        # Reddit: hot threads per community, with their best comments
-        self.reddit_hot: dict[str, list[int]] = {}
+        self.score: dict[str, dict[int, float]] = {}
+        self.trending: dict[str, list[int]] = {}
+        for plat, pids in world.feed_posts.items():
+            spec = REGISTRY[plat]
+            sc: dict[int, float] = {}
+            for pid in reversed(pids):
+                p = posts[pid]
+                age = t - p.t
+                if age > spec.window_h:
+                    break
+                src = posts[p.root]
+                author = world.agents[p.author]
+                sc[pid] = ((1 + math.log1p(max(0, src.engagement)))
+                           * math.exp(-max(0.0, age) * math.log(2) / spec.half_life_h)
+                           * math.sqrt(max(0.05, author.influence)))
+            self.score[plat] = sc
+            self.trending[plat] = sorted(sc, key=sc.get, reverse=True)[:top_n]
+        # forums: hot threads per community, each followed by its best comments
+        self.hot: dict[tuple[str, str], list[int]] = {}
         for (plat, space), pids in world.space_posts.items():
-            if plat != "reddit":
+            if REGISTRY[plat].kind != "forum":
                 continue
+            window = REGISTRY[plat].window_h
             threads, comments = [], {}
             for pid in pids:
                 p = posts[pid]
-                if t - p.t > REDDIT_WINDOW_H:
+                if t - p.t > window:
                     continue
                 if p.parent is None:
                     threads.append(pid)
@@ -66,7 +67,7 @@ class FeedIndex:
                 best = sorted(comments.get(th, []), key=lambda c: posts[c].ups - posts[c].downs,
                               reverse=True)[:2]
                 items.extend(best)
-            self.reddit_hot[space] = items
+            self.hot[(plat, space)] = items
 
     @staticmethod
     def _hot(p: Post) -> float:
@@ -79,14 +80,15 @@ class FeedIndex:
     def feed(self, a: Agent, k: int, rng: np.random.Generator) -> list[int]:
         w = self.world
         chosen: list[int] = []
-        per = max(2, k // max(1, len(a.platforms)))
+        per = max(2, -(-k // max(1, len(a.platforms))))
         for plat in a.platforms:
-            if plat == "x":
-                chosen += self._x_feed(a, per, rng)
-            elif plat == "reddit":
-                chosen += self._reddit_feed(a, per)
-            elif plat == "whatsapp":
-                chosen += self._wa_feed(a, per)
+            kind = REGISTRY[plat].kind
+            if kind == "feed":
+                chosen += self._feed(plat, a, per, rng)
+            elif kind == "forum":
+                chosen += self._forum(plat, a, per)
+            else:
+                chosen += self._chat(plat, a, per)
         seen, out = set(), []
         for pid in chosen:
             p = w.posts[pid]
@@ -97,17 +99,19 @@ class FeedIndex:
             out.append(pid)
         return out[:k]
 
-    def _x_feed(self, a: Agent, k: int, rng) -> list[int]:
+    def _feed(self, plat: str, a: Agent, k: int, rng) -> list[int]:
         w = self.world
-        follows = w.following.get(a.id, ())
+        score = self.score.get(plat, {})
+        if not score:
+            return []
         cand: dict[int, float] = {}
-        for f in follows:
-            for pid in reversed(w.author_posts.get(f, [])[-5:]):
-                s = self.x_score.get(pid)
+        for f in w.following[plat].get(a.id, ()):
+            for pid in reversed(w.author_posts.get(f, [])[-6:]):
+                s = score.get(pid)
                 if s is not None:
                     cand[pid] = s * 3.0
-        for pid in self.x_trending:
-            cand.setdefault(pid, self.x_score[pid] * (0.6 + 0.8 * rng.random()))
+        for pid in self.trending.get(plat, []):
+            cand.setdefault(pid, score[pid] * (0.6 + 0.8 * rng.random()))
         ranked = sorted(cand, key=cand.get, reverse=True)
         out, sources = [], set()
         for pid in ranked:
@@ -121,19 +125,18 @@ class FeedIndex:
                 break
         return out
 
-    def _reddit_feed(self, a: Agent, k: int) -> list[int]:
+    def _forum(self, plat: str, a: Agent, k: int) -> list[int]:
         out = []
-        for space in self.world.member_of.get(a.id, {}).get("reddit", []):
-            out += [p for p in self.reddit_hot.get(space, []) if not self._done(a, p)][:k]
+        for space in self.world.member_of.get(a.id, {}).get(plat, []):
+            out += [p for p in self.hot.get((plat, space), []) if not self._done(a, p)][:k]
         return out[:k]
 
-    def _wa_feed(self, a: Agent, k: int) -> list[int]:
+    def _chat(self, plat: str, a: Agent, k: int) -> list[int]:
         w = self.world
         out = []
-        for space in w.member_of.get(a.id, {}).get("whatsapp", []):
-            pids = w.space_posts.get(("whatsapp", space), [])
+        for space in w.member_of.get(a.id, {}).get(plat, []):
             new = []
-            for pid in reversed(pids):
+            for pid in reversed(w.space_posts.get((plat, space), [])):
                 if w.posts[pid].t <= a.last_seen:
                     break
                 new.append(pid)
@@ -147,11 +150,11 @@ class FeedIndex:
 
 
 def where_options(world: World, a: Agent) -> list[str]:
-    """Places an agent can post: 'x', 'reddit:<community>', 'whatsapp:<group>'."""
+    """Places an agent can post: '<feed platform>' or '<platform>:<group or community>'."""
     out = []
     for plat in a.platforms:
-        if plat == "x":
-            out.append("x")
+        if REGISTRY[plat].kind == "feed":
+            out.append(plat)
         else:
             out += [f"{plat}:{s}" for s in world.member_of.get(a.id, {}).get(plat, [])]
     return out

@@ -313,7 +313,8 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("feed", help="read what agents posted")
     p.add_argument("project")
-    p.add_argument("--platform", choices=["x", "reddit", "whatsapp"])
+    from .platforms import REGISTRY
+    p.add_argument("--platform", choices=list(REGISTRY))
     p.add_argument("--space")
     p.add_argument("--last", type=int, default=30)
     p.set_defaults(f=cmd_feed)

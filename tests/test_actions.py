@@ -18,7 +18,7 @@ def _agent(sim, platform, member=True):
     w = sim.world
     for a in w.agents:
         if a.kind == "llm" and platform in a.platforms:
-            if not member or platform == "x" or w.member_of[a.id].get(platform):
+            if not member or platform in ("x", "instagram") or w.member_of[a.id].get(platform):
                 return a
     pytest.skip(f"no llm agent on {platform}")
 
@@ -68,6 +68,34 @@ def test_post_reply_and_follow_work(sim):
     res, out = _apply(sim, a, {"type": "post", "where": "x", "text": "hello world"})
     assert res and out.posts[0].platform == "x"
     other = next(x for x in sim.world.agents if "x" in x.platforms and x.id != a.id
-                 and x.id not in sim.world.following[a.id])
-    res, out = _apply(sim, a, {"type": "follow", "target": f"@{other.handle}"})
-    assert res and out.follows == [(a.id, other.id)]
+                 and x.id not in sim.world.following["x"][a.id])
+    res, out = _apply(sim, a, {"type": "follow", "target": f"@{other.handle}", "platform": "Twitter"})
+    assert res and out.follows == [("x", a.id, other.id)]
+
+
+def test_platform_words_and_aliases(sim):
+    """Models use each app's own words: 'comment', 'share', 'subscribe', 'IG'."""
+    w = sim.world
+    a = _agent(sim, "instagram")
+    res, out = _apply(sim, a, {"type": "post", "where": "IG", "text": "[photo: sachets] trying this #free"})
+    assert res and out.posts[0].platform == "instagram"
+    other = next(x for x in w.agents if "instagram" in x.platforms and x.id != a.id)
+    p = sim._new_post(other, 6, 24.0, "instagram", "", "post", "my morning routine", 0.3)
+    res, out = _apply(sim, a, {"type": "comment", "target": f"p{p.id}", "text": "nice"})
+    assert res and out.posts[0].kind == "reply" and out.posts[0].platform == "instagram"
+    res, out = _apply(sim, a, {"type": "share", "target": f"p{p.id}"})
+    assert res and out.posts[0].kind == "repost" and out.posts[0].platform == "instagram"
+    already = other.id in w.following["instagram"][a.id]
+    res, out = _apply(sim, a, {"type": "subscribe", "target": f"p{p.id}"})
+    assert (res is None) if already else out.follows == [("instagram", a.id, other.id)]
+
+
+def test_chat_post_without_group_name(sim):
+    """'where': 'whatsapp' is accepted when the agent is in exactly one WhatsApp group."""
+    w = sim.world
+    a = next((x for x in w.agents if x.kind == "llm"
+              and len(w.member_of[x.id].get("whatsapp", [])) == 1), None)
+    if a is None:
+        pytest.skip("no agent in exactly one group")
+    res, out = _apply(sim, a, {"type": "post", "where": "WhatsApp", "text": "hi all"})
+    assert res and out.posts[0].space == w.member_of[a.id]["whatsapp"][0]

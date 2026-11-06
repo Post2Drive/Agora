@@ -15,6 +15,7 @@ import math
 
 import numpy as np
 
+from ..platforms import REGISTRY
 from .world import Agent, Post, World
 
 MU = 0.35                 # how far one round of exposure moves an open-minded agent
@@ -62,17 +63,18 @@ def crowd_engagement(world: World, a: Agent, feed: list[Post], rng: np.random.Ge
             target = p
         agree = 1 - abs(target.stance - a.stance) / 2
         strength = 0.5 + abs(target.stance)
-        if p.platform == "reddit":
+        kind = REGISTRY[p.platform].kind
+        if kind == "forum":
             if rng.random() < P_LIKE * agree ** 3 * strength:
                 acts.append({"type": "upvote", "target": p.id})
             elif rng.random() < P_DOWNVOTE * (1 - agree) ** 2 * strength:
                 acts.append({"type": "downvote", "target": p.id})
-        else:
-            if rng.random() < P_LIKE * agree ** 3 * strength:
-                acts.append({"type": "like", "target": p.id})
-                if (p.platform == "x" and target.author not in world.following[a.id]
-                        and rng.random() < P_FOLLOW):
-                    acts.append({"type": "follow", "target": target.author})
-            if abs(target.stance) > 0.4 and rng.random() < P_SHARE * agree ** 4 * abs(target.stance):
-                acts.append({"type": "repost" if p.platform == "x" else "forward", "target": p.id})
+            continue
+        if rng.random() < P_LIKE * agree ** 3 * strength:
+            acts.append({"type": "like", "target": p.id})
+            if (kind == "feed" and target.author not in world.following[p.platform][a.id]
+                    and rng.random() < P_FOLLOW):
+                acts.append({"type": "follow", "target": f"p{target.id}", "platform": p.platform})
+        if abs(target.stance) > 0.4 and rng.random() < P_SHARE * agree ** 4 * abs(target.stance):
+            acts.append({"type": "repost" if kind == "feed" else "forward", "target": p.id})
     return acts

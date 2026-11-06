@@ -17,7 +17,12 @@ from .. import scenario as scenario_mod
 from ..llm import LLMBackend, LLMError
 from .store import GraphStore
 
-PLATFORMS = ("x", "reddit", "whatsapp")
+from ..platforms import REGISTRY, is_spaced, resolve
+
+PLATFORMS = tuple(REGISTRY)
+SPACED = tuple(k for k in REGISTRY if is_spaced(k))
+FEEDS = tuple(k for k in REGISTRY if not is_spaced(k))
+PLATFORM_LIST = ", ".join(f'"{k}"' for k in REGISTRY)
 ROUND_HOURS = 4
 
 
@@ -34,15 +39,14 @@ def _num(v, lo, hi, default):
     return max(lo, min(hi, x))
 
 
-def _plats(v, default=("whatsapp", "x")) -> list[str]:
+def _plats(v, default=("whatsapp", "instagram")) -> list[str]:
     if isinstance(v, str):
-        v = re.split(r"[,\s/]+", v)
+        v = re.split(r"[,/;]+|\s+and\s+", v)
     out = []
     for p in v or []:
-        p = str(p).lower().strip()
-        p = {"twitter": "x", "wa": "whatsapp", "whats app": "whatsapp"}.get(p, p)
-        if p in PLATFORMS and p not in out:
-            out.append(p)
+        k = resolve(p)
+        if k and k not in out:
+            out.append(k)
     return out or list(default)
 
 
@@ -97,10 +101,10 @@ Who reacts? Describe 3-6 groups of ordinary people affected by this (not organiz
 - stance: their likely starting opinion on {topic}, from -1 (against) to 1 (for)
 - stubbornness: 0 (easily persuaded) to 1 (never changes)
 - activity: 0 (rarely online) to 1 (always online)
-- platforms: any of "whatsapp", "x", "reddit"
+- platforms: the apps they really use, from: {platforms}
 Reply with JSON only:
 {{"segments": [{{"name": "young_professionals", "share": 0.3, "persona": "one or two sentences",
-  "stance": 0.1, "stubbornness": 0.4, "activity": 0.5, "platforms": ["whatsapp", "x"],
+  "stance": 0.1, "stubbornness": 0.4, "activity": 0.5, "platforms": ["whatsapp", "instagram"],
   "occupations": ["..."], "age": [25, 35]}}]}}"""
 
 ACCOUNTS = HEAD + """
@@ -108,22 +112,24 @@ Which specific organizations or people from the documents will actively speak or
 (a brand, an official, a committee, a journalist)? Pick 1-8.
 Reply with JSON only:
 {{"accounts": [{{"id": "short_id", "name": "...", "persona": "who they are and how they communicate",
-  "stance": 0.0, "influence": 2.0, "platforms": ["whatsapp", "x"], "decides": true}}]}}"""
+  "stance": 0.0, "influence": 2.0, "platforms": ["instagram", "whatsapp"], "decides": true}}]}}
+Platforms: {platforms}"""
 
 PLACES = HEAD + """
 Where do people talk about {topic}, and what real-world actions do we want to predict?
-Groups: WhatsApp groups (communities, residents, families, workplaces) and Reddit communities.
+Groups exist on: {spaced} (e.g. residents' WhatsApp group, a Telegram channel, a subreddit,
+a local Facebook group). Public feeds ({feeds}) need no groups.
 Actions: things a person does, like register, sign up, buy, vote, attend, complain.
 Reply with JSON only:
 {{"spaces": [{{"platform": "whatsapp", "name": "...", "size": 200, "description": "..."}},
-            {{"platform": "reddit", "name": "r/...", "size": 300, "description": "..."}}],
+            {{"platform": "facebook_groups", "name": "...", "size": 300, "description": "..."}}],
  "actions": [{{"name": "register", "label": "what the person does, in plain words",
               "open_day": 1, "close_day": 3, "requires": ""}}]}}"""
 
 EVENTS = HEAD + """
 Build the timeline over {days} days. Event types:
 - "news": something everyone hears about
-- "post": an account posts an announcement (needs "account" from: {accounts}; "platform": whatsapp, x or reddit)
+- "post": an account posts an announcement (needs "account" from: {accounts}; "platform": one of {platforms})
 - "decision": a yes/no decision by some accounts (needs "name", "question", "voters": list of account ids)
 Later events may say "if_decision": "<decision name>" to happen only if that decision was yes.
 Reply with JSON only:
@@ -158,11 +164,11 @@ def default_frame(goal: str, gs: GraphStore) -> dict:
 
 DEFAULT_SEGMENTS = [
     {"name": "early_adopters", "share": 0.25, "persona": "Curious people who like trying new things and talk about them.",
-     "stance": 0.3, "stubbornness": 0.3, "activity": 0.6, "platforms": ["whatsapp", "x", "reddit"]},
+     "stance": 0.3, "stubbornness": 0.3, "activity": 0.6, "platforms": ["instagram", "whatsapp", "x", "reddit"]},
     {"name": "mainstream", "share": 0.5, "persona": "Ordinary busy people who follow what friends and neighbours say.",
-     "stance": 0.0, "stubbornness": 0.45, "activity": 0.4, "platforms": ["whatsapp", "x"]},
+     "stance": 0.0, "stubbornness": 0.45, "activity": 0.4, "platforms": ["whatsapp", "instagram", "facebook"]},
     {"name": "skeptics", "share": 0.25, "persona": "Cautious people who distrust new offers and ask hard questions.",
-     "stance": -0.3, "stubbornness": 0.6, "activity": 0.4, "platforms": ["whatsapp", "reddit"]},
+     "stance": -0.3, "stubbornness": 0.6, "activity": 0.4, "platforms": ["whatsapp", "facebook", "reddit"]},
 ]
 
 
@@ -170,14 +176,14 @@ def default_accounts(gs: GraphStore) -> dict:
     rows = gs.rows("SELECT name, description FROM nodes WHERE type IN ('Organization','Person') "
                    "ORDER BY mentions DESC LIMIT 2")
     return {"accounts": [{"id": slug(n, 20), "name": n, "persona": d or f"{n}.", "stance": 0.3,
-                          "influence": 2.5, "platforms": ["x", "whatsapp"], "decides": False}
+                          "influence": 2.5, "platforms": ["instagram", "x", "whatsapp"], "decides": False}
                          for n, d in rows]}
 
 
 def default_places(topic: str) -> dict:
     return {"spaces": [{"platform": "whatsapp", "name": "Neighbourhood Group", "size": 200},
                        {"platform": "whatsapp", "name": "Friends and Family", "size": 120},
-                       {"platform": "reddit", "name": "r/local", "size": 250}],
+                       {"platform": "facebook_groups", "name": "Local Community Group", "size": 250}],
             "actions": [{"name": "take_up", "label": f"take up {topic}", "open_day": 0,
                          "close_day": 999, "requires": ""}]}
 
@@ -225,34 +231,33 @@ def clean_accounts(raw: dict) -> list[dict]:
                     "segment": "accounts", "stance": round(_num(a.get("stance"), -1, 1, 0.0), 2),
                     "stubbornness": 0.85, "activity": 0.3,
                     "influence": round(_num(a.get("influence"), 0.5, 5, 2.5), 2),
-                    "platforms": _plats(a.get("platforms"), ("x", "whatsapp")),
+                    "platforms": _plats(a.get("platforms"), ("instagram", "whatsapp")),
                     "spaces": ["*"], "_decides": bool(a.get("decides"))})
     return out
 
 
 def clean_places(raw: dict, segs: list[dict]) -> tuple[dict, list[dict]]:
-    spaces = {"whatsapp": [], "reddit": []}
+    spaces: dict[str, list] = {}
     seen = set()
-    for s in (raw.get("spaces") or [])[:8]:
+    for s in (raw.get("spaces") or [])[:10]:
         if not isinstance(s, dict) or not s.get("name"):
             continue
-        plat = _plats([s.get("platform", "whatsapp")], ("whatsapp",))[0]
-        if plat == "x":
+        plat = resolve(s.get("platform", "whatsapp"))
+        if plat is None or not is_spaced(plat):
             continue
         name = str(s["name"]).strip()[:60]
         if plat == "reddit" and not name.startswith("r/"):
             name = "r/" + slug(name, 20)
-        if name in seen:
+        if (plat, name) in seen:
             continue
-        seen.add(name)
-        spaces[plat].append({"name": name, "size": int(_num(s.get("size"), 20, 5000, 200)),
-                             "description": str(s.get("description") or "")[:200]})
-    if not spaces["whatsapp"] and any("whatsapp" in s["platforms"] for s in segs):
-        spaces["whatsapp"] = default_places("")["spaces"][:2]
-        for sp in spaces["whatsapp"]:
-            sp.pop("platform", None)
-    if not spaces["reddit"] and any("reddit" in s["platforms"] for s in segs):
-        spaces["reddit"] = [{"name": "r/local", "size": 250}]
+        seen.add((plat, name))
+        spaces.setdefault(plat, []).append({"name": name, "size": int(_num(s.get("size"), 20, 5000, 200)),
+                                            "description": str(s.get("description") or "")[:200]})
+    used = {p for s in segs for p in s["platforms"]}
+    for plat in [p for p in SPACED if p in used and p not in spaces]:
+        label = REGISTRY[plat].label
+        spaces[plat] = ([{"name": "r/local", "size": 250}] if plat == "reddit" else
+                        [{"name": f"Local {label} group", "size": 200}])
     acts, names = [], set()
     for a in (raw.get("actions") or [])[:4]:
         if not isinstance(a, dict) or not a.get("name"):
@@ -268,7 +273,7 @@ def clean_places(raw: dict, segs: list[dict]) -> tuple[dict, list[dict]]:
     for a in acts:
         if a["requires"] not in names:
             a["requires"] = ""
-    return {k: v for k, v in spaces.items() if v}, acts
+    return spaces, acts
 
 
 def clean_events(raw: dict, accounts: list[dict], days: int, rph: int) -> list[dict]:
@@ -303,7 +308,7 @@ def clean_events(raw: dict, accounts: list[dict], days: int, rph: int) -> list[d
                 ids[acc]["platforms"].append(plat)
             ev = {"at_round": r, "type": "post", "account": acc, "platform": plat,
                   "text": str(e["text"])[:600]}
-            if plat != "x":
+            if is_spaced(plat):
                 ev["spaces"] = ["*"]
             if when:
                 ev["when"] = when
@@ -323,7 +328,9 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
           progress: Callable[[str], None] | None = None) -> dict:
     say = progress or (lambda m: None)
     brief, excerpt = graph_brief(gs), doc_excerpt(gs)
-    ctx = {"goal": goal, "brief": brief, "excerpt": excerpt}
+    ctx = {"goal": goal, "brief": brief, "excerpt": excerpt, "platforms": PLATFORM_LIST,
+           "spaced": ", ".join(REGISTRY[k].label for k in SPACED),
+           "feeds": ", ".join(REGISTRY[k].label for k in FEEDS)}
 
     say("framing the question")
     fr_def = default_frame(goal, gs)

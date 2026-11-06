@@ -31,7 +31,7 @@ def test_full_run_produces_everything(project):
     kinds = {r[8] for r in d["posts"]}
     assert {"post", "reply", "repost"} <= kinds
     platforms = {r[3] for r in d["posts"]}
-    assert platforms == {"x", "reddit", "whatsapp"}
+    assert {"x", "reddit", "whatsapp", "instagram", "facebook", "facebook_groups"} <= platforms
     assert {r[0] for r in d["poll_results"]} == {"lakeview_approval", "palmgrove_approval"}
     names = {r[2] for r in d["conversions"]}
     assert names & {"register_lakeview", "register_palmgrove"}

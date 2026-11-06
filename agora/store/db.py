@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS agents (
 CREATE TABLE IF NOT EXISTS agent_state (
     id INTEGER PRIMARY KEY, stance REAL, memory TEXT, converted TEXT,
     last_seen REAL, round INTEGER);
-CREATE TABLE IF NOT EXISTS follows (src INTEGER, dst INTEGER, round INTEGER,
-    PRIMARY KEY (src, dst));
+CREATE TABLE IF NOT EXISTS follows (platform TEXT, src INTEGER, dst INTEGER, round INTEGER,
+    PRIMARY KEY (platform, src, dst));
 CREATE TABLE IF NOT EXISTS memberships (agent INTEGER, platform TEXT, space TEXT,
     PRIMARY KEY (agent, platform, space));
 CREATE TABLE IF NOT EXISTS posts (
@@ -45,12 +45,19 @@ CREATE TABLE IF NOT EXISTS event_log (round INTEGER, kind TEXT, detail TEXT);
 """
 
 
+SCHEMA_VERSION = 2
+
+
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, check_same_thread: bool = True):
         self.path = Path(path)
-        self.db = sqlite3.connect(str(self.path))
+        self.db = sqlite3.connect(str(self.path), check_same_thread=check_same_thread)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
+        cols = [r[1] for r in self.db.execute("PRAGMA table_info(follows)")]
+        if cols and "platform" not in cols:
+            raise RuntimeError(f"{self.path} was made by an older Agora version. "
+                               "Delete agora.db to start the run again.")
         self.db.executescript(SCHEMA)
         self.db.commit()
 
@@ -82,8 +89,8 @@ class Store:
                 "INSERT INTO agent_state VALUES (?,?,?,?,?,?)",
                 [(a.id, a.stance, json.dumps(a.memory), json.dumps(sorted(a.converted)),
                   a.last_seen, -1) for a in agents])
-            self.db.executemany("INSERT INTO follows VALUES (?,?,?)",
-                                [(s, d, -1) for s, d in follows])
+            self.db.executemany("INSERT INTO follows VALUES (?,?,?,?)",
+                                [(p, s, d, -1) for p, s, d in follows])
             self.db.executemany("INSERT INTO memberships VALUES (?,?,?)", memberships)
             self.db.executemany("INSERT INTO opinions VALUES (?,?,?)",
                                 [(-1, a.id, a.stance) for a in agents])
@@ -98,8 +105,8 @@ class Store:
                   p.kind, p.text, p.stance) for p in posts])
             self.db.executemany("INSERT OR IGNORE INTO engagements VALUES (?,?,?,?)",
                                 [(r, a, p, t) for a, p, t in engagements])
-            self.db.executemany("INSERT OR IGNORE INTO follows VALUES (?,?,?)",
-                                [(s, d, r) for s, d in follows])
+            self.db.executemany("INSERT OR IGNORE INTO follows VALUES (?,?,?,?)",
+                                [(p, s, d, r) for p, s, d in follows])
             self.db.executemany("INSERT OR IGNORE INTO conversions VALUES (?,?,?)",
                                 [(r, a, n) for a, n in conversions])
             self.db.executemany("INSERT OR REPLACE INTO thoughts VALUES (?,?,?)",

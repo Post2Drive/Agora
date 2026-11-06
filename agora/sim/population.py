@@ -5,6 +5,7 @@ import re
 
 import numpy as np
 
+from ..platforms import REGISTRY
 from ..scenario import Scenario
 from .world import Agent, World
 
@@ -133,16 +134,18 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                 w.add_member(a.id, sp.platform, sp.name)
                 memberships.append((a.id, sp.platform, sp.name))
 
-    # 4. X follow network: homophily + preferential attachment on influence
-    follows: list[tuple[int, int]] = []
-    on_x = [a for a in w.agents if "x" in a.platforms]
-    if len(on_x) > 1:
-        ids = np.array([a.id for a in on_x])
-        infl = np.array([a.influence for a in on_x])
-        segs = np.array([seg_idx.get(a.segment, -1) for a in on_x])
+    # 4. follow networks, one per feed platform: homophily + preferential attachment
+    follows: list[tuple[str, int, int]] = []
+    for plat in [k for k in REGISTRY if REGISTRY[k].kind == "feed"]:
+        on = [a for a in w.agents if plat in a.platforms]
+        if len(on) < 2:
+            continue
+        ids = np.array([a.id for a in on])
+        infl = np.array([a.influence for a in on])
+        segs = np.array([seg_idx.get(a.segment, -1) for a in on])
         by_seg = {s: np.where(segs == s)[0] for s in set(segs.tolist())}
         p_all = infl / infl.sum()
-        for k, a in enumerate(on_x):
+        for k, a in enumerate(on):
             n = max(1, int(rng.poisson(sc.avg_follows)))
             same = by_seg[segs[k]]
             n_same = int(round(n * sc.homophily))
@@ -150,10 +153,10 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
             if len(same) > 1 and n_same:
                 ps = infl[same] / infl[same].sum()
                 choices += rng.choice(same, size=min(n_same, len(same)), replace=False, p=ps).tolist()
-            choices += rng.choice(len(on_x), size=min(n - n_same, len(on_x)), replace=False,
+            choices += rng.choice(len(on), size=min(max(0, n - n_same), len(on)), replace=False,
                                   p=p_all).tolist()
             for j in choices:
                 dst = int(ids[j])
-                if w.add_follow(a.id, dst):
-                    follows.append((a.id, dst))
+                if w.add_follow(plat, a.id, dst):
+                    follows.append((plat, a.id, dst))
     return w, follows, memberships
