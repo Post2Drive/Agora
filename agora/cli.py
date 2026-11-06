@@ -202,6 +202,100 @@ def cmd_graph(args) -> int:
     return 0
 
 
+def _project_llm(args, proj: Path):
+    from .pipeline import make_llm
+    sc = scenario_mod.load(proj / SCENARIO_FILE)
+    cfg = {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")}
+    cfg.update(_llm_override(args))
+    _, llm = make_llm(proj, cfg)
+    ok, msg = llm.status()
+    if not ok:
+        print(msg + "\n(Use --mock to try without a model.)", file=sys.stderr)
+        sys.exit(2)
+    return llm
+
+
+def cmd_report(args) -> int:
+    from .report.writer import write_report
+    proj = Path(args.project)
+    write_report(proj, _project_llm(args, proj), say=lambda m: print(m, flush=True))
+    print(f"Open {proj / 'report' / 'report.html'}")
+    return 0
+
+
+def cmd_ask(args) -> int:
+    from .report.interact import ask
+    proj = Path(args.project)
+    r = ask(proj, _project_llm(args, proj), args.question)
+    print(r["answer"])
+    for q in r["quotes"].values():
+        print("  " + q)
+    return 0
+
+
+def cmd_chat(args) -> int:
+    from .report.interact import chat, people
+    proj = Path(args.project)
+    if not args.agent:
+        for x in people(proj):
+            print(f"@{x['handle']:<22} {x['name']:<28} {x['segment']:<26} opinion {x['stance']:+.2f}")
+        return 0
+    llm = _project_llm(args, proj)
+    handle = args.agent.lstrip("@")
+    msgs = [args.message] if args.message else []
+    if not msgs:
+        print(f"Talking to @{handle}. Empty line to stop.")
+    while True:
+        m = msgs.pop(0) if msgs else (input("you> ").strip() if not args.message else "")
+        if not m:
+            return 0
+        print(f"{handle}> {chat(proj, llm, handle, m)['reply']}")
+        if args.message:
+            return 0
+
+
+def cmd_interview(args) -> int:
+    from .report.interact import interview
+    proj = Path(args.project)
+    r = interview(proj, _project_llm(args, proj), args.question, segment=args.segment or "", n=args.n,
+                  say=lambda m: print(m, flush=True))
+    t = r["tally"]
+    print(f"\n{t['yes']} yes, {t['unsure']} unsure, {t['no']} no (average {t['average']:+.2f})")
+    for a in r["answers"]:
+        print(f"- {a['name']} ({a['segment']}, {a['agree']:+.1f}): {a['answer']}")
+    return 0
+
+
+def cmd_inject(args) -> int:
+    from .report.interact import inject
+    ev = {"type": "post" if args.account else "news", "text": args.text, "account": args.account,
+          "platform": args.platform}
+    r = inject(Path(args.project), ev, args.round)
+    print(f"Added at round {r['round'] + 1}. Run `agora run {args.project}` to continue.")
+    return 0
+
+
+def cmd_fork(args) -> int:
+    from .report.interact import fork
+    dst = fork(Path(args.project), Path(args.new), title=args.title or "")
+    print(f"Created {dst}. Edit {dst / SCENARIO_FILE}, then: agora run {dst}")
+    return 0
+
+
+def cmd_compare(args) -> int:
+    from .report.interact import compare
+    c = compare([Path(p) for p in args.projects])
+    cols = [x for x in c["columns"] if x.get("run")]
+    w = 22
+    print("".ljust(28) + "".join(x["title"][:w - 2].ljust(w) for x in cols))
+    for n in c["actions"]:
+        print(n.ljust(28) + "".join((f"{x['actions'][n]['count']} ({x['actions'][n]['rate'] * 100:.1f}%)"
+                                     if n in x["actions"] else "-").ljust(w) for x in cols))
+    print("opinion at end".ljust(28) + "".join(f"{x['opinion_end']:+.2f}".ljust(w) for x in cols))
+    print("in favour at end".ljust(28) + "".join(f"{x['for_end'] * 100:.1f}%".ljust(w) for x in cols))
+    return 0
+
+
 def cmd_web(args) -> int:
     from .web.server import serve
     serve(Path(args.dir), port=args.port, open_browser=not args.no_browser)
@@ -266,6 +360,50 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="resume even if scenario.yaml changed")
     llm_flags(p)
     p.set_defaults(f=cmd_run)
+
+    p = sub.add_parser("report", help="write the prediction report (report/report.html)")
+    p.add_argument("project")
+    llm_flags(p)
+    p.set_defaults(f=cmd_report)
+
+    p = sub.add_parser("ask", help="ask a question about the results")
+    p.add_argument("project")
+    p.add_argument("question")
+    llm_flags(p)
+    p.set_defaults(f=cmd_ask)
+
+    p = sub.add_parser("chat", help="talk to someone from the simulation (no --agent: list people)")
+    p.add_argument("project")
+    p.add_argument("--agent", help="@handle")
+    p.add_argument("--message", help="send one message and exit")
+    llm_flags(p)
+    p.set_defaults(f=cmd_chat)
+
+    p = sub.add_parser("interview", help="ask the same question to a sample of people")
+    p.add_argument("project")
+    p.add_argument("question")
+    p.add_argument("--segment")
+    p.add_argument("-n", type=int, default=8)
+    llm_flags(p)
+    p.set_defaults(f=cmd_interview)
+
+    p = sub.add_parser("inject", help="add news (or a post with --account) at the next round")
+    p.add_argument("project")
+    p.add_argument("text")
+    p.add_argument("--account")
+    p.add_argument("--platform")
+    p.add_argument("--round", type=int, help="0-based round (default: next)")
+    p.set_defaults(f=cmd_inject)
+
+    p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")
+    p.add_argument("project")
+    p.add_argument("new")
+    p.add_argument("--title")
+    p.set_defaults(f=cmd_fork)
+
+    p = sub.add_parser("compare", help="compare results of two or more projects")
+    p.add_argument("projects", nargs="+")
+    p.set_defaults(f=cmd_compare)
 
     p = sub.add_parser("status", help="summary of a run")
     p.add_argument("project")

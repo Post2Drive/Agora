@@ -155,6 +155,11 @@ class App:
                 "sources": sorted(p.name for p in (d / "sources").glob("*")) if (d / "sources").exists() else []}
         sp = d / "scenario.yaml"
         info["has_scenario"] = sp.exists()
+        info["has_report"] = (d / "report" / "report.html").exists()
+        try:
+            info["forked_from"] = json.loads((d / "agora.json").read_text(encoding="utf-8")).get("forked_from")
+        except (OSError, ValueError):
+            info["forked_from"] = None
         if sp.exists():
             try:
                 sc = scenario_mod.load(sp)
@@ -367,6 +372,124 @@ class App:
         job = self.jobs.start("run", pid, work)
         return {"job": job.as_dict()}
 
+    # ---------------------------------------------------------------- report + interaction
+    def _llm(self, d: Path, mock: bool):
+        from ..pipeline import make_llm
+        if mock:
+            return make_llm(d, {"backend": "mock"})[1]
+        sc = scenario_mod.load(d / "scenario.yaml")
+        _, llm = make_llm(d, {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")})
+        ok, msg = llm.status()
+        if not ok:
+            raise ApiError(503, msg + " (Tick 'without a model' to try it with placeholder answers.)")
+        return llm
+
+    def _need_run(self, d: Path):
+        if not self.run_state(d)["started"]:
+            raise ApiError(400, "Run the simulation first.")
+
+    def start_report(self, pid: str, body: dict) -> dict:
+        from ..report.writer import write_report
+        d = self.project_dir(pid)
+        self._need_run(d)
+        llm = self._llm(d, bool(body.get("mock")))
+
+        def work(job: Job):
+            try:
+                write_report(d, llm, say=job.say, should_stop=lambda: job.stopping)
+            finally:
+                if hasattr(llm, "close"):
+                    llm.close()
+
+        return {"job": self.jobs.start("report", pid, work).as_dict()}
+
+    def ask(self, pid: str, body: dict) -> dict:
+        from ..report.interact import ask
+        d = self.project_dir(pid)
+        self._need_run(d)
+        q = str(body.get("question") or "").strip()
+        if not q:
+            raise ApiError(400, "Ask a question.")
+        return ask(d, self._llm(d, bool(body.get("mock"))), q[:1000])
+
+    def people(self, pid: str, q: dict) -> list:
+        from ..report.interact import people
+        d = self.project_dir(pid)
+        self._need_run(d)
+        return people(d, segment=q.get("segment", ""), query=q.get("q", ""))
+
+    def person(self, pid: str, handle: str) -> dict:
+        from ..report.interact import profile
+        d = self.project_dir(pid)
+        self._need_run(d)
+        try:
+            return profile(d, handle)
+        except KeyError as e:
+            raise ApiError(404, str(e))
+
+    def chat(self, pid: str, handle: str, body: dict) -> dict:
+        from ..report.interact import chat
+        d = self.project_dir(pid)
+        self._need_run(d)
+        msg = str(body.get("message") or "").strip()
+        if not msg:
+            raise ApiError(400, "Write a message.")
+        try:
+            return chat(d, self._llm(d, bool(body.get("mock"))), handle, msg[:1500])
+        except KeyError as e:
+            raise ApiError(404, str(e))
+
+    def start_interview(self, pid: str, body: dict) -> dict:
+        from ..report.interact import interview
+        d = self.project_dir(pid)
+        self._need_run(d)
+        q = str(body.get("question") or "").strip()
+        if not q:
+            raise ApiError(400, "Write the interview question.")
+        llm = self._llm(d, bool(body.get("mock")))
+        n = max(1, min(40, int(body.get("n") or 8)))
+
+        def work(job: Job):
+            job.progress = {"result": interview(d, llm, q[:1000], segment=str(body.get("segment") or ""),
+                                                n=n, say=job.say)}
+
+        return {"job": self.jobs.start("interview", pid, work).as_dict()}
+
+    def history(self, pid: str, q: dict) -> list:
+        from ..report.interact import history
+        d = self.project_dir(pid)
+        if not (d / "agora.db").exists():
+            return []
+        return history(d, q.get("thread", "report"))
+
+    def inject(self, pid: str, body: dict) -> dict:
+        from ..report.interact import inject
+        d = self.project_dir(pid)
+        self._need_run(d)
+        try:
+            return inject(d, body)
+        except ValueError as e:
+            raise ApiError(400, str(e))
+
+    def injected(self, pid: str) -> list:
+        from ..report.interact import injected
+        return injected(self.project_dir(pid))
+
+    def fork(self, pid: str, body: dict) -> dict:
+        from ..report.interact import fork
+        d = self.project_dir(pid)
+        title = str(body.get("title") or "").strip()
+        new = self.new_id(title or f"{pid}-variant")
+        fork(d, self.project_dir(new, must_exist=False), title=title)
+        return {"id": new}
+
+    def compare(self, q: dict) -> dict:
+        from ..report.interact import compare
+        ids = [x for x in (q.get("ids") or "").split(",") if x][:6]
+        if len(ids) < 2:
+            raise ApiError(400, "Choose at least two studies.")
+        return compare([self.project_dir(i) for i in ids])
+
     def stop(self, pid: str) -> dict:
         self.project_dir(pid)
         j = self.jobs.current(pid)
@@ -455,6 +578,10 @@ class Handler(BaseHTTPRequestHandler):
         except ApiError as e:
             return self._json(e.status, {"error": str(e)})
         except Exception as e:  # noqa: BLE001
+            import sys
+            import traceback
+            print(f"[agora] error on {method} {self.path}:", file=sys.stderr)
+            traceback.print_exc()
             return self._json(500, {"error": f"{e.__class__.__name__}: {e}"})
 
     def _route(self, method: str, p: list[str], q: dict):
@@ -495,6 +622,38 @@ class Handler(BaseHTTPRequestHandler):
                 return a.stop(pid)
             if rest == ["reset"] and method == "POST":
                 return a.reset(pid)
+            if rest == ["report"] and method == "POST":
+                return a.start_report(pid, self._body())
+            if rest == ["report"] and method == "GET":
+                f = a.project_dir(pid) / "report" / "report.html"
+                if not f.exists():
+                    raise ApiError(404, "No report yet")
+                return (f.read_bytes(), "text/html; charset=utf-8")
+            if rest == ["report.md"] and method == "GET":
+                f = a.project_dir(pid) / "report" / "report.md"
+                if not f.exists():
+                    raise ApiError(404, "No report yet")
+                return (f.read_bytes(), "text/markdown; charset=utf-8")
+            if rest == ["ask"] and method == "POST":
+                return a.ask(pid, self._body())
+            if rest == ["people"] and method == "GET":
+                return a.people(pid, q)
+            if len(rest) == 2 and rest[0] == "people" and method == "GET":
+                return a.person(pid, rest[1])
+            if len(rest) == 3 and rest[0] == "people" and rest[2] == "chat" and method == "POST":
+                return a.chat(pid, rest[1], self._body())
+            if rest == ["interview"] and method == "POST":
+                return a.start_interview(pid, self._body())
+            if rest == ["history"] and method == "GET":
+                return a.history(pid, q)
+            if rest == ["inject"] and method == "POST":
+                return a.inject(pid, self._body())
+            if rest == ["injected"] and method == "GET":
+                return a.injected(pid)
+            if rest == ["fork"] and method == "POST":
+                return a.fork(pid, self._body())
+        if p == ["compare"] and method == "GET":
+            return a.compare(q)
         raise ApiError(404, "Not found")
 
     def do_GET(self):

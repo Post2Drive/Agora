@@ -20,9 +20,9 @@ will say and do, with numbers you can check.
   same result.
 - **Reproducible.** The same seed gives the same world. Model replies are cached in the project.
 
-> **Status: Phases 1 and 2 are done** (core engine, then upload, knowledge graph and automatic
-> setup). Coming next: a report agent and chat with agents (3), data calibration with
-> backtests and probability ranges (4), and a web UI with installers (5). See [ROADMAP.md](ROADMAP.md).
+> **Status: Phases 1–3 are done**: the engine; upload, graph and setup; and the report and
+> interaction. Next is calibration against real data, with backtests and probability
+> ranges (4), then installers and polish (5). See [ROADMAP.md](ROADMAP.md).
 
 ## Quick start: the website
 
@@ -40,8 +40,11 @@ The website takes you through the same five steps as MiroFish:
    predict, and edit anything.
 4. **Simulation:** start, stop and resume the run. Watch a live feed for each app,
    opinion by group, and actions over time.
-5. **Report:** see the results so far. The written report agent and chat with agents
-   arrive in Phase 3.
+5. **Report:** the report agent writes a cited prediction report (HTML you can print to
+   PDF, plus Markdown), and you can ask it follow-up questions.
+6. **Interact:** talk to anyone who took part, or interview a whole group at once. You
+   can also add an event in the middle of a run, fork a study to try a variation, and
+   compare studies side by side.
 
 It runs only on your computer: it listens on `127.0.0.1`, refuses other host names
 and cross-site requests, and keeps projects in `~/AgoraProjects` (`--dir` to change this).
@@ -72,6 +75,23 @@ agora status my-study
 The population size is chosen to fit about 12 hours on this machine (`--hours` to change it).
 Use `--fast` to build the graph without the model, and `--mock` to try the whole pipeline
 in seconds with no model at all. `agora graph my-study --add more.pdf` adds documents later.
+
+### After a run (command line)
+
+```bash
+agora report my-study                         # report/report.html and report.md
+agora ask my-study "Why did seniors hold back?"
+agora chat my-study                           # list people;  --agent @handle to talk
+agora interview my-study "Would you pay Rs 69 a sachet?" --segment senior_residents -n 8
+agora inject my-study "A doctor says probiotics are a waste of money"   # then agora run to continue
+agora fork my-study my-study-cheaper          # edit its scenario.yaml, run, then:
+agora compare my-study my-study-cheaper
+```
+
+Every number in the report is computed from the run. The model only writes the prose,
+and any sentence containing a number it was not given is removed, as are citations
+to posts that don't exist. Add an optional `economics:` section (cost and value per
+action) to get cost per outcome.
 
 ## Quick start: hand-written scenario
 

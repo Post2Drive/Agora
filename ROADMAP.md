@@ -20,17 +20,22 @@ LLM swarms lack.
 - [x] Offline interactive graph viewer (`graph.html`), plus GraphML and JSON export
 - [x] Drafts segments, named accounts, groups, timeline, decisions, actions to predict and individual personas, cleaning or replacing any answer it cannot use
 - [x] Agents see relevant graph facts each round (BM25 retrieval)
-- [ ] Write simulation activity back into the graph (Phase 3, for the report agent)
+- [x] The report agent searches simulation activity directly (post index) instead of writing it back into the graph
 
 ## Phase 2b: All major platforms and the local website (this release)
 - [x] 11 platforms in three kinds (feed, forum, chat), each with its own follow graph, writing style and vocabulary
 - [x] `agora web`: a local website covering upload and prompt, build progress, graph, setup review and editor, simulation control with live feeds and charts, and a results view
 - [x] Local-only safety: binds to localhost, checks the host header, requires a custom header on every change, never touches paths outside the workspace
 
-## Phase 3: Report and interaction
-- Report agent that can search posts, opinions, polls and the graph
-- HTML and PDF reports: opinion trajectories, key quotes, themes, conversion funnel, cost per outcome
-- Chat with any agent, interview a segment, add an event mid-run, fork and compare scenarios
+## Phase 3: Report and interaction (this release)
+- [x] Analysis layer that computes every number deterministically: opinion shifts, for/against shares, actions as a share of the people actually eligible, decisions with each voter's reason, influencers, most-engaged posts, recurring phrases, busiest groups, cost per outcome
+- [x] Report agent that writes section by section from those numbers and from real posts found by search. Invented numbers and citations are removed. Outputs a printable HTML report and Markdown
+- [x] Ask questions about the results (answers cite real posts)
+- [x] Chat with anyone from the simulation, using their persona, memory, posts, votes and actions
+- [x] Interview a group: the same question to a sample of AI voices, with a yes/unsure/no tally
+- [x] Add news or an official post while a run is going (stored with the run, so resume stays exact)
+- [x] Fork a study to try a variation, then compare studies side by side
+- [x] Website: Report and Interact steps, an "add an event" box, Fork, a Compare page. Command line: `report`, `ask`, `chat`, `interview`, `inject`, `fork`, `compare`
 
 ## Phase 4: Analytics
 - Seed opinions from real data (reviews, comments, surveys, sales)
@@ -39,7 +44,7 @@ LLM swarms lack.
 - Monte Carlo ensembles: ranges and probabilities, plus sensitivity to each assumption
 
 ## Phase 5: Product
-- Web UI polish: chat with agents, report pages, comparing scenarios side by side
+- Web UI polish: PDF export button, guided tour, saved interview sets
 - Windows installer, Docker image, Mac and Linux packages
 - Documentation and demo scenarios
 
