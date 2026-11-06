@@ -126,7 +126,7 @@ function nav(){document.querySelectorAll('[data-nav]').forEach(a=>a.classList.to
 /* ------------------------------------------------------------ router */
 async function route(){clearInterval(timer);timer=null;nav();const h=location.hash.slice(2).split('/');
   try{if(h[0]==='new'){location.hash='#/';return}if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
-  catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to studies</a></div>`}}
+  catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Home</a></div>`}}
 window.addEventListener('hashchange',route);
 
 /* ------------------------------------------------------------ home */
@@ -183,29 +183,29 @@ async function newStudy(isHome){const files=[];const d=INFO.llm_default;
     catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Start: build the graph'}}}
 
 /* ------------------------------------------------------------ project */
-const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['data','Calibrate'],['sim','Simulation'],['report','Report'],['people','Interact']];
+const TABS=[['graph','Graph Build'],['setup','Environment Setup'],['sim','Simulation'],['report','Report'],['people','Deep Interaction']];
 async function project(id,tab){const p=await api('projects/'+encodeURIComponent(id));state.p=p;
-  if(!tab){tab=p.job&&p.job.state==='running'&&p.job.kind==='create'?'build':p.run.started?'sim':p.has_scenario?'setup':'build';history.replaceState(null,'',`#/p/${id}/${tab}`)}
-  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false,data:false};
-  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span>${p.has_scenario?'<button class="btn" id="fork" title="Copy this setup into a new study to try a variation">Fork</button>':''}<button class="btn danger" id="del">Delete</button></div>
-    <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':i+1}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
+  if(tab==='build')tab='graph';if(!tab){tab=p.has_report?'report':p.run.started?'sim':p.has_scenario&&!(p.job&&p.job.kind==='create'&&p.job.state==='running')?'setup':'graph';history.replaceState(null,'',`#/p/${id}/${tab}`)}
+  const building=p.job&&p.job.kind==='create'&&p.job.state==='running';const done={graph:p.has_graph&&!building,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false,data:false};
+  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Home</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span><button class="btn danger" id="del">Delete</button></div>
+    <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':String(i+1).padStart(2,'0')}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
   $('#del').onclick=async()=>{if(!confirm('Delete this study and all its files?'))return;try{await api('projects/'+id,{method:'DELETE'});location.hash='#/'}catch(e){toast(e.message)}};
-  if($('#fork'))$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
-  ({build:tabBuild,graph:tabGraph,setup:tabSetup,data:tabData,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
+  if(0)$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
+  ({graph:tabGraph,setup:tabSetup,data:tabData,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
 
 function tabBuild(p){const j=p.job;
   if(!j||j.kind!=='create'){$('#tab').innerHTML=`<div class="card"><h2>Material</h2>${p.sources.length?`<p class="muted">Documents in this study:</p><div class="files">${p.sources.map(s=>`<span class="file">${esc(s)}</span>`).join('')}</div>`:'<p class="muted">This study was set up by hand (no documents).</p>'}
     <h3 style="margin-top:18px">Question</h3><p>${esc(p.prompt)}</p><a class="btn primary" href="#/p/${p.id}/${p.has_graph?'graph':'setup'}">Continue</a></div>`;return}
   const render=j=>{const run=j.state==='running';
-    $('#tab').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">${run?'Building your study…':j.state==='done'?'Study ready':j.state==='stopped'?'Stopped':'Build failed'}</h2><span class="spacer"></span>
-      ${run?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>${j.stopping?'Stopping…':'Stop'}</button>`:j.state==='done'?`<a class="btn" href="#/p/${p.id}/graph">See the graph</a><a class="btn primary" href="#/p/${p.id}/setup">Review the setup</a>`:''}</div>
-      <p class="muted small">Reading documents → knowledge graph → drafting who reacts, where they talk and what happens. On a laptop this can take a while; you can leave this page and come back.</p>
+    $('#tab').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">${run?'Building the knowledge graph…':j.state==='done'?'Graph and environment ready':j.state==='stopped'?'Stopped':'Build failed'}</h2><span class="spacer"></span>
+      ${run?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>${j.stopping?'Stopping…':'Stop'}</button>`:j.state==='done'?`<a class="btn primary" href="#/p/${p.id}/graph">See the graph</a>`:''}</div>
+      <p class="muted small">Reading documents → extracting entities and relations → building the graph → generating agents and the simulation config. On a laptop this takes a while; you can leave this page and come back.</p>
       ${j.error?`<p class="pill bad">${esc(j.error)}</p>`:''}<div class="log" id="log">${esc(j.log.join('\n'))}</div></div>`;
     const l=$('#log');l.scrollTop=l.scrollHeight;if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after the current step…'))};
   render(j);if(j.state==='running')timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job)return;render(q.job);if(q.job.state!=='running'){clearInterval(timer);route()}},1500)}
 
-function tabGraph(p){if(!p.has_graph){$('#tab').innerHTML=`<div class="card empty"><h2>No knowledge graph</h2><p class="muted">This study was not built from documents.</p><a class="btn primary" href="#/p/${p.id}/setup">Go to setup</a></div>`;return}
-  const g=p.graph||{};$('#tab').innerHTML=`<div class="row" style="margin-bottom:10px"><span class="muted">${g.nodes??'?'} entities · ${g.edges??'?'} relations · ${g.documents??'?'} documents. Click any entity to see what the documents say about it.</span><span class="spacer"></span><a class="btn" href="/api/projects/${p.id}/graph" target="_blank" rel="noopener">Open full screen</a><a class="btn primary" href="#/p/${p.id}/setup">Next: setup</a></div>
+function tabGraph(p){if(p.job&&p.job.kind==='create'&&(p.job.state!=='done'||!p.has_scenario))return tabBuild(p);if(!p.has_graph){$('#tab').innerHTML=`<div class="card empty"><h2>No knowledge graph</h2><p class="muted">This study was not built from documents.</p><a class="btn primary" href="#/p/${p.id}/setup">Next: environment setup →</a></div>`;return}
+  const g=p.graph||{};$('#tab').innerHTML=`<div class="row" style="margin-bottom:10px"><span class="muted">${g.nodes??'?'} entities · ${g.edges??'?'} relations · ${g.documents??'?'} documents. Click any entity to see what the documents say about it.</span><span class="spacer"></span><a class="btn" href="/api/projects/${p.id}/graph" target="_blank" rel="noopener">Open full screen</a><a class="btn primary" href="#/p/${p.id}/setup">Next: environment setup →</a></div>
     <iframe src="/api/projects/${p.id}/graph" title="Knowledge graph"></iframe>`}
 
 async function tabSetup(p){const s=p.scenario;
@@ -276,7 +276,7 @@ function drawSim(p,l){if(!$('#ctl'))return;const r=l.run,j=p.job,running=j&&j.ki
   const s=p.scenario;const simT=r.sim_time?new Date(r.sim_time):null;
   $('#ctl').innerHTML=`<div class="row"><div><h2 style="margin:0">${running?(j.stopping?'Stopping after this round…':'Simulating…'):complete?'Simulation complete':r.started?'Paused':'Ready to start'}</h2>
     <span class="muted small">Round ${r.rounds_done} of ${r.rounds_total}${simT?` · simulated time ${simT.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:''}${r.seconds?` · ${fmtDur(r.seconds)} so far · ${r.llm_calls} model calls`:''}</span></div><span class="spacer"></span>
-    ${running?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>Stop</button>`:`${complete?'':`<button class="btn primary" id="go">${r.started?'Resume':'Start'}</button>`}${r.started?'<button class="btn danger" id="reset">Reset</button>':''}`}</div>
+    ${running?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>Stop</button>`:`${complete?`<a class="btn primary" href="#/p/${p.id}/report">Next: report →</a>`:`<button class="btn primary" id="go">${r.started?'Resume':'Start'}</button>`}${r.started?'<button class="btn danger" id="reset">Reset</button>':''}`}</div>
     <div class="bar" style="margin-top:12px"><i style="width:${pct}%"></i></div>${j&&j.state==='error'&&j.kind==='run'?`<p class="pill bad" style="margin-top:10px">${esc(j.error)}</p>`:''}`;
   if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after this round. Progress is saved.'));
   if($('#go'))$('#go').onclick=()=>startRun(p,false);
@@ -322,9 +322,10 @@ async function tabReport(p){
   $('#tab').innerHTML=`<div class="card"><div class="row"><div><h2 style="margin:0">${running?'Writing the report…':p.has_report?'Report':'Write the report'}</h2>
     <span class="muted small">The report agent reads every number from the simulation, searches what people said, and writes each section. Numbers it was not given are removed.</span></div><span class="spacer"></span>
     ${running?`<button class="btn" id="rstop">Stop</button>`:`<button class="btn ${p.has_report?'':'primary'}" id="rgo">${p.has_report?'Rewrite':'Write the report'}</button>`}
-    ${p.has_report&&!running?`<a class="btn" href="/api/projects/${p.id}/report.md" download="report.md">Markdown</a><a class="btn" href="/api/projects/${p.id}/report" target="_blank" rel="noopener">Open full page</a>`:''}</div>
+    ${p.has_report&&!running?`<a class="btn" href="/api/projects/${p.id}/report.md" download="report.md">Markdown</a><a class="btn" href="/api/projects/${p.id}/report" target="_blank" rel="noopener">Open full page</a><a class="btn primary" href="#/p/${p.id}/people">Next: deep interaction →</a>`:''}</div>
     ${j&&(running||j.state==='error')?`<div class="log" style="margin-top:12px">${esc(j.log.join('\n'))}</div>`:''}</div>
     ${p.has_report&&!running?`<iframe style="margin-top:16px" src="/api/projects/${p.id}/report?t=${Date.now()}" title="Report"></iframe>`:''}
+    <div class="card" style="margin-top:16px"><div class="row"><div><h2 style="margin:0">Probability ranges and calibration</h2><span class="muted small">Optional: add real data to calibrate, then get 10/50/90% ranges and win chances.</span></div><span class="spacer"></span><a class="btn" href="#/p/${p.id}/data">Open</a></div></div>
     <div class="card" style="margin-top:16px"><h2>Ask about the results</h2><p class="muted small" style="margin-top:-6px">Answers use only the simulation's numbers and real posts, with citations like [p123].</p>
       <div id="qa" class="grid" style="gap:10px"></div>
       <div class="row" style="margin-top:12px"><input type="text" id="qq" placeholder="e.g. Which group pushed back most, and why?" style="flex:1"><button class="btn primary" id="qgo">Ask</button></div></div>`;
@@ -426,7 +427,7 @@ async function person(p,h){const x=await api(`projects/${p.id}/people/${encodeUR
 
 /* ------------------------------------------------------------ compare */
 async function comparePage(ids){const ps=(await api('projects')).filter(p=>p.run.started);const sel=new Set(ids?ids.split(','):ps.slice(0,2).map(p=>p.id));
-  $('#view').innerHTML=`<a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">Compare studies</h1><p class="muted">Pick two or more runs, for example a study and its fork with a different offer.</p>
+  $('#view').innerHTML=`<a href="#/" class="muted small" style="text-decoration:none">← Home</a><h1 style="margin-top:4px">Compare studies</h1><p class="muted">Pick two or more runs, for example a study and its fork with a different offer.</p>
     <div class="chips">${ps.map(p=>`<span class="chip ${sel.has(p.id)?'on':''}" data-id="${p.id}">${esc(p.title)}</span>`).join('')}</div><div id="cmp"></div>`;
   document.querySelectorAll('.chip[data-id]').forEach(c=>c.onclick=()=>{sel.has(c.dataset.id)?sel.delete(c.dataset.id):sel.add(c.dataset.id);location.hash='#/compare/'+[...sel].join(',')});
   if(sel.size<2){$('#cmp').innerHTML='<p class="muted">Choose at least two.</p>';return}
