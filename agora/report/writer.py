@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from ..llm import LLMBackend, LLMError
+from ..llm import LLMBackend, LLMError, parse_json
 from .analysis import Analysis, label, money, nice, pct
 from .evidence import PostIndex
 
@@ -205,6 +205,178 @@ def _fallback(key: str, a: dict) -> str:
 
 
 # ------------------------------------------------------------------ main
+# ------------------------------------------------------------------ the agent
+TOOLS_HELP = """Tools (call one at a time with JSON):
+- {"tool": "search_posts", "query": "..."}      find what people actually said
+- {"tool": "search_memory", "query": "..."}     search the documents' knowledge graph and the record of what happened
+- {"tool": "insight", "query": "..."}            break a question into sub-questions and search each
+- {"tool": "stats", "name": "funnel|opinion|decisions|drivers|themes|economics"}  exact numbers
+- {"tool": "interview", "question": "...", "segment": "<group or empty>"}  ask a few simulated people (max once)
+When you have enough, reply {"write": "<the section text>"}."""
+
+STAT_FNS = {"funnel": _funnel, "opinion": _segments, "decisions": _decisions, "drivers": _drivers,
+            "themes": _themes, "economics": _econ}
+LIBRARY = {k: (title, instr, fn, q) for k, title, instr, fn, q in SECTIONS}
+
+
+class Toolbox:
+    def __init__(self, project: Path, a: dict, posts: PostIndex, llm, log: list):
+        self.project, self.a, self.posts, self.llm, self.log = project, a, posts, llm, log
+        self.interviews = 0
+        self._facts = None
+
+    def _graph(self):
+        if self._facts is None:
+            from ..graph import GRAPH_FILE, GraphStore
+            from ..graph.retrieve import FactIndex
+            facts = []
+            if (self.project / GRAPH_FILE).exists():
+                gs = GraphStore(self.project / GRAPH_FILE)
+                facts = FactIndex.from_graph(gs).facts
+                gs.close()
+            from ..sim.memory import WorldMemory
+            from ..sim.world import World
+            from ..store import Store
+            from .. import scenario as scenario_mod
+            st = Store(self.project / "agora.db")
+            try:
+                sc = scenario_mod.load(self.project / "scenario.yaml")
+                mem = WorldMemory.load(sc, World.load(st), st)
+                facts += [t for _, _, t in mem.episodes]
+            finally:
+                st.close()
+            from ..graph.retrieve import FactIndex as FI
+            self._facts = FI(facts)
+        return self._facts
+
+    def call(self, d: dict, section: str) -> str:
+        tool = str(d.get("tool", "")).strip()
+        q = str(d.get("query") or d.get("question") or "")[:300]
+        if tool == "search_posts":
+            res = "\n".join(self.posts.search(q, k=6)) or "(no matching posts)"
+        elif tool == "search_memory":
+            res = "\n".join(f"- {x}" for x in self._graph().search(q, k=6)) or "(nothing found)"
+        elif tool == "insight":
+            subs = [q]
+            if self.llm is not None:
+                try:
+                    j = self.llm.generate_json([{"role": "user", "content":
+                        f"Split this research question into 3 short search queries.\nQuestion: {q}\n"
+                        'Reply with JSON only: {"queries": ["...", "...", "..."]}'}],
+                        max_tokens=150, temperature=0.2, seed=7,
+                        meta={"task": "json", "default": {"queries": [q]}})
+                    subs = [str(x) for x in (j.get("queries") or [q])][:3] or [q]
+                except LLMError:
+                    pass
+            parts = []
+            for sq in subs:
+                hits = self.posts.search(sq, k=3) + [f"- {x}" for x in self._graph().search(sq, k=2)]
+                parts.append(f"Q: {sq}\n" + ("\n".join(hits) or "(nothing)"))
+            res = "\n".join(parts)
+        elif tool == "stats":
+            fn = STAT_FNS.get(str(d.get("name", "")).strip().lower())
+            res = fn(self.a) if fn else "Unknown stats name. Use funnel, opinion, decisions, drivers, themes or economics."
+        elif tool == "interview":
+            if self.interviews >= 1 or self.llm is None:
+                res = "(interview budget used)"
+            else:
+                from .interact import interview
+                self.interviews += 1
+                seg = str(d.get("segment") or "")
+                if seg not in self.a["scenario"]["segments"]:
+                    seg = ""
+                r = interview(self.project, self.llm, q or "What do you think about it?", segment=seg, n=4)
+                t = r["tally"]
+                res = (f"Asked {len(r['answers'])} people: {t['yes']} yes, {t['unsure']} unsure, {t['no']} no.\n"
+                       + "\n".join(f"- {x['name']} ({x['segment'].replace('_', ' ')}): \"{x['answer'][:200]}\""
+                                   for x in r["answers"]))
+        else:
+            res = "Unknown tool."
+        self.log.append({"section": section, "tool": tool, "input": d, "result": res[:2000]})
+        return res
+
+
+def plan_outline(llm, a: dict) -> list[dict]:
+    default = [{"key": k, "title": LIBRARY[k][0], "goal": LIBRARY[k][1]} for k in LIBRARY]
+    if llm is None:
+        return default
+    brief = "\n".join([_base(a), "Actions:", _funnel(a), "Decisions:", _decisions(a)[:600]])
+    try:
+        d = llm.generate_json([{"role": "system", "content": SYSTEM},
+                               {"role": "user", "content":
+                                f"Plan a prediction report.\n{brief}\n\nStandard sections you can use: "
+                                + ", ".join(f"{k} ({LIBRARY[k][0]})" for k in LIBRARY)
+                                + "\nChoose 5-8 sections in a sensible order. Always include summary first and "
+                                  "risks near the end. You may add up to 2 custom sections specific to this question.\n"
+                                  'Reply with JSON only: {"sections": [{"key": "summary or custom", "title": "...", '
+                                  '"goal": "what this section must answer"}]}'}],
+                              max_tokens=500, temperature=0.2, seed=3,
+                              meta={"task": "json", "default": {"sections": default}})
+    except LLMError:
+        return default
+    out, seen = [], set()
+    for x in d.get("sections") or []:
+        if not isinstance(x, dict):
+            continue
+        key = str(x.get("key", "custom")).strip().lower()
+        key = key if key in LIBRARY else "custom"
+        title = str(x.get("title") or (LIBRARY[key][0] if key in LIBRARY else "")).strip()[:80]
+        if not title or (key in seen and key != "custom"):
+            continue
+        seen.add(key)
+        out.append({"key": key, "title": title,
+                    "goal": str(x.get("goal") or (LIBRARY[key][1] if key in LIBRARY else ""))[:300]})
+    if not out:
+        return default
+    if out[0]["key"] != "summary":
+        out = [s for s in default if s["key"] == "summary"] + [s for s in out if s["key"] != "summary"]
+    if "risks" not in seen:
+        out.append(next(s for s in default if s["key"] == "risks"))
+    return out[:9]
+
+
+def _general_facts(a: dict) -> str:
+    return "\n".join([_base(a), "Actions:", _funnel(a), "Opinion by group:", _segments(a), _themes(a), _econ(a)])
+
+
+def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int], max_steps: int = 3) -> str:
+    key = sec["key"]
+    facts = LIBRARY[key][2](a) if key in LIBRARY else _general_facts(a)
+    query = LIBRARY[key][3] if key in LIBRARY else sec["title"]
+    notes = []
+    if query:
+        notes.append("Posts found for this section:\n" + "\n".join(tb.posts.search(f"{a['scenario']['topic']} {query}", k=5)))
+    for step in range(max_steps):
+        prompt = (f"Section {i}: {sec['title']}\nGoal: {sec['goal']}\n\nFacts (the only numbers you may use):\n{facts}\n\n"
+                  + ("\n\n".join(notes) + "\n\n" if notes else "") + TOOLS_HELP
+                  + f"\nYou have {max_steps - step} tool call(s) left.")
+        default = ({"tool": "search_posts", "query": sec["title"]} if step == 0 else
+                   {"write": _fallback(key, a) if key in LIBRARY else ""})
+        try:
+            raw = llm.generate([{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
+                               max_tokens=600, temperature=0.3, seed=100 + i * 10 + step, json_mode=True,
+                               meta={"task": "json", "default": default})
+        except LLMError:
+            break
+        d = parse_json(raw)
+        if d.get("write") or not d.get("tool"):
+            # a model that ignores the JSON format and just writes prose: take the prose
+            text = str(d.get("write") or d.get("text") or ("" if d else raw))
+            evid = facts + "\n" + "\n".join(notes)
+            return check(text, evid, known)
+        notes.append(f"Tool {d.get('tool')} result:\n" + tb.call(d, sec["title"]))
+    # out of steps: write with what we have
+    try:
+        raw = llm.generate([{"role": "system", "content": SYSTEM}, {"role": "user", "content":
+                            f"Section: {sec['title']}\nGoal: {sec['goal']}\n\nFacts:\n{facts}\n\n"
+                            + "\n\n".join(notes) + "\n\nNow write the section."}],
+                           max_tokens=450, temperature=0.3, seed=100 + i,
+                           meta={"default_text": _fallback(key, a) if key in LIBRARY else ""})
+        return check(raw, facts + "\n" + "\n".join(notes), known)
+    except LLMError:
+        return ""
+
+
 def write_report(project: str | Path, llm: LLMBackend | None,
                  say: Callable[[str], None] = lambda m: None,
                  should_stop: Callable[[], bool] = lambda: False) -> dict:
@@ -216,33 +388,30 @@ def write_report(project: str | Path, llm: LLMBackend | None,
         an.close()
     posts = PostIndex(project)
     known = set(posts.by_id)
+    log: list[dict] = []
+    tb = Toolbox(project, a, posts, llm, log)
+    say("Planning the report")
+    outline = plan_outline(llm, a)
     sections = []
-    for i, (key, title, instr, facts_fn, query) in enumerate(SECTIONS, 1):
+    for i, sec in enumerate(outline, 1):
         if should_stop():
             raise KeyboardInterrupt
-        say(f"Writing {i}/{len(SECTIONS)}: {title}")
-        facts = facts_fn(a)
-        evidence = posts.search(f"{a['scenario']['topic']} {query}", k=5) if query else []
-        cited_pool = posts.ids_in(evidence) | {int(x) for x in _CITE.findall(facts)}
-        prompt = (f"Section: {title}\nTask: {instr}\n\nFacts (the only numbers you may use):\n{facts}\n"
-                  + (("\nReal posts you may quote:\n" + "\n".join(evidence)) if evidence else ""))
-        text = ""
-        if llm is not None:
-            try:
-                raw = llm.generate([{"role": "system", "content": SYSTEM},
-                                    {"role": "user", "content": prompt}],
-                                   max_tokens=450, temperature=0.3, seed=100 + i,
-                                   meta={"default_text": _fallback(key, a)})
-                text = check(raw, facts + "\n" + "\n".join(evidence), known & (cited_pool | known))
-            except LLMError as e:
-                say(f"  model error, using plain summary: {e}")
-        if len(text) < 40:      # our own computed sentences: only citations need checking
-            text = _CITE.sub(lambda m: m.group(0) if int(m.group(1)) in known else "", _fallback(key, a))
-        sections.append({"key": key, "title": title, "text": text})
+        say(f"Researching and writing {i}/{len(outline)}: {sec['title']}")
+        text = write_section(llm, tb, a, sec, i, known) if llm is not None else ""
+        if len(text) < 40 and sec["key"] in LIBRARY:     # our own computed sentences
+            text = _CITE.sub(lambda m: m.group(0) if int(m.group(1)) in known else "", _fallback(sec["key"], a))
+        if len(text) < 20:
+            continue
+        sections.append({"key": sec["key"], "title": sec["title"], "text": text})
+        for e in log:
+            if e["section"] == sec["title"] and "said" not in e:
+                say(f"  used {e['tool']}: {str(e['input'].get('query') or e['input'].get('name') or e['input'].get('question') or '')[:60]}")
+                e["said"] = True
     cited = sorted({int(x) for s in sections for x in _CITE.findall(s["text"])})
     report = {"title": a["scenario"]["question"], "generated": time.strftime("%Y-%m-%d %H:%M"),
               "model": f"{llm.cfg.backend}:{llm.cfg.model}" if llm is not None else "none",
-              "sections": sections, "analysis": a,
+              "sections": sections, "analysis": a, "outline": outline,
+              "research": [{k: v for k, v in e.items() if k != "said"} for e in log],
               "quotes": {pid: posts.line(pid) for pid in cited}}
     out = project / "report"
     out.mkdir(exist_ok=True)
