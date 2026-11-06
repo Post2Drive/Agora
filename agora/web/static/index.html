@@ -186,15 +186,15 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
     catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Build the study'}}}
 
 /* ------------------------------------------------------------ project */
-const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['sim','Simulation'],['report','Report'],['people','Interact']];
+const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['data','Calibrate'],['sim','Simulation'],['report','Report'],['people','Interact']];
 async function project(id,tab){const p=await api('projects/'+encodeURIComponent(id));state.p=p;
   if(!tab){tab=p.job&&p.job.state==='running'&&p.job.kind==='create'?'build':p.run.started?'sim':p.has_scenario?'setup':'build';history.replaceState(null,'',`#/p/${id}/${tab}`)}
-  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false};
+  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false,data:false};
   $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span>${p.has_scenario?'<button class="btn" id="fork" title="Copy this setup into a new study to try a variation">Fork</button>':''}<button class="btn danger" id="del">Delete</button></div>
     <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':i+1}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
   $('#del').onclick=async()=>{if(!confirm('Delete this study and all its files?'))return;try{await api('projects/'+id,{method:'DELETE'});location.hash='#/'}catch(e){toast(e.message)}};
   if($('#fork'))$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
-  ({build:tabBuild,graph:tabGraph,setup:tabSetup,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
+  ({build:tabBuild,graph:tabGraph,setup:tabSetup,data:tabData,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
 
 function tabBuild(p){const j=p.job;
   if(!j||j.kind!=='create'){$('#tab').innerHTML=`<div class="card"><h2>Material</h2>${p.sources.length?`<p class="muted">Documents in this study:</p><div class="files">${p.sources.map(s=>`<span class="file">${esc(s)}</span>`).join('')}</div>`:'<p class="muted">This study was set up by hand (no documents).</p>'}
@@ -341,6 +341,53 @@ async function tabReport(p){
       $('#qa').insertAdjacentHTML('beforeend',bubble('agent',r.answer)+Object.values(r.quotes).map(x=>`<div class="small muted" style="margin-left:14px">${esc(x)}</div>`).join(''))}
     catch(e){$('#thinking').remove();toast(e.message)}finally{$('#qgo').disabled=false}};
   $('#qgo').onclick=go;$('#qq').onkeydown=e=>{if(e.key==='Enter')go()}}
+
+/* ------------------------------------------------------------ calibrate + forecast */
+const pctf=v=>(v*100).toFixed(1)+'%';
+async function tabData(p){const s=p.scenario;if(!s){$('#tab').innerHTML='<div class="card">Set up the study first.</div>';return}
+  const st=await api(`projects/${p.id}/calibration`);const j=p.job&&['calibrate','backtest','forecast'].includes(p.job.kind)?p.job:null,running=j&&j.state==='running';
+  const metrics=[...s.conversions.map(c=>c.name),...(s.choice?s.choice.options:[]),...(s.choice?['turnout']:[]),'opinion'];
+  const tmpl='day,'+metrics.slice(0,5).join(',')+'\n1,'+metrics.slice(0,5).map(()=>'').join(',')+'\n';
+  $('#tab').innerHTML=`<div class="grid g2"><div class="card"><h2>Real data</h2><p class="muted small" style="margin-top:-6px">What actually happened. Agora adjusts its assumptions until the simulation matches, then tests itself and gives ranges.</p>
+      <h3>What happened (observations.csv) ${st.files.observations?'<span class="pill ok">added</span>':''}</h3>
+      <p class="small muted">One row per day; columns are things you counted: ${metrics.map(m=>`<code>${esc(m)}</code>`).join(', ')}. Counts are running totals; shares and turnout can be % (e.g. a poll). Day 1 = first simulated day, or use a <code>date</code> column.</p>
+      <textarea id="obs" class="code" style="min-height:120px" placeholder="${esc(tmpl)}"></textarea>
+      <div class="row" style="margin-top:6px"><input type="file" id="obsf" accept=".csv,.tsv,.txt"><span class="spacer"></span><button class="btn" id="obsgo">Save</button></div>
+      <h3 style="margin-top:16px">Reviews or ratings (reviews.csv, optional) ${st.files.reviews?'<span class="pill ok">added</span>':''}</h3>
+      <p class="small muted">Columns <code>text</code>, <code>rating</code> (1-5) and optional <code>segment</code>. Used to set starting opinions.</p>
+      <textarea id="rev" class="code" style="min-height:80px" placeholder="text,rating,segment"></textarea>
+      <div class="row" style="margin-top:6px"><input type="file" id="revf" accept=".csv,.tsv,.txt"><span class="spacer"></span><button class="btn" id="revgo">Save</button></div><p id="dmsg" class="small"></p></div>
+    <div class="card"><h2>Fit, test, forecast</h2>
+      <p class="small muted">These use fast runs (the AI voices are replaced by rule-based stand-ins), so they take minutes, not hours.</p>
+      <div class="row"><button class="btn primary" id="cal" ${running?'disabled':''}>Calibrate</button><button class="btn" id="bt" ${running?'disabled':''}>Backtest</button>
+        <span class="spacer"></span><label class="small">Runs <input type="number" id="runs" value="30" min="5" max="200" style="width:70px"></label><button class="btn" id="fc" ${running?'disabled':''}>Forecast ranges</button></div>
+      ${j?`<div class="log" style="margin-top:12px" id="jlog">${esc(j.log.slice(-20).join('\n'))}</div>${running?'<button class="btn" id="jstop" style="margin-top:8px">Stop</button>':''}${j.error?`<p class="pill bad">${esc(j.error)}</p>`:''}`:''}
+      <div id="calres"></div></div></div><div id="fcres"></div>`;
+  const load=(fi,ta)=>{$(fi).onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$(ta).value=r.result};r.readAsText(f)}};load('#obsf','#obs');load('#revf','#rev');
+  const save=kind=>async()=>{const text=$(kind==='observations'?'#obs':'#rev').value;try{const r=await api(`projects/${p.id}/data`,{method:'POST',body:{kind,text}});$('#dmsg').innerHTML=`<span class="pill ok">Saved: ${esc(JSON.stringify(r))}</span>`;setTimeout(route,800)}catch(e){$('#dmsg').innerHTML=`<span class="pill bad">${esc(e.message)}</span>`}};
+  $('#obsgo').onclick=save('observations');$('#revgo').onclick=save('reviews');
+  const start=(what,body={})=>async()=>{try{await api(`projects/${p.id}/${what}`,{method:'POST',body});route()}catch(e){toast(e.message)}};
+  $('#cal').onclick=start('calibrate');$('#bt').onclick=start('backtest');$('#fc').onclick=()=>start('forecast',{runs:+$('#runs').value||30})();
+  if($('#jstop'))$('#jstop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'});
+  if(running)timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job||q.job.state!=='running'){clearInterval(timer);route()}else if($('#jlog'))$('#jlog').textContent=q.job.log.slice(-20).join('\n')},1500);
+  let h='';const c=st.calibration;
+  if(c){h+=`<h3 style="margin-top:16px">Calibration ${st.applied?'<span class="pill ok">applied</span>':''}</h3><table><thead><tr><th>Assumption</th><th>Before</th><th>Fitted</th></tr></thead><tbody>${c.changes.map(x=>`<tr><td>${esc(x.what)}</td><td>${esc(x.from)}</td><td><b>${esc(x.to)}</b></td></tr>`).join('')}</tbody></table>
+    ${c.fit&&c.fit.score?`<table><thead><tr><th>Fit</th><th>Average error</th><th>Points</th></tr></thead><tbody>${Object.entries(c.fit.score).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.mae}${v.mape!=null?` (${(v.mape*100).toFixed(1)}%)`:''}</td><td>${v.points}</td></tr>`).join('')}</tbody></table>`:''}
+    ${st.applied?'':`<div class="row" style="margin-top:8px"><span class="small muted">${p.run.started?'This study has been run: fork it, then apply to the fork.':'Apply writes the fitted numbers into the setup (a backup is kept).'}</span><span class="spacer"></span>${p.run.started?'':'<button class="btn primary" id="apply">Apply</button>'}</div>`}`}
+  const b=st.backtest;if(b){h+=`<h3 style="margin-top:16px">Backtest <span class="muted small">fitted on days ≤ ${b.cutoff_day}, predicting ${b.test_points} later points</span></h3><table><thead><tr><th>Metric</th><th>Simulation error</th><th>Statistical baseline</th><th>Better</th></tr></thead><tbody>
+    ${Object.entries(b.simulation.score).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.mae}</td><td>${b.baseline.score[k]?b.baseline.score[k].mae:'—'}</td><td>${esc(b.better[k]||'')}</td></tr>`).join('')}</tbody></table>`}
+  $('#calres').innerHTML=h;if($('#apply'))$('#apply').onclick=async()=>{try{await api(`projects/${p.id}/calibration/apply`,{method:'POST'});toast('Applied.');route()}catch(e){toast(e.message)}};
+  const f=st.forecast;if(f){const mc=f.monte_carlo;const fmtv=(k,v)=>k.startsWith('share:')||k==='turnout'||k==='in_favour'?pctf(v):k.startsWith('action:')?Math.round(v).toLocaleString():(v>=0?'+':'')+v.toFixed(2);
+    const bandKeys=Object.keys(mc.bands||{});
+    $('#fcres').innerHTML=`<div class="card" style="margin-top:16px"><h2>Forecast <span class="muted small">${mc.runs} runs${f.calibrated?' · calibrated':' · not calibrated yet'} · ${esc(f.generated)}</span></h2>
+      <div class="grid g2"><div><table><thead><tr><th>Outcome</th><th>Low (10%)</th><th>Middle</th><th>High (90%)</th></tr></thead><tbody>${Object.entries(mc.summary).map(([k,v])=>`<tr><td>${esc(k.split(':').pop().replace(/_/g,' '))}</td><td>${fmtv(k,v.p10)}</td><td><b>${fmtv(k,v.p50)}</b></td><td>${fmtv(k,v.p90)}</td></tr>`).join('')}</tbody></table>
+        ${Object.keys(mc.win_probability||{}).length?`<h3>Chance of winning</h3><div class="kpis">${Object.entries(mc.win_probability).sort((a,b)=>b[1]-a[1]).map(([o,w])=>`<div class="kpi"><b>${Math.round(w*100)}%</b><span>${esc(o)}</span></div>`).join('')}</div>`:''}
+        ${Object.keys(mc.targets||{}).length?`<h3>Targets</h3>${Object.entries(mc.targets).map(([n,t])=>`<p>${esc(n.replace(/_/g,' '))} ≥ ${t.goal}: <b>${Math.round(t.probability*100)}%</b> chance</p>`).join('')}`:''}</div>
+      <div>${bandKeys.length?`<select id="bk" style="width:auto">${bandKeys.map(k=>`<option>${esc(k)}</option>`).join('')}</select><div id="band" class="chart"></div>`:''}</div></div>
+      ${f.sensitivity?`<h3 style="margin-top:16px">What moves ${esc(f.sensitivity.outcome.split(':').pop())} most</h3>${f.sensitivity.levers.slice(0,10).map(r=>{const mx=f.sensitivity.levers[0].swing||1;return `<div style="margin:6px 0"><div class="row small"><span>${esc(r.lever)}</span><span class="spacer"></span><span class="muted">${fmtv(f.sensitivity.outcome,r.low)} → ${fmtv(f.sensitivity.outcome,r.high)}</span></div><div class="bar"><i style="width:${(r.swing/mx*100).toFixed(1)}%"></i></div></div>`}).join('')}`:''}</div>`;
+    const drawBand=()=>{const k=$('#bk').value,bd=mc.bands[k];const n=bd.p50.length;const pts=a=>a.map((v,i)=>[i+1,v]);const mx=Math.max(...bd.p90,k.startsWith('share:')?1:1);
+      $('#band').innerHTML=lineChart([{name:'high (90%)',color:'#9aa',points:pts(bd.p90)},{name:'middle',color:SCOL[0],points:pts(bd.p50)},{name:'low (10%)',color:'#9aa',points:pts(bd.p10)}],{ymin:0,ymax:k.startsWith('share:')?1:mx,xmax:n,ylab:k,fmt:v=>k.startsWith('share:')?Math.round(v*100)+'%':Math.round(v)})};
+    if($('#bk')){$('#bk').onchange=drawBand;drawBand()}}}
 
 /* ------------------------------------------------------------ interact */
 async function tabPeople(p){

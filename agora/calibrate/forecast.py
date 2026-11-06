@@ -51,8 +51,9 @@ def jitter(d: dict, rng: np.random.Generator, scale: float = 1.0) -> dict:
 
 def _outcomes(t: Trajectory, d: dict) -> dict:
     out = {f"action:{k}": float(v[-1]) if v else 0.0 for k, v in t.conversions.items()}
-    out["opinion"] = float(t.opinion[-1]) if t.opinion else 0.0
-    out["in_favour"] = float(t.opinion_for[-1]) if t.opinion_for else 0.0
+    if not t.result:            # with a choice, the option shares replace the single opinion
+        out["opinion"] = float(t.opinion[-1]) if t.opinion else 0.0
+        out["in_favour"] = float(t.opinion_for[-1]) if t.opinion_for else 0.0
     if t.result:
         for o, v in t.result.items():
             out[f"share:{o}"] = float(v)

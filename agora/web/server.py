@@ -519,6 +519,54 @@ class App:
             raise ApiError(400, "Choose at least two studies.")
         return compare([self.project_dir(i) for i in ids])
 
+    # ---------------------------------------------------------------- calibration + forecast
+    def save_data(self, pid: str, body: dict) -> dict:
+        from ..calibrate.data import DataError
+        from ..calibrate.project import save_data
+        d = self.project_dir(pid)
+        try:
+            return save_data(d, str(body.get("kind")), str(body.get("text") or ""))
+        except (DataError, ValueError) as e:
+            raise ApiError(400, str(e))
+
+    def calib_state(self, pid: str) -> dict:
+        from ..calibrate.project import load_json
+        d = self.project_dir(pid)
+        cal = load_json(d, "calibration/calibration.json")
+        if cal:
+            cal = {k: v for k, v in cal.items() if k != "scenario"}
+        files = {k: (d / "data" / f"{k}.csv").exists() for k in ("observations", "reviews")}
+        return {"calibration": cal, "backtest": load_json(d, "calibration/backtest.json"),
+                "forecast": load_json(d, "forecast/forecast.json"), "files": files,
+                "applied": (d / "scenario.before-calibration.yaml").exists()}
+
+    def start_calib(self, pid: str, what: str, body: dict) -> dict:
+        from ..calibrate import project as cp
+        d = self.project_dir(pid)
+
+        def work(job: Job):
+            stop = lambda: job.stopping  # noqa: E731
+            if what == "calibrate":
+                cp.calibrate_project(d, say=job.say, should_stop=stop)
+            elif what == "backtest":
+                cp.backtest_project(d, body.get("cutoff"), say=job.say, should_stop=stop)
+            else:
+                cp.forecast_project(d, runs=max(5, min(200, int(body.get("runs") or 30))),
+                                    with_sensitivity=body.get("sensitivity", True) is not False,
+                                    say=job.say, should_stop=stop)
+
+        return {"job": self.jobs.start(what, pid, work).as_dict()}
+
+    def apply_calib(self, pid: str) -> dict:
+        from ..calibrate.project import apply_calibration
+        d = self.project_dir(pid)
+        if self.jobs.busy(pid):
+            raise ApiError(409, "Wait for the current job to finish.")
+        try:
+            return apply_calibration(d)
+        except (FileNotFoundError, RuntimeError) as e:
+            raise ApiError(409, str(e))
+
     def stop(self, pid: str) -> dict:
         self.project_dir(pid)
         j = self.jobs.current(pid)
@@ -679,6 +727,14 @@ class Handler(BaseHTTPRequestHandler):
                 return a.inject(pid, self._body())
             if rest == ["injected"] and method == "GET":
                 return a.injected(pid)
+            if rest == ["data"] and method == "POST":
+                return a.save_data(pid, self._body())
+            if rest == ["calibration"] and method == "GET":
+                return a.calib_state(pid)
+            if rest in (["calibrate"], ["backtest"], ["forecast"]) and method == "POST":
+                return a.start_calib(pid, rest[0], self._body())
+            if rest == ["calibration", "apply"] and method == "POST":
+                return a.apply_calib(pid)
             if rest == ["fork"] and method == "POST":
                 return a.fork(pid, self._body())
         if p == ["compare"] and method == "GET":
