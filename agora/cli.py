@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import time
@@ -309,6 +310,61 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_data(args) -> int:
+    from .calibrate.project import save_data
+    text = Path(args.file).read_text(encoding="utf-8-sig")
+    print(json.dumps(save_data(Path(args.project), args.kind, text), indent=1))
+    return 0
+
+
+def cmd_calibrate(args) -> int:
+    from .calibrate.project import apply_calibration, calibrate_project
+    proj = Path(args.project)
+    res = calibrate_project(proj, say=lambda m: print(m, flush=True))
+    print("\nChanges:")
+    for c in res["changes"]:
+        print(f"  {c['what']}: {c['from']} -> {c['to']}")
+    for k, v in (res["fit"].get("score") or {}).items():
+        print(f"  fit {k}: average error {v['mae']}" + (f" ({v['mape'] * 100:.1f}%)" if v.get("mape") is not None else ""))
+    if args.apply:
+        apply_calibration(proj)
+        print("Applied to scenario.yaml (previous version saved).")
+    else:
+        print(f"Review, then: agora calibrate {proj} --apply")
+    return 0
+
+
+def cmd_backtest(args) -> int:
+    from .calibrate.project import backtest_project
+    r = backtest_project(Path(args.project), args.cutoff, say=lambda m: print(m, flush=True))
+    print(f"\nCalibrated on days up to {r['cutoff_day']:g}; predicted {r['test_points']} later points.")
+    for k in r["simulation"]["score"]:
+        sim = r["simulation"]["score"][k]["mae"]
+        base = r["baseline"]["score"].get(k, {}).get("mae")
+        print(f"  {k}: simulation error {sim}" + (f", statistical baseline {base} -> better: {r['better'].get(k)}"
+                                                  if base is not None else ""))
+    return 0
+
+
+def cmd_forecast(args) -> int:
+    from .calibrate.project import forecast_project
+    f = forecast_project(Path(args.project), runs=args.runs, with_sensitivity=not args.no_sensitivity,
+                         say=lambda m: print(m, flush=True))
+    mc = f["monte_carlo"]
+    print("\nLikely range (10th-50th-90th percentile):")
+    for k, v in mc["summary"].items():
+        print(f"  {k}: {v['p10']} / {v['p50']} / {v['p90']}")
+    for o, pwin in mc["win_probability"].items():
+        print(f"  chance {o} wins: {pwin * 100:.0f}%")
+    for n, t in mc["targets"].items():
+        print(f"  chance {n} reaches {t['goal']}: {t['probability'] * 100:.0f}%")
+    if f.get("sensitivity"):
+        print(f"\nWhat matters most for {f['sensitivity']['outcome']}:")
+        for r in f["sensitivity"]["levers"][:6]:
+            print(f"  {r['lever']}: {r['low']} .. {r['high']}")
+    return 0
+
+
 def cmd_web(args) -> int:
     from .web.server import serve
     serve(Path(args.dir), port=args.port, open_browser=not args.no_browser)
@@ -375,6 +431,28 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="resume even if scenario.yaml changed")
     llm_flags(p)
     p.set_defaults(f=cmd_run)
+
+    p = sub.add_parser("data", help="add real data: observations (what happened) or reviews")
+    p.add_argument("project")
+    p.add_argument("kind", choices=["observations", "reviews"])
+    p.add_argument("file")
+    p.set_defaults(f=cmd_data)
+
+    p = sub.add_parser("calibrate", help="fit the setup's assumptions to your real data")
+    p.add_argument("project")
+    p.add_argument("--apply", action="store_true", help="write the fitted numbers into scenario.yaml")
+    p.set_defaults(f=cmd_calibrate)
+
+    p = sub.add_parser("backtest", help="calibrate on early data, predict later data, compare with a baseline")
+    p.add_argument("project")
+    p.add_argument("--cutoff", type=float, help="last day used for fitting")
+    p.set_defaults(f=cmd_backtest)
+
+    p = sub.add_parser("forecast", help="Monte Carlo ranges, win/target probabilities, sensitivity")
+    p.add_argument("project")
+    p.add_argument("--runs", type=int, default=30)
+    p.add_argument("--no-sensitivity", action="store_true")
+    p.set_defaults(f=cmd_forecast)
 
     p = sub.add_parser("report", help="write the prediction report (report/report.html)")
     p.add_argument("project")

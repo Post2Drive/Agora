@@ -168,6 +168,7 @@ class Scenario:
     feeds: dict[str, dict[str, float]] = field(default_factory=dict)
     targets: dict[str, float] = field(default_factory=dict)  # goals for forecasts, e.g. {buy: 50}
     choice: Choice | None = None
+    calibrated: dict[str, Any] = field(default_factory=dict)   # set by `agora calibrate --apply`
     # force decision outcomes that are already known (votes are still simulated)
     fixed_polls: dict[str, bool] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)

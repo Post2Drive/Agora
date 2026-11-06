@@ -66,6 +66,7 @@ def load_observations(path_or_text, sc) -> list[Obs]:
         raise DataError("No rows found.")
     cols = set(rows[0])
     names = {c.name for c in sc.conversions}
+    options = {o.lower(): o for o in (sc.choice.options if sc.choice else [])}
     start = sc.start.date() if isinstance(sc.start, datetime) else sc.start
     per_day = 24 / sc.round_hours
 
@@ -88,15 +89,25 @@ def load_observations(path_or_text, sc) -> list[Obs]:
         items = [(r, c, r[c]) for r in rows for c in metric_cols if r.get(c) not in ("", None)]
     new_flags = {}
     for r, metric, value in items:
-        metric = re.sub(r"[^a-z0-9_]+", "_", metric.lower()).strip("_")
-        if metric not in names and metric not in ("opinion", "opinion_for"):
-            raise DataError(f"Unknown metric '{metric}'. Use one of: {', '.join(sorted(names))}, opinion")
+        raw_metric = metric.strip()
+        low = raw_metric.lower()
+        if low.startswith("share:"):
+            low = low[6:].strip()
+        if low in options:                                   # poll share for an option
+            metric = f"share:{options[low]}"
+        else:
+            metric = re.sub(r"[^a-z0-9_]+", "_", low).strip("_")
+            if metric not in names and metric not in ("opinion", "opinion_for", "turnout"):
+                allowed = sorted(names) + ["opinion", "opinion_for"] + (
+                    ["turnout"] + [o for o in options.values()] if options else [])
+                raise DataError(f"Unknown metric '{raw_metric}'. Use one of: {', '.join(allowed)}")
         d = day_of(r)
         v = _num(value, metric)
         if metric == "opinion" and v > 1:                  # 1-5 rating -> -1..+1
             v = (v - 3) / 2
-        if metric == "opinion_for" and v > 1:              # percentage
-            v = v / 100
+        if metric in ("opinion_for", "turnout") or metric.startswith("share:"):
+            if v > 1:                                      # percentage
+                v = v / 100
         seg = r.get("segment", "")
         if seg and seg not in {s.name for s in sc.segments}:
             raise DataError(f"Unknown segment '{seg}'")

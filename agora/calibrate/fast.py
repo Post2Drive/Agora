@@ -28,6 +28,9 @@ class Trajectory:
     opinion_for: list[float]                    # share > 0.2 per round
     seg_opinion: dict[str, list[float]]
     eligible: dict[str, int]
+    choice_share: dict[str, list[float]] = None      # weighted intention among decided, per round
+    turnout: list[float] = None                      # cumulative share of electorate who voted
+    result: dict[str, float] = None                  # final weighted result
 
     def final(self, name: str) -> int:
         return self.conversions[name][-1] if self.conversions.get(name) else 0
@@ -92,11 +95,26 @@ def read_trajectory(project: Path, d: dict) -> Trajectory:
         an = Analysis(project)
         try:
             eligible = {f["name"]: f["eligible"] for f in an.funnel()}
+            ch = an.choice()
         finally:
             an.close()
+        cshare = turnout = result = None
+        if ch:
+            cshare = {o: [0.0] * n for o in ch["options"]}
+            for t in ch["trend"]:
+                if 0 <= t["round"] < n:
+                    for o in ch["options"]:
+                        cshare[o][t["round"]] = t["weighted"][o]
+            turnout = [0.0] * n
+            tot = 0
+            per = dict(db.execute("SELECT round, COUNT(*) FROM choices GROUP BY round").fetchall())
+            for i in range(n):
+                tot += per.get(i, 0)
+                turnout[i] = tot / max(1, ch["electorate"])
+            result = ch["result"]
     finally:
         db.close()
-    return Trajectory(n, conv, op, opf, seg, eligible)
+    return Trajectory(n, conv, op, opf, seg, eligible, cshare, turnout, result)
 
 
 def averaged(sc: dict, seeds: list[int], rounds: int | None = None) -> Trajectory:
@@ -104,8 +122,12 @@ def averaged(sc: dict, seeds: list[int], rounds: int | None = None) -> Trajector
     ts = [simulate(sc, s, rounds) for s in seeds]
     n = min(t.rounds for t in ts)
     avg = lambda arrs: [sum(a[i] for a in arrs) / len(arrs) for i in range(n)]
+    ch = ts[0].choice_share
     return Trajectory(
         n, {k: avg([t.conversions[k] for t in ts]) for k in ts[0].conversions},
         avg([t.opinion for t in ts]), avg([t.opinion_for for t in ts]),
         {g: avg([t.seg_opinion[g] for t in ts if g in t.seg_opinion]) for g in ts[0].seg_opinion},
-        ts[0].eligible)
+        ts[0].eligible,
+        {o: avg([t.choice_share[o] for t in ts]) for o in ch} if ch else None,
+        avg([t.turnout for t in ts]) if ts[0].turnout else None,
+        {o: sum(t.result[o] for t in ts) / len(ts) for o in ts[0].result} if ts[0].result else None)

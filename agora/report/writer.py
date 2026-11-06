@@ -110,6 +110,49 @@ def _choice(a: dict) -> str:
     return "\n".join(lines)
 
 
+def _range(a: dict) -> str:
+    f = a.get("forecast") or {}
+    if not f:
+        return ""
+    mc = f["monte_carlo"]
+    lines = [f"Monte Carlo: {mc['runs']} fast runs with varied assumptions"
+             + (" (calibrated)" if f.get("calibrated") else " (not calibrated)") + "."]
+    for k, v in mc["summary"].items():
+        nm = k.split(":", 1)[-1].replace("_", " ")
+        if k.startswith("share:") or k in ("turnout", "in_favour"):
+            lines.append(f"- {nm}: likely {pct(v['p10'])} to {pct(v['p90'])} (middle {pct(v['p50'])})")
+        elif k.startswith("action:"):
+            lines.append(f"- {nm}: likely {v['p10']:.0f} to {v['p90']:.0f} (middle {v['p50']:.0f})")
+    for o, w in mc.get("win_probability", {}).items():
+        lines.append(f"- chance {o} wins: {pct(w)}")
+    for n, t in mc.get("targets", {}).items():
+        lines.append(f"- chance {nice(n)} reaches {t['goal']}: {pct(t['probability'])}")
+    sens = f.get("sensitivity")
+    if sens:
+        lines.append(f"What matters most for {sens['outcome'].split(':', 1)[-1]}: " + "; ".join(
+            f"{r['lever']} (moves it {r['low']:.2f} to {r['high']:.2f})" for r in sens["levers"][:4]))
+    return "\n".join(lines)
+
+
+def _trust(a: dict) -> str:
+    lines = []
+    cal = a.get("calibration")
+    if cal:
+        lines.append(f"Calibrated against {cal.get('points', 0)} real data points: " + "; ".join(
+            f"{c['what']} {c['from']} -> {c['to']}" for c in cal.get("changes", [])[:6]))
+        for k, v in (cal.get("fit", {}).get("score") or {}).items():
+            lines.append(f"Fit {k}: average error {v['mae']}")
+    bt = a.get("backtest")
+    if bt:
+        for k, v in bt["simulation"]["score"].items():
+            b = bt["baseline"]["score"].get(k, {}).get("mae")
+            lines.append(f"Backtest {k}: simulation error {v['mae']}" + (f" vs statistical baseline {b}" if b is not None else "")
+                         + f" (fitted on days up to {bt['cutoff_day']:g})")
+    if not cal:
+        lines.append("Not calibrated against real data yet.")
+    return "\n".join(lines)
+
+
 def _base(a: dict) -> str:
     o = a["overview"]
     return (f"Question: {a['scenario']['question']}\n"
@@ -151,6 +194,10 @@ SECTIONS = [
     ("decisions", "Decisions",
      "Explain each decision, how members voted and the reasons they gave, and what it changed.",
      _decisions, "approve committee association decision"),
+    ("range", "Range of outcomes",
+     "Explain the likely range of results and the probabilities (win chances, targets), and which "
+     "assumptions move the result most.",
+     _range, ""),
     ("risks", "How far to trust this",
      "Explain the main uncertainties: which inputs are assumptions, how many people actually wrote with "
      "the model, and what real data would make the prediction sharper. Be honest and specific.",
@@ -159,7 +206,7 @@ SECTIONS = [
                           "assumptions unless calibrated with real data.",
                           f"Only {a['overview']['llm_voices']} people wrote with the model; the other "
                           f"{a['overview']['crowd']} reacted using opinion-dynamics rules.",
-                          f"Model calls made: {a['overview']['llm_calls']}."]),
+                          f"Model calls made: {a['overview']['llm_calls']}.", _trust(a)]),
      ""),
     ("recommendations", "What to do next",
      "Give 3-5 concrete recommendations that follow from these results (what to change, test or "
@@ -234,6 +281,8 @@ def _fallback(key: str, a: dict) -> str:
     if key == "decisions":
         return " ".join(f"{nice(d['name'])} was {'approved' if d['passed'] else 'rejected'} "
                         f"({d['yes']} yes, {d['no']} no)." for d in a["decisions"])
+    if key == "range":
+        return _range(a).replace("\n- ", " ").replace("\n", " ")
     if key == "risks":
         return (f"Only {o['llm_voices']} people wrote with the model; {o['crowd']} reacted by rules. "
                 "Starting opinions and action likelihoods are assumptions until calibrated with real data.")
@@ -250,7 +299,7 @@ TOOLS_HELP = """Tools (call one at a time with JSON):
 - {"tool": "interview", "question": "...", "segment": "<group or empty>"}  ask a few simulated people (max once)
 When you have enough, reply {"write": "<the section text>"}."""
 
-STAT_FNS = {"choice": _choice, "funnel": _funnel, "opinion": _segments, "decisions": _decisions, "drivers": _drivers,
+STAT_FNS = {"range": _range, "choice": _choice, "funnel": _funnel, "opinion": _segments, "decisions": _decisions, "drivers": _drivers,
             "themes": _themes, "economics": _econ}
 LIBRARY = {k: (title, instr, fn, q) for k, title, instr, fn, q in SECTIONS}
 
@@ -333,7 +382,7 @@ class Toolbox:
 
 
 def plan_outline(llm, a: dict) -> list[dict]:
-    lib = [k for k in LIBRARY if k != "choice" or a.get("choice")]
+    lib = [k for k in LIBRARY if (k != "choice" or a.get("choice")) and (k != "range" or a.get("forecast"))]
     if a.get("choice"):
         lib = [k for k in lib if k != "opinion"]       # the intention trend replaces it
     if not a.get("funnel"):
@@ -360,7 +409,7 @@ def plan_outline(llm, a: dict) -> list[dict]:
         if not isinstance(x, dict):
             continue
         key = str(x.get("key", "custom")).strip().lower()
-        key = key if key in LIBRARY and (key != "choice" or a.get("choice")) else "custom"
+        key = key if key in LIBRARY and (key != "choice" or a.get("choice")) and (key != "range" or a.get("forecast")) else "custom"
         title = str(x.get("title") or (LIBRARY[key][0] if key in LIBRARY else "")).strip()[:80]
         if not title or (key in seen and key != "custom"):
             continue
@@ -427,6 +476,11 @@ def write_report(project: str | Path, llm: LLMBackend | None,
         a = an.everything()
     finally:
         an.close()
+    from ..calibrate.project import load_json
+    a["forecast"] = load_json(project, "forecast/forecast.json")
+    a["backtest"] = load_json(project, "calibration/backtest.json")
+    cal = load_json(project, "calibration/calibration.json")
+    a["calibration"] = {k: v for k, v in cal.items() if k != "scenario"} if cal else None
     posts = PostIndex(project)
     known = set(posts.by_id)
     log: list[dict] = []

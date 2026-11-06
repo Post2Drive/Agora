@@ -172,6 +172,28 @@ def to_html(r: dict) -> str:
                        f'{_line_chart(series, 0, 1, max(1, o["rounds_done"]))}</div>'
                        '<table><thead><tr><th>Group</th><th>Weight</th><th>Turnout</th>'
                        + "".join(f"<th>{_e(x)}</th>" for x in c["options"]) + f"</tr></thead><tbody>{seg_rows}</tbody></table>")
+    range_html = ""
+    f = a.get("forecast") or {}
+    if f:
+        mc = f["monte_carlo"]
+        rows = "".join(f'<tr><td>{_e(k.split(":", 1)[-1].replace("_", " "))}</td>'
+                       + "".join(f'<td class="n">{(pct(v[q]) if (k.startswith("share:") or k in ("turnout", "in_favour")) else f"{v[q]:,.0f}" if k.startswith("action:") else f"{v[q]:+.2f}")}</td>' for q in ("p10", "p50", "p90"))
+                       + "</tr>" for k, v in mc["summary"].items())
+        range_html = (f'<table><thead><tr><th>Outcome</th><th>Low (10%)</th><th>Middle</th><th>High (90%)</th></tr></thead><tbody>{rows}</tbody></table>'
+                      f'<p class="small muted">{mc["runs"]} runs with varied assumptions{" after calibration" if f.get("calibrated") else ""}.</p>')
+        if mc.get("win_probability"):
+            range_html += '<div class="chart"><h3>Chance of winning</h3>' + "".join(
+                f'<div class="fn"><div class="fnh"><b>{_e(o)}</b><span class="spacer"></span><b>{pct(w)}</b></div>'
+                f'<div class="bar"><i style="width:{w * 100:.1f}%"></i></div></div>'
+                for o, w in sorted(mc["win_probability"].items(), key=lambda x: -x[1])) + "</div>"
+        sens = f.get("sensitivity")
+        if sens and sens["levers"]:
+            top = sens["levers"][:8]
+            mx = max(r["swing"] for r in top) or 1
+            range_html += (f'<div class="chart"><h3>What moves {_e(sens["outcome"].split(":", 1)[-1])} most</h3>' + "".join(
+                f'<div class="fn"><div class="fnh"><span>{_e(r["lever"])}</span><span class="spacer"></span>'
+                f'<span class="small muted">{r["low"]:.3g} → {r["high"]:.3g}</span></div>'
+                f'<div class="bar"><i style="width:{r["swing"] / mx * 100:.1f}%"></i></div></div>' for r in top) + "</div>")
     drivers_html = ""
     if a["influencers"]:
         drivers_html = ("<table><thead><tr><th>Voice</th><th>Group</th><th>Posts</th><th>Reactions</th><th>Shared</th><th>Opinion</th></tr></thead><tbody>"
@@ -206,10 +228,14 @@ def to_html(r: dict) -> str:
             pass
         elif s["key"] == "drivers":
             body.append(drivers_html)
+        elif s["key"] == "range":
+            body.append(range_html)
         elif s["key"] == "decisions":
             body.append(decisions_html)
     if "decisions" not in keys and decisions_html:
         body.append(f'<h2 id="decision-detail">Decision details</h2>{decisions_html}')
+    if "range" not in keys and range_html:
+        body.append(f'<h2 id="range-detail">Range of outcomes</h2>{range_html}')
     if "drivers" not in keys and drivers_html:
         body.append(f'<h2 id="voices-detail">Most influential voices</h2>{drivers_html}')
     research = r.get("research") or []

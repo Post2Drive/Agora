@@ -32,6 +32,10 @@ def _value(t: Trajectory, o: Obs) -> float:
         return t.seg_opinion[o.segment][r] if o.segment else t.opinion[r]
     if o.metric == "opinion_for":
         return t.opinion_for[r]
+    if o.metric == "turnout":
+        return t.turnout[r] if t.turnout else 0.0
+    if o.metric.startswith("share:"):
+        return t.choice_share[o.metric[6:]][r] if t.choice_share else 0.0
     return t.conversions[o.metric][r]
 
 
@@ -145,6 +149,45 @@ def calibrate(sc_dict: dict, obs: list[Obs], say: Callable[[str], None] = lambda
                     best, best_err = mu, err
             changes.append({"what": "persuasion", "from": sc_dict.get("persuasion", 0.35), "to": best})
             d["persuasion"] = best
+
+    # 2b. choice: poll shares -> group leanings; observed turnout -> turnout level
+    share_obs = [o for o in obs if o.metric.startswith("share:")]
+    if share_obs and d.get("choice"):
+        opts = d["choice"]["options"]
+        orig = {(sg["name"], o): float(sg.get("leaning", {}).get(o, 0.0)) for sg in d["segments"] for o in opts}
+        for _pass in range(2):
+            for opt in opts:
+                pts = [o for o in share_obs if o.metric == f"share:{opt}"]
+                if not pts:
+                    continue
+                target = pts[-1]
+                segs = [s for s in d["segments"] if not target.segment or s["name"] == target.segment]
+                before = [float(s.get("leaning", {}).get(opt, 0.0)) for s in segs]
+                say(f"Fitting support for {opt}" + (f" among {target.segment.replace('_', ' ')}" if target.segment else ""))
+
+                def f(shift, segs=segs, before=before, opt=opt, target=target):
+                    for sg, b in zip(segs, before):
+                        sg.setdefault("leaning", {})[opt] = max(-1, min(1, b + shift))
+                    return _value(run(d), target)
+
+                shift = _bisect(f, target.value, -0.8, 0.8, iters=6)
+                for sg, b in zip(segs, before):
+                    sg["leaning"][opt] = round(max(-1, min(1, b + shift)), 3)
+                if _pass == 1:
+                    changes.append({"what": f"support for {opt}" + (f" ({target.segment})" if target.segment else " (all groups)"),
+                                    "from": round(sum(orig[(sg["name"], opt)] for sg in segs) / len(segs), 3),
+                                    "to": round(sum(sg['leaning'][opt] for sg in segs) / len(segs), 3)})
+    turn = sorted([o for o in obs if o.metric == "turnout"], key=lambda o: o.day)
+    if turn and d.get("choice"):
+        say("Fitting turnout")
+        before = d["choice"].get("turnout_base", -3.5)
+
+        def f(b):
+            d["choice"]["turnout_base"] = b
+            return _value(run(d), turn[-1])
+
+        d["choice"]["turnout_base"] = round(_bisect(f, turn[-1].value, -9.0, 2.0, iters=8), 3)
+        changes.append({"what": "turnout level (log-odds)", "from": before, "to": d["choice"]["turnout_base"]})
 
     # 3. action likelihoods, prerequisites first
     for c in _order(d.get("conversions", [])):
@@ -272,7 +315,7 @@ def backtest(sc_dict: dict, obs: list[Obs], cutoff_day: float | None = None,
         te = [o for o in test if o.metric == metric and not o.segment]
         if not te:
             continue
-        if metric.startswith("opinion"):
+        if metric.startswith("opinion") or metric.startswith("share:"):
             last = tr[-1].value if tr else 0.0
             pred = lambda x, last=last: np.full(len(np.atleast_1d(x)), last)
             info = {"model": "last value"}
