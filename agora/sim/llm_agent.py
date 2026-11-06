@@ -27,17 +27,33 @@ def stance_words(x: float) -> str:
     return "very positive, keen"
 
 
-def render_post(world: World, p: Post) -> str:
+def _snip(t: str, n: int = 140) -> str:
+    t = t.replace("\n", " ").strip()
+    return t if len(t) <= n else t[:n - 1] + "…"
+
+
+def render_post(world: World, p: Post, me: Agent | None = None) -> str:
     author = world.agents[p.author]
     src = world.posts[p.root] if p.kind in ("repost", "forward") else p
+    text = _snip(src.text, 300)
+    if p.kind == "dm":
+        return f"[p{p.id}] (private message on {label(p.platform)}) {author.name} (@{author.handle}) to you: \"{text}\""
     where = label(p.platform) + (f" · {p.space}" if p.space else "")
-    text = src.text.replace("\n", " ")[:300]
+    tag = ""
+    if me is not None and p.author != me.id:
+        if p.parent is not None and world.posts[p.parent].author == me.id:
+            tag = "[reply to you] " if p.kind == "reply" else "[quoted you] "
+        elif f"@{me.handle}" in (p.text or ""):
+            tag = "[mentions you] "
     if p.kind == "repost":
         head = f"@{author.handle} reposted @{world.agents[src.author].handle}"
     elif p.kind == "forward":
         head = f"{author.name} forwarded a message"
-    elif p.kind == "reply" and p.parent is not None:
-        head = f"{author.name} (@{author.handle}) replying to @{world.agents[world.posts[p.parent].author].handle}"
+    elif p.kind in ("reply", "quote") and p.parent is not None:
+        par = world.posts[p.parent]
+        verb = "replying to" if p.kind == "reply" else "quoting"
+        who = "you" if me is not None and par.author == me.id else f"{world.agents[par.author].name} (@{world.agents[par.author].handle})"
+        head = f"{author.name} (@{author.handle}) {verb} {who} who said \"{_snip(par.text, 120)}\" —"
     else:
         head = f"{author.name} (@{author.handle})"
     spec = REGISTRY[p.platform]
@@ -48,11 +64,12 @@ def render_post(world: World, p: Post) -> str:
         counts = f"[{src.likes} likes, {src.reposts} {share}s, {src.replies} comments]"
     else:
         counts = f"[{src.likes} reactions]" if src.likes else ""
-    return f"[p{p.id}] ({where}) {head}: \"{text}\" {counts}".rstrip()
+    return f"{tag}[p{p.id}] ({where}) {head}: \"{text}\" {counts}".rstrip()
 
 
 def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetime,
-                      conversions: list, facts: list[str] | None = None) -> list[dict]:
+                      conversions: list, facts: list[str] | None = None,
+                      trending: dict | None = None) -> list[dict]:
     styles = "\n".join(f"- {label(p)}: {REGISTRY[p].style}" for p in a.platforms)
     system = (
         f"You are {a.name}, a real person. {a.persona}\n"
@@ -69,8 +86,11 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
     if a.memory:
         lines.append("Your recent memory:\n" + "\n".join(f"- {m}" for m in a.memory[-sc.memory_size:]))
     lines.append(f"Your current feeling about {sc.topic}: {stance_words(a.stance)}.")
+    if trending:
+        lines.append("Trending: " + "; ".join(f"{label(k)}: {', '.join(v)}" for k, v in trending.items() if v))
     if feed:
-        lines.append("On your screen now:\n" + "\n".join(render_post(world, p) for p in feed))
+        lines.append("On your screen now (things addressed to you first):\n"
+                     + "\n".join(render_post(world, p, a) for p in feed))
     else:
         lines.append("Nothing new on your screen right now.")
     where = where_options(world, a)
@@ -81,8 +101,12 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         "You may: " + ", ".join(acts) + ", or do nothing."
         + (f" (On these apps: {'; '.join(vocab)}.)" if vocab else "") + "\n"
         f"Places you can post (\"where\"): {', '.join(where) if where else 'none'}.\n"
-        "like/upvote/downvote/repost/forward/reply need a target like \"p12\"; follow needs "
-        "a target post or @handle plus the app; forward may add \"to\": a group you are in.")
+        "like/upvote/downvote/repost/forward/reply/quote need a target like \"p12\" (quote and reply "
+        "need \"text\"); follow/unfollow/mute need a target post or @handle; forward may add \"to\": a "
+        "group you are in. You can also send a private message {\"type\": \"dm\", \"to\": \"@handle\", "
+        "\"text\": \"...\"}, mention someone with @handle in any text, or {\"type\": \"search\", "
+        "\"query\": \"...\"} to look something up. If someone replied to you or messaged you, it is "
+        "natural to answer.")
     if conversions:
         lines.append("Real-life actions open to you right now (only if you truly would):\n" +
                      "\n".join(f"- {c.name}: {c.label}" for c in conversions))
@@ -100,7 +124,10 @@ def decision_meta(world: World, sc, a: Agent, feed: list[Post], conversions: lis
     """Extra info only the mock backend uses."""
     return {"task": "decide", "stance": a.stance, "topic": sc.topic,
             "feed": [{"id": f"p{p.id}", "stance": world.posts[p.root].stance if p.kind in
-                      ("repost", "forward") else p.stance} for p in feed],
+                      ("repost", "forward") else p.stance, "dm": p.kind == "dm",
+                      "author": f"@{world.agents[p.author].handle}",
+                      "to_me": p.kind == "dm" or (p.parent is not None and world.posts[p.parent].author == a.id)
+                      or f"@{a.handle}" in (p.text or "")} for p in feed],
             "actions": sorted({x for p in a.platforms for x in actions_for(p)}),
             "where": where_options(world, a),
             "conversions": [{"name": c.name, "mock_threshold": 0.25} for c in conversions]}

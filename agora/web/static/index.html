@@ -303,7 +303,8 @@ function drawSim(p,l){if(!$('#ctl'))return;const r=l.run,j=p.job,running=j&&j.ki
     const counts=pk==='forum'?`<span>▲ ${x.ups-x.downs} points</span><span>${x.replies} comments</span>`:pk==='feed'?`<span>♥ ${x.likes}</span><span>↻ ${x.shares}</span><span>${x.replies} comments</span>`:`${x.likes?`<span>${x.likes} reactions</span>`:''}${x.shares?`<span>forwarded ${x.shares}×</span>`:''}`;
     return `<div class="post ${x.kind==='reply'?'reply':''}"><div class="meta">${pbadge(x.platform)}${x.space?`<span>${esc(x.space)}</span>`:''}<span>· round ${x.round+1}</span>${x.agent_kind==='account'?'<span class="pill">official</span>':''}<span class="spacer"></span>${stance(x.stance)}</div>
       <div><span class="who">${esc(x.author)}</span> <span class="muted small">@${esc(x.handle)} · ${esc(String(x.segment).replace(/_/g,' '))}</span></div>
-      ${x.kind==='forward'?`<div class="muted small">Forwarded from ${esc(x.forwarded_from)}</div>`:''}${x.kind==='reply'?'<div class="muted small">Reply</div>':''}
+      ${x.kind==='forward'?`<div class="muted small">Forwarded from ${esc(x.forwarded_from)}</div>`:''}${x.kind==='dm'?`<div class="muted small">🔒 Private message to ${esc(x.to)}</div>`:''}
+      ${x.quoted?`<div class="muted small" style="border-left:2px solid var(--line);padding-left:8px;margin:4px 0">${x.kind==='quote'?'Quoting':'Replying to'} ${esc(x.quoted.author)}: “${esc(x.quoted.text)}”</div>`:''}
       <div class="txt">${esc(x.text)}</div><div class="counts">${counts}</div></div>`}).join(''):`<p class="muted">${r.started?'Nothing posted here yet.':'Start the simulation to see people talk.'}</p>`;
   if(atTop)feed.scrollTop=0}
 

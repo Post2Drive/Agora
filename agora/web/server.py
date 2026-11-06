@@ -234,7 +234,18 @@ class App:
             for (pid_, rnd, plat, space, kind, parent, root, text, st, name, handle, akind, seg,
                  src_text, src_name) in rows:
                 c = counts.get(root if kind == "forward" else pid_, {})
+                to = quoted = None
+                if kind == "dm" and space.startswith("@dm:"):
+                    x, _, y = space[4:].partition("-")
+                    other = int(y) if int(x) == db.execute("SELECT id FROM agents WHERE handle=?", (handle,)).fetchone()[0] else int(x)
+                    to = db.execute("SELECT name FROM agents WHERE id=?", (other,)).fetchone()[0]
+                    space = ""
+                if kind in ("quote", "reply") and parent is not None:
+                    pr = db.execute("SELECT a.name, p.text FROM posts p JOIN agents a ON a.id=p.author WHERE p.id=?",
+                                    (parent,)).fetchone()
+                    quoted = {"author": pr[0], "text": pr[1][:200]} if pr else None
                 out["posts"].append({
+                    "to": to, "quoted": quoted,
                     "id": pid_, "round": rnd, "platform": plat, "space": space, "kind": kind,
                     "parent": parent, "text": src_text if kind == "forward" else text,
                     "forwarded_from": src_name if kind == "forward" else None, "stance": st,

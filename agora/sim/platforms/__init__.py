@@ -10,6 +10,8 @@ with tens of thousands of crowd agents. Platform behaviour comes from `agora.pla
 from __future__ import annotations
 
 import math
+import re
+from collections import Counter
 
 import numpy as np
 
@@ -77,9 +79,24 @@ class FeedIndex:
         return sign * order + p.t / 12.0
 
     # ---------------------------------------------------------------- feeds
+    def trends(self, platform: str, k: int = 5) -> list[str]:
+        """Hashtags and words most used on a feed platform recently (shown as 'trending')."""
+        cache = getattr(self, "_trends", None)
+        if cache is None:
+            cache = self._trends = {}
+        if platform not in cache:
+            c: Counter[str] = Counter()
+            for pid in self.score.get(platform, {}):
+                txt = self.world.posts[pid].text.lower()
+                c.update(set(re.findall(r"#[a-z0-9_]{3,30}", txt)))
+                c.update(w for w in set(re.findall(r"[a-z]{5,}", txt)) if w not in _COMMON)
+            cache[platform] = [t for t, n in c.most_common(k) if n >= 2]
+        return cache[platform]
+
     def feed(self, a: Agent, k: int, rng: np.random.Generator) -> list[int]:
         w = self.world
-        chosen: list[int] = []
+        # things addressed to you come first: replies, @mentions, private messages
+        chosen: list[int] = w.inbox(a.id, a.last_seen, limit=max(2, k // 2))
         per = max(2, -(-k // max(1, len(a.platforms))))
         for plat in a.platforms:
             kind = REGISTRY[plat].kind
@@ -90,10 +107,12 @@ class FeedIndex:
             else:
                 chosen += self._chat(plat, a, per)
         seen, out = set(), []
+        muted = w.muted.get(a.id, ())
         for pid in chosen:
             p = w.posts[pid]
             src = p.root if p.kind in ("repost", "forward") else pid
-            if src in seen or p.author == a.id or w.posts[src].author == a.id:
+            if (src in seen or p.author == a.id or w.posts[src].author == a.id
+                    or p.author in muted or w.posts[src].author in muted):
                 continue
             seen.add(src)          # one copy of a message, however many times it was shared
             out.append(pid)
@@ -147,6 +166,10 @@ class FeedIndex:
     def _done(self, a: Agent, pid: int) -> bool:
         e = self.world.engaged
         return (a.id, pid, "like") in e or (a.id, pid, "upvote") in e or (a.id, pid, "downvote") in e
+
+
+_COMMON = set("""about after again being could every first going great really should their there these
+think thing things those today where which while would people still never always maybe""".split())
 
 
 def where_options(world: World, a: Agent) -> list[str]:

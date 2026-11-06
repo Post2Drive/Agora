@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS poll_results (name TEXT PRIMARY KEY, round INTEGER,
 CREATE TABLE IF NOT EXISTS rounds (round INTEGER PRIMARY KEY, sim_time TEXT,
     active INTEGER, llm_calls INTEGER, cache_hits INTEGER, seconds REAL, finished_at TEXT);
 CREATE TABLE IF NOT EXISTS event_log (round INTEGER, kind TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS mutes (src INTEGER, dst INTEGER, round INTEGER, PRIMARY KEY (src, dst));
 CREATE TABLE IF NOT EXISTS injected (id INTEGER PRIMARY KEY AUTOINCREMENT, round INTEGER, event TEXT,
     added_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT, role TEXT,
@@ -100,7 +101,8 @@ class Store:
                                 [(-1, a.id, a.stance) for a in agents])
 
     def commit_round(self, r: int, *, sim_time: str, agents, posts, engagements, follows,
-                     conversions, thoughts, polls, poll_results, events, stats) -> None:
+                     conversions, thoughts, polls, poll_results, events, stats,
+                     unfollows=(), mutes=()) -> None:
         """Write everything a round produced atomically."""
         with self.db:
             self.db.executemany(
@@ -111,6 +113,8 @@ class Store:
                                 [(r, a, p, t) for a, p, t in engagements])
             self.db.executemany("INSERT OR IGNORE INTO follows VALUES (?,?,?,?)",
                                 [(p, s, d, r) for p, s, d in follows])
+            self.db.executemany("DELETE FROM follows WHERE platform=? AND src=? AND dst=?", list(unfollows))
+            self.db.executemany("INSERT OR IGNORE INTO mutes VALUES (?,?,?)", [(s, d, r) for s, d in mutes])
             self.db.executemany("INSERT OR IGNORE INTO conversions VALUES (?,?,?)",
                                 [(r, a, n) for a, n in conversions])
             self.db.executemany("INSERT OR REPLACE INTO thoughts VALUES (?,?,?)",
