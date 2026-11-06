@@ -22,6 +22,11 @@ LLM swarms lack.
 - [x] Agents see relevant graph facts each round (BM25 retrieval)
 - [ ] Write simulation activity back into the graph (Phase 3, for the report agent)
 
+## Phase 2b: All major platforms and the local website (this release)
+- [x] 11 platforms in three kinds (feed, forum, chat), each with its own follow graph, writing style and vocabulary
+- [x] `agora web`: a local website covering upload and prompt, build progress, graph, setup review and editor, simulation control with live feeds and charts, and a results view
+- [x] Local-only safety: binds to localhost, checks the host header, requires a custom header on every change, never touches paths outside the workspace
+
 ## Phase 3: Report and interaction
 - Report agent that can search posts, opinions, polls and the graph
 - HTML and PDF reports: opinion trajectories, key quotes, themes, conversion funnel, cost per outcome
@@ -34,7 +39,7 @@ LLM swarms lack.
 - Monte Carlo ensembles: ranges and probabilities, plus sensitivity to each assumption
 
 ## Phase 5: Product
-- Web UI: upload and prompt screen, live graph, feeds, run control, report
+- Web UI polish: chat with agents, report pages, comparing scenarios side by side
 - Windows installer, Docker image, Mac and Linux packages
 - Documentation and demo scenarios
 

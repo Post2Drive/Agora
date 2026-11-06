@@ -37,6 +37,9 @@ def cmd_hardware(args) -> int:
 def cmd_new(args) -> int:
     dst = Path(args.project)
     src = Path(args.template)
+    if args.template in ("demo", "nutrivance_sampling"):
+        from importlib import resources
+        src = Path(str(resources.files("agora.examples").joinpath("nutrivance_sampling", SCENARIO_FILE)))
     if src.is_dir():
         src = src / SCENARIO_FILE
     if dst.exists() and any(dst.iterdir()):
@@ -149,82 +152,26 @@ def cmd_feed(args) -> int:
 
 
 def _make_llm(args, project: Path):
-    from .llm import LLMConfig, make_backend
-    cfg = LLMConfig.from_dict({"backend": "ollama", "model": hardware.detect().model,
-                               **_llm_override(args)})
-    return cfg, make_backend(cfg, cache_path=project / "llm_cache.db")
-
-
-def _size_population(args, rounds: int) -> tuple[int, int]:
-    prof = hardware.detect()
-    voices = args.llm_agents
-    if voices is None:
-        voices = 10
-        while (voices < prof.llm_agents and
-               prof.estimate_hours(int((voices + 10) * rounds * 0.25)) <= args.hours):
-            voices += 10
-    crowd = args.crowd if args.crowd is not None else min(prof.crowd_agents, 3000)
-    return voices, crowd
+    from .pipeline import make_llm
+    return make_llm(project, _llm_override(args))
 
 
 def cmd_create(args) -> int:
     """MiroFish-style entry: upload documents + describe what to predict -> ready project."""
-    from .graph import GRAPH_FILE, GraphStore
-    from .graph import build as gbuild, draft as gdraft, ingest as gingest, view as gview
+    from .pipeline import CreateOptions, create_project
     proj = Path(args.project)
     if (proj / SCENARIO_FILE).exists() and not args.overwrite:
         print(f"{proj} already has a scenario. Use --overwrite to redraft it.", file=sys.stderr)
         return 1
-    proj.mkdir(parents=True, exist_ok=True)
-    goal = args.prompt.strip()
-    cfg, llm = _make_llm(args, proj)
-    ok, msg = llm.status()
-    if not ok:
-        print(msg + "\n(Use --mock to try the pipeline without a model.)", file=sys.stderr)
+    opts = CreateOptions(fast=args.fast, personas=not args.no_personas, llm_agents=args.llm_agents,
+                         crowd=args.crowd, hours=args.hours, seed=args.seed, llm=_llm_override(args))
+    try:
+        create_project(proj, args.docs, args.prompt, opts, say=lambda m: print(m, flush=True))
+    except RuntimeError as e:
+        print(f"{e}\n(Use --mock to try the pipeline without a model.)", file=sys.stderr)
         return 2
-    (proj / "prompt.txt").write_text(goal + "\n", encoding="utf-8")
-    gs = GraphStore(proj / GRAPH_FILE)
-    gs.set_meta("goal", goal)
-
-    print("1/4 Reading documents")
-    for r in gingest.ingest(gs, proj, args.docs):
-        print(f"    {r['file']}: " + ("already added" if r["skipped"] else f"{r['chunks']} chunks"))
-
-    print("2/4 Building the knowledge graph" + (" (fast, no model)" if args.fast else ""))
-    t0 = time.time()
-
-    def gprog(p):
-        el = time.time() - t0
-        eta = el / p["chunk"] * (p["of"] - p["chunk"])
-        print(f"    chunk {p['chunk']}/{p['of']}: {p['entities']} entities, "
-              f"{p['relations']} relations  (ETA {eta / 60:.0f} min)", flush=True)
-
-    st = gbuild.build(gs, None if args.fast else llm, goal, gprog)
-    gbuild.export(gs, proj)
-    gview.write(gs, proj / "graph.html", title=goal[:60])
-    print(f"    {st['nodes']} entities, {st['edges']} relations -> graph.html")
-
-    print("3/4 Drafting the simulation")
-    days_guess = 7
-    voices, crowd = _size_population(args, days_guess * 6)
-    keep = {k: v for k, v in cfg.__dict__.items() if k in ("backend", "model", "url", "parallel")}
-    sc = gdraft.draft(gs, llm, goal, llm_agents=voices, crowd_agents=crowd, llm_cfg=keep,
-                      rich_personas=not args.no_personas, seed=args.seed,
-                      progress=lambda m: print(f"    {m}", flush=True))
-    if sc["rounds"] != days_guess * 6 and args.llm_agents is None:
-        sc["population"]["llm_agents"], _ = _size_population(args, sc["rounds"])
-    n_docs = gs.rows("SELECT COUNT(*) FROM documents")[0][0]
-    (proj / SCENARIO_FILE).write_text(gdraft.to_yaml(sc, goal, n_docs), encoding="utf-8")
-    gs.close()
-    scenario_mod.load(proj / SCENARIO_FILE)
-
-    print("4/4 Ready")
-    print(f"    {len(sc['segments'])} groups of people, {len(sc['accounts'])} named accounts, "
-          f"{sum(len(v) for v in sc['spaces'].values())} groups/communities, "
-          f"{len(sc['events'])} events, {len(sc['conversions'])} actions to predict, "
-          f"{len(sc.get('voices', []))} written personas")
-    print(f"    Review {proj / SCENARIO_FILE} and {proj / 'graph.html'}, then:")
-    print(f"      agora check {proj}\n      agora run {proj}")
+    print(f"Review {proj / SCENARIO_FILE} and {proj / 'graph.html'}, then:")
+    print(f"  agora check {proj}\n  agora run {proj}")
     return 0
 
 
@@ -255,6 +202,12 @@ def cmd_graph(args) -> int:
     return 0
 
 
+def cmd_web(args) -> int:
+    from .web.server import serve
+    serve(Path(args.dir), port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora", description="Agora: local multi-agent social simulation")
     ap.add_argument("--version", action="version", version=f"agora {__version__}")
@@ -262,9 +215,16 @@ def main(argv=None) -> int:
 
     sub.add_parser("hardware", help="detect this machine and suggest settings").set_defaults(f=cmd_hardware)
 
+    p = sub.add_parser("web", help="open the Agora website on this computer (http://127.0.0.1:8765)")
+    p.add_argument("--dir", default=str(Path.home() / "AgoraProjects"), help="projects folder")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(f=cmd_web)
+
     p = sub.add_parser("new", help="create a project folder from a scenario")
     p.add_argument("project")
-    p.add_argument("--from", dest="template", required=True, help="scenario.yaml or a folder with one")
+    p.add_argument("--from", dest="template", required=True,
+                   help="scenario.yaml, a folder with one, or 'demo'")
     p.set_defaults(f=cmd_new)
 
     def llm_flags(p):

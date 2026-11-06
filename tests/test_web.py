@@ -1,0 +1,136 @@
+"""Local web app: API flow and the safety checks that keep it local."""
+import base64
+import json
+import threading
+import time
+import urllib.error
+import urllib.request
+
+import pytest
+
+from agora.web.server import make_server
+
+DOC = b"Nutrivance Precision Probiotics (NPP) offers a free sample to residents of Lakeview Residency in Guntur."
+
+
+@pytest.fixture
+def web(tmp_path):
+    srv, app = make_server(tmp_path / "ws", port=0)
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+    yield f"http://127.0.0.1:{app.port}", app
+    app.jobs.stop_all()
+    srv.shutdown()
+    srv.server_close()
+
+
+def call(base, method, path, body=None, headers=None):
+    h = {"X-Agora": "1", **(headers or {})}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        h["Content-Type"] = "application/json"
+    req = urllib.request.Request(base + path, data=data, method=method, headers=h)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read()
+            return r.status, (json.loads(raw) if r.headers.get_content_type() == "application/json" else raw)
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            return e.code, json.loads(raw)
+        except ValueError:
+            return e.code, raw
+
+
+def wait_job(base, pid, timeout=60):
+    t = time.time()
+    while time.time() - t < timeout:
+        _, p = call(base, "GET", f"/api/projects/{pid}")
+        if p["job"] and p["job"]["state"] != "running":
+            return p
+        time.sleep(0.2)
+    raise AssertionError("job did not finish")
+
+
+def test_index_and_info(web):
+    base, _ = web
+    st, html = call(base, "GET", "/")
+    assert st == 200 and b"<title>Agora</title>" in html and b"<script src" not in html
+    st, info = call(base, "GET", "/api/info")
+    keys = {p["key"] for p in info["platforms"]}
+    assert {"instagram", "whatsapp", "facebook", "youtube", "telegram", "linkedin"} <= keys
+
+
+def test_upload_build_run_flow(web):
+    base, _ = web
+    body = {"name": "My Study!", "prompt": "Will residents register for the free sample?",
+            "files": [{"name": "../../plan.md", "data": base64.b64encode(DOC).decode()}],
+            "options": {"mock": True, "llm_agents": 6, "crowd": 120}}
+    st, r = call(base, "POST", "/api/projects", body)
+    assert st == 200 and r["id"] == "my-study"
+    p = wait_job(base, "my-study")
+    assert p["job"]["state"] == "done", p["job"]
+    assert p["has_graph"] and p["has_scenario"] and p["sources"] == ["plan.md"]   # path stripped
+    st, g = call(base, "GET", "/api/projects/my-study/graph")
+    assert st == 200 and (b"Lakeview" in g or b"Nutrivance" in g)
+
+    st, y = call(base, "GET", "/api/projects/my-study/scenario")
+    bad = y["text"].replace("rounds:", "rounds: -5 #")
+    st, r = call(base, "PUT", "/api/projects/my-study/scenario", {"text": bad})
+    assert st == 400
+    st, r = call(base, "PUT", "/api/projects/my-study/scenario", {"text": y["text"], "check_only": True})
+    assert st == 200 and r["ok"]
+
+    st, _ = call(base, "POST", "/api/projects/my-study/run", {"mock": True})
+    assert st == 200
+    p = wait_job(base, "my-study")
+    assert p["job"]["state"] == "done" and p["run"]["rounds_done"] == p["run"]["rounds_total"]
+    st, live = call(base, "GET", "/api/projects/my-study/live")
+    assert live["posts"] and live["trend"]
+    st, _ = call(base, "PUT", "/api/projects/my-study/scenario", {"text": y["text"]})
+    assert st == 409                     # cannot edit a started run
+    assert call(base, "POST", "/api/projects/my-study/reset", {})[0] == 200
+    assert call(base, "PUT", "/api/projects/my-study/scenario", {"text": y["text"]})[0] == 200
+
+
+def test_demo_and_stop(web):
+    base, app = web
+    st, r = call(base, "POST", "/api/projects/demo")
+    pid = r["id"]
+    st, p = call(base, "GET", f"/api/projects/{pid}")
+    assert p["scenario"]["rounds"] == 72 and len(p["scenario"]["spaces"]) >= 5
+    call(base, "POST", f"/api/projects/{pid}/run", {"mock": True})
+    call(base, "POST", f"/api/projects/{pid}/stop", {})
+    p = wait_job(base, pid)
+    assert p["job"]["state"] in ("stopped", "done")
+    assert call(base, "POST", f"/api/projects/{pid}/run", {"mock": True})[0] == 200   # resume
+    p = wait_job(base, pid)
+    assert p["run"]["rounds_done"] == 72
+    assert call(base, "DELETE", f"/api/projects/{pid}")[0] == 200
+    assert not (app.ws / pid).exists()
+
+
+def test_rejects_other_hosts_and_cross_site_writes(web):
+    base, _ = web
+    assert call(base, "GET", "/api/info", headers={"Host": "attacker.example:80"})[0] == 421
+    req = urllib.request.Request(base + "/api/projects/demo", data=b"", method="POST")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=5)              # no X-Agora header, like a form post
+    assert e.value.code == 403
+
+
+@pytest.mark.parametrize("pid", ["..", "..%2F..%2Fetc", "UPPER", "a/b", "%2e%2e"])
+def test_no_path_traversal(web, pid):
+    base, _ = web
+    st, _ = call(base, "GET", f"/api/projects/{pid}/scenario")
+    assert st == 404
+
+
+def test_upload_validation(web):
+    base, _ = web
+    st, r = call(base, "POST", "/api/projects", {"name": "x", "prompt": "q",
+                                                 "files": [{"name": "evil.exe", "data": "AAAA"}]})
+    assert st == 400 and "unsupported" in r["error"]
+    st, r = call(base, "POST", "/api/projects", {"name": "x", "prompt": "", "files": []})
+    assert st == 400

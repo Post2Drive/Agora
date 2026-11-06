@@ -2,11 +2,12 @@
 
 **Open-source, fully local multi-agent social simulation and prediction engine.**
 
-Describe a situation, and Agora fills a small world with people who have personas,
-memories and opinions. They talk to each other on simulated **X**, **Reddit** and
-**WhatsApp-style groups**, react to news and decisions, and take real-world actions
-such as registering, buying or voting. You get a prediction of what people will say
-and do, with numbers you can check.
+Upload your documents and describe a situation. Agora fills a small world with people
+who have personas, memories and opinions. They talk to each other on simulated
+**WhatsApp, Instagram, Facebook, X, YouTube, Reddit, Facebook Groups, Telegram,
+LinkedIn, Threads and TikTok**, react to news and decisions, and take real-world
+actions such as registering, buying or voting. You get a prediction of what people
+will say and do, with numbers you can check.
 
 - **Fully local.** Uses your own model server (Ollama, llama.cpp, LM Studio, vLLM, or any
   OpenAI-compatible server). By default nothing leaves your machine or private network.
@@ -23,7 +24,30 @@ and do, with numbers you can check.
 > setup). Coming next: a report agent and chat with agents (3), data calibration with
 > backtests and probability ranges (4), and a web UI with installers (5). See [ROADMAP.md](ROADMAP.md).
 
-## Quick start: upload and ask
+## Quick start: the website
+
+```bash
+pip install -e .                      # Python 3.10+
+ollama pull llama3.2:3b               # or any model server, see below
+agora web                             # opens http://127.0.0.1:8765
+```
+
+The website takes you through the same five steps as MiroFish:
+
+1. **Upload:** add documents and describe what you want to predict.
+2. **Graph:** explore the knowledge graph Agora built from your documents.
+3. **Setup:** review who reacts, where they talk, the timeline and the actions to
+   predict, and edit anything.
+4. **Simulation:** start, stop and resume the run. Watch a live feed for each app,
+   opinion by group, and actions over time.
+5. **Report:** see the results so far. The written report agent and chat with agents
+   arrive in Phase 3.
+
+It runs only on your computer: it listens on `127.0.0.1`, refuses other host names
+and cross-site requests, and keeps projects in `~/AgoraProjects` (`--dir` to change this).
+**Open the demo** shows a complete example without uploading anything.
+
+## Quick start: command line
 
 ```bash
 pip install -e .                      # Python 3.10+
@@ -53,7 +77,7 @@ in seconds with no model at all. `agora graph my-study --add more.pdf` adds docu
 
 ```bash
 agora hardware                        # what this machine can handle
-agora new my-run --from scenarios/nutrivance_sampling
+agora new my-run --from demo
 agora run my-run --mock               # 2-second smoke test, no model needed
 ```
 
@@ -61,7 +85,7 @@ With a real model, using [Ollama](https://ollama.com):
 
 ```bash
 ollama pull llama3.2:3b
-rm -r my-run && agora new my-run --from scenarios/nutrivance_sampling
+rm -r my-run && agora new my-run --from demo
 agora check my-run                    # validates and estimates run time
 agora run my-run                      # Ctrl+C any time; run again to resume
 agora status my-run                   # polls, opinion shift by segment, conversions
@@ -69,6 +93,18 @@ agora feed my-run --platform whatsapp # read what people said
 ```
 
 To use another server, set it in `scenario.yaml`, or pass `--backend openai --url http://localhost:8080 --model <name>`.
+
+## Platforms
+
+| Kind | Apps | How it works |
+|---|---|---|
+| Feed | X, Threads, Instagram, Facebook, LinkedIn, YouTube, TikTok | Each app has its own follow graph. The feed mixes posts from people you follow with trending posts, and older posts fade. Actions: post, comment, like, share or repost, and follow (subscribe or connect). |
+| Forum | Reddit, Facebook Groups | Communities with threads, ranked by votes. Actions: start a thread, comment, upvote and downvote. |
+| Chat | WhatsApp, Telegram | Private groups where you see unread messages, newest first. Actions: message, reply, react and forward to another group. |
+
+Each app tells the AI voices how people write there: Instagram captions describe the
+photo, LinkedIn is professional, and WhatsApp is short and informal. To add an app,
+add one entry to `agora/platforms.py`.
 
 ## How a round works
 
@@ -91,7 +127,7 @@ To use another server, set it in `scenario.yaml`, or pass `--backend openai --ur
 ## Scenario files
 
 A project is a folder with `scenario.yaml` (inputs), `agora.db` (everything that
-happened) and, when created from documents, `graph.db`, `graph.html` and `sources/`. The demo in [`scenarios/nutrivance_sampling`](scenarios/nutrivance_sampling/scenario.yaml)
+happened) and, when created from documents, `graph.db`, `graph.html` and `sources/`. The demo in [`agora/examples/nutrivance_sampling`](agora/examples/nutrivance_sampling/scenario.yaml)
 shows every feature:
 
 | Section | What it defines |

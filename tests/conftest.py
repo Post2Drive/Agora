@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO = ROOT / "scenarios" / "nutrivance_sampling" / "scenario.yaml"
+DEMO = ROOT / "agora" / "examples" / "nutrivance_sampling" / "scenario.yaml"
 
 
 def make_project(tmp: Path, name: str = "proj", **overrides) -> Path:

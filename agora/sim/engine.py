@@ -121,11 +121,13 @@ class Simulation:
 
     # ---------------------------------------------------------------- running
     def run(self, rounds: int | None = None, progress: Callable[[dict], None] | None = None,
-            force: bool = False) -> int:
+            force: bool = False, should_stop: Callable[[], bool] | None = None) -> int:
         w = self.world or self.prepare(force=force)
         start = self.store.last_round() + 1
         end = self.sc.rounds if rounds is None else min(self.sc.rounds, start + rounds)
         for r in range(start, end):
+            if should_stop and should_stop():
+                return r
             t_start = time.time()
             c0, h0 = self.llm.calls, getattr(self.llm, "hits", 0)
             out, active = self.step(r)

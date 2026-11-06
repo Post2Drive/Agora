@@ -26,5 +26,9 @@ agora = "agora.cli:main"
 [tool.setuptools.packages.find]
 include = ["agora*"]
 
+[tool.setuptools.package-data]
+"agora.web" = ["static/*"]
+"agora.examples" = ["*/*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
