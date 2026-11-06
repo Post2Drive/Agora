@@ -249,6 +249,17 @@ def inject(project: str | Path, event: dict, at_round: int | None = None) -> dic
         if not text:
             raise ValueError("Write what happens.")
         ev = {"round": r, "type": t, "text": text[:1500]}
+        shift = event.get("shift") or {}
+        if shift:
+            valid = set(sc.choice.options) if sc.choice else set()
+            clean = {}
+            for k, v in shift.items():
+                if k != "stance" and k not in valid:
+                    raise ValueError(f"Unknown option '{k}' in shift.")
+                clean[k] = max(-1.0, min(1.0, float(v)))
+            if t != "news":
+                raise ValueError("Only news can shift opinions directly.")
+            ev["shift"] = clean
         if t == "post":
             acc = event.get("account")
             accounts = {a.id: a for a in sc.accounts}

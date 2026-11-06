@@ -93,7 +93,9 @@ Reply with JSON only:
 {{"name": "short-kebab-name", "topic": "what people are reacting to, as a short noun phrase",
  "question": "the prediction question in one sentence",
  "context": "80-150 words of plain facts everyone in the simulation knows",
- "days": <how many days to simulate, 3-30>}}"""
+ "days": <how many days to simulate, 3-30>,
+ "options": [if the question is a choice between named options - candidates, parties, products,
+             plans - list them (2-6); otherwise an empty list]}}"""
 
 SEGMENTS = HEAD + """
 Who reacts? Describe 3-6 groups of ordinary people affected by this (not organizations).
@@ -101,7 +103,7 @@ Who reacts? Describe 3-6 groups of ordinary people affected by this (not organiz
 - stance: their likely starting opinion on {topic}, from -1 (against) to 1 (for)
 - stubbornness: 0 (easily persuaded) to 1 (never changes)
 - activity: 0 (rarely online) to 1 (always online)
-- platforms: the apps they really use, from: {platforms}
+- platforms: the apps they really use, from: {platforms}{options_note}
 Reply with JSON only:
 {{"segments": [{{"name": "young_professionals", "share": 0.3, "persona": "one or two sentences",
   "stance": 0.1, "stubbornness": 0.4, "activity": 0.5, "platforms": ["whatsapp", "instagram"],
@@ -279,7 +281,12 @@ def clean_segments(raw: dict) -> list[dict]:
         names.add(name)
         age = s.get("age") if isinstance(s.get("age"), list) and len(s.get("age")) == 2 else [22, 65]
         a0, a1 = int(_num(age[0], 16, 90, 22)), int(_num(age[1], 16, 95, 65))
+        lean = {}
+        if isinstance(s.get("leaning"), dict):
+            for o, v in s["leaning"].items():
+                lean[str(o).strip()[:60]] = round(_num(v, -1, 1, 0.0), 2)
         segs.append({
+            "leaning": lean,
             "name": name, "share": _num(s.get("share"), 0.01, 1, 1 / 3),
             "persona": str(s.get("persona") or name.replace("_", " "))[:400],
             "stance": {"mean": round(_num(s.get("stance"), -1, 1, 0.0), 2), "sd": 0.3},
@@ -419,6 +426,13 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
     days = int(_num(fr.get("days"), 3, 30, 7))
     ctx["topic"] = topic
 
+    options = [str(o).strip()[:60] for o in (fr.get("options") or []) if str(o).strip()][:6]
+    seen_o: dict[str, str] = {}
+    for o in options:
+        seen_o.setdefault(o.lower(), o)
+    options = list(seen_o.values()) if len(seen_o) >= 2 else []
+    ctx["options_note"] = (("\n- leaning: how much they like each option, -1..1, as "
+                            + "{" + ", ".join(f'"{o}": 0.0' for o in options) + "}") if options else "")
     say("describing who reacts")
     segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2))
 
@@ -463,6 +477,17 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
 
     for a in accounts:
         a.pop("_decides", None)
+    choice = None
+    if options:
+        for g in segs:
+            low = {k.lower(): v for k, v in (g.get("leaning") or {}).items()}
+            g["leaning"] = {o: low.get(o.lower(), 0.0) for o in options}
+        choice = {"name": "choice", "question": str(fr.get("question") or goal)[:300], "options": options,
+                  "open_round": int(rounds * 0.8), "close_round": rounds - 1,
+                  "weights": {g["name"]: g["share"] for g in segs}}
+    else:
+        for g in segs:
+            g.pop("leaning", None)
     sc = {
         "name": slug(fr.get("name") or fr_def["name"], 40).replace("_", "-"),
         "topic": topic,
@@ -477,6 +502,8 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
         "segments": segs, "accounts": accounts, "spaces": spaces,
         "events": events, "conversions": conversions,
     }
+    if choice:
+        sc["choice"] = choice
     sc = repair(sc)
 
     if rich_personas and llm is not None:

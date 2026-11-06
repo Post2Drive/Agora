@@ -37,9 +37,11 @@ def cmd_hardware(args) -> int:
 def cmd_new(args) -> int:
     dst = Path(args.project)
     src = Path(args.template)
-    if args.template in ("demo", "nutrivance_sampling"):
+    demos = {"demo": "nutrivance_sampling", "nutrivance_sampling": "nutrivance_sampling",
+             "election": "election", "election-demo": "election"}
+    if args.template in demos:
         from importlib import resources
-        src = Path(str(resources.files("agora.examples").joinpath("nutrivance_sampling", SCENARIO_FILE)))
+        src = Path(str(resources.files("agora.examples").joinpath(demos[args.template], SCENARIO_FILE)))
     if src.is_dir():
         src = src / SCENARIO_FILE
     if dst.exists() and any(dst.iterdir()):
@@ -123,6 +125,14 @@ def cmd_status(args) -> int:
     print("  opinion by segment (start -> now):")
     for seg, d in s["segments"].items():
         print(f"    {seg:<26} {d['agents']:>5} agents  {d['stance_start']:+.2f} -> {d['stance_now']:+.2f}")
+    from .report.analysis import Analysis
+    if sc.choice and s["rounds_done"]:
+        an = Analysis(proj)
+        c = an.choice()
+        an.close()
+        print(f"  {c['question']} ({c['basis']}, weighted): " + ", ".join(
+            f"{o} {v * 100:.1f}%" for o, v in sorted(c["result"].items(), key=lambda x: -x[1]))
+            + f"; turnout {c['turnout'] * 100:.1f}%")
     for name, c in s["conversions"].items():
         print(f"  {name}: {c['total']}  " + ", ".join(f"{k} {v}" for k, v in c["by_segment"].items()))
     store.close()
@@ -271,6 +281,8 @@ def cmd_inject(args) -> int:
     from .report.interact import inject
     ev = {"type": "post" if args.account else "news", "text": args.text, "account": args.account,
           "platform": args.platform}
+    if args.shift:
+        ev["shift"] = {k.strip(): float(v) for k, _, v in (x.rpartition("=") for x in args.shift)}
     r = inject(Path(args.project), ev, args.round)
     print(f"Added at round {r['round'] + 1}. Run `agora run {args.project}` to continue.")
     return 0
@@ -396,6 +408,7 @@ def main(argv=None) -> int:
     p.add_argument("--account")
     p.add_argument("--platform")
     p.add_argument("--round", type=int, help="0-based round (default: next)")
+    p.add_argument("--shift", nargs="+", help='news effect, e.g. "Daniel Okafor=-0.15" or stance=-0.1')
     p.set_defaults(f=cmd_inject)
 
     p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")

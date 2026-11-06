@@ -299,3 +299,31 @@ def test_entity_agents_from_graph(gs):
     assert "Guntur" not in names                    # places are not agents
     assert all(a.profile.get("source") for a in ents)
     assert len({a.id for a in parsed.accounts}) == len(parsed.accounts)
+
+
+class ElectionScripted(Scripted):
+    def _complete(self, messages, **kw):
+        p = messages[-1]["content"]
+        if "Write the simulation framing" in p:
+            return json.dumps({"name": "city vote", "topic": "the mayoral election", "question": "Who wins?",
+                               "context": "Three candidates.", "days": 5,
+                               "options": ["Rao", "Okafor", "rao", "Pillai"]})
+        if "Who reacts?" in p:
+            return json.dumps({"segments": [
+                {"name": "renters", "share": 0.5, "persona": "Renters", "leaning": {"RAO": 0.5, "Okafor": -0.3}},
+                {"name": "owners", "share": 0.5, "persona": "Owners", "leaning": {"Okafor": 0.4, "Ghost": 1}}]})
+        return super()._complete(messages, **kw)
+
+
+def test_draft_detects_a_choice(gs):
+    llm = ElectionScripted()
+    gbuild.build(gs, llm, "goal")
+    sc = gdraft.draft(gs, llm, "Who will win the mayoral election?", llm_agents=4, crowd_agents=60,
+                      entity_limit=0, rich_personas=False)
+    parsed = scenario_mod.from_dict(json.loads(json.dumps(sc)))
+    assert parsed.choice.options == ["Rao", "Okafor", "Pillai"]
+    assert {g.name: g for g in parsed.segments}["renters"].leaning["Rao"] == 0.5
+    seg = {g.name: g for g in parsed.segments}
+    assert seg["renters"].leaning["Okafor"] == -0.3
+    assert "Ghost" not in seg["owners"].leaning
+    assert parsed.choice.open_round < parsed.rounds

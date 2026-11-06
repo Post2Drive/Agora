@@ -89,6 +89,27 @@ def _econ(a: dict) -> str:
             f"net {money(e['net'], c)}; {per}")
 
 
+def _choice(a: dict) -> str:
+    c = a.get("choice") or {}
+    if not c:
+        return ""
+    res = ", ".join(f"{o} {pct(v)}" for o, v in sorted(c["result"].items(), key=lambda x: -x[1]))
+    lines = [f"Choice: {c['question']} Status: {c['status']} (based on {c['basis']}).",
+             f"Result weighted to the real electorate: {res}. Leader: {c['leader']} by {pct(c['margin'])} "
+             f"over {c['runner_up']}.",
+             f"Turnout: {pct(c['turnout'])} of {c['electorate']} people ({c['votes_cast']} votes)."]
+    if c["trend"]:
+        first, last = c["trend"][0], c["trend"][-1]
+        lines.append("Intention at start: " + ", ".join(f"{o} {pct(v)}" for o, v in first["weighted"].items())
+                     + f" (undecided {pct(first['undecided'])}); at end: "
+                     + ", ".join(f"{o} {pct(v)}" for o, v in last["weighted"].items())
+                     + f" (undecided {pct(last['undecided'])}).")
+    for g, d in c["by_segment"].items():
+        lines.append(f"- {nice(g)} (weight {pct(d['weight'])}, turnout {pct(d['turnout'])}): "
+                     + ", ".join(f"{o} {pct(v)}" for o, v in d["shares"].items()))
+    return "\n".join(lines)
+
+
 def _base(a: dict) -> str:
     o = a["overview"]
     return (f"Question: {a['scenario']['question']}\n"
@@ -101,10 +122,14 @@ SECTIONS = [
     ("summary", "Summary",
      "Answer the prediction question directly in one paragraph of 4-6 sentences: the most likely "
      "outcome, the key numbers, and how confident to be.",
-     lambda a: "\n".join([_base(a), "Actions:", _funnel(a), "Decisions:", _decisions(a),
+     lambda a: "\n".join([_base(a), _choice(a), "Actions:", _funnel(a), "Decisions:", _decisions(a),
                           f"Opinion overall: start {_dist(a['opinion']['start'])}; end {_dist(a['opinion']['end'])}",
                           _econ(a)]),
      "overall reaction"),
+    ("choice", "Who wins and why",
+     "State the projected result with shares and margin, how intentions moved, which groups decide it "
+     "and through turnout, and quote 1-2 posts.",
+     _choice, "vote support candidate option"),
     ("opinion", "How opinion moved",
      "Explain how opinion changed overall and in each group, which groups moved most and why, "
      "using 1-2 quotes as examples.",
@@ -178,6 +203,17 @@ def check(text: str, facts: str, known_posts: set[int]) -> str:
 def _fallback(key: str, a: dict) -> str:
     """No-model text: plain statements of the computed results."""
     o, op = a["overview"], a["opinion"]
+    c = a.get("choice") or {}
+    if key == "choice":
+        if not c:
+            return ""
+        res = ", ".join(f"{k} {pct(v)}" for k, v in sorted(c["result"].items(), key=lambda x: -x[1]))
+        return (f"Projected result ({c['basis']}, weighted to the electorate): {res}. {c['leader']} leads "
+                f"{c['runner_up']} by {pct(c['margin'])}, with turnout of {pct(c['turnout'])}.")
+    if key == "summary" and c:
+        res = ", ".join(f"{k} {pct(v)}" for k, v in sorted(c["result"].items(), key=lambda x: -x[1]))
+        return (f"Over {o['days']} simulated days, the projected result is {res}: {c['leader']} leads by "
+                f"{pct(c['margin'])}. Turnout {pct(c['turnout'])}.")
     if key == "summary":
         acts = "; ".join(f"{nice(f['name'])}: {f['count']} of {f['eligible']} eligible ({pct(f['rate'])})"
                          + (f", blocked by {nice(f['blocked_by'])}" if f["blocked_by"] else "")
@@ -210,11 +246,11 @@ TOOLS_HELP = """Tools (call one at a time with JSON):
 - {"tool": "search_posts", "query": "..."}      find what people actually said
 - {"tool": "search_memory", "query": "..."}     search the documents' knowledge graph and the record of what happened
 - {"tool": "insight", "query": "..."}            break a question into sub-questions and search each
-- {"tool": "stats", "name": "funnel|opinion|decisions|drivers|themes|economics"}  exact numbers
+- {"tool": "stats", "name": "choice|funnel|opinion|decisions|drivers|themes|economics"}  exact numbers
 - {"tool": "interview", "question": "...", "segment": "<group or empty>"}  ask a few simulated people (max once)
 When you have enough, reply {"write": "<the section text>"}."""
 
-STAT_FNS = {"funnel": _funnel, "opinion": _segments, "decisions": _decisions, "drivers": _drivers,
+STAT_FNS = {"choice": _choice, "funnel": _funnel, "opinion": _segments, "decisions": _decisions, "drivers": _drivers,
             "themes": _themes, "economics": _econ}
 LIBRARY = {k: (title, instr, fn, q) for k, title, instr, fn, q in SECTIONS}
 
@@ -297,7 +333,12 @@ class Toolbox:
 
 
 def plan_outline(llm, a: dict) -> list[dict]:
-    default = [{"key": k, "title": LIBRARY[k][0], "goal": LIBRARY[k][1]} for k in LIBRARY]
+    lib = [k for k in LIBRARY if k != "choice" or a.get("choice")]
+    if a.get("choice"):
+        lib = [k for k in lib if k != "opinion"]       # the intention trend replaces it
+    if not a.get("funnel"):
+        lib = [k for k in lib if k != "recommendations" or a.get("choice")]
+    default = [{"key": k, "title": LIBRARY[k][0], "goal": LIBRARY[k][1]} for k in lib]
     if llm is None:
         return default
     brief = "\n".join([_base(a), "Actions:", _funnel(a), "Decisions:", _decisions(a)[:600]])
@@ -319,7 +360,7 @@ def plan_outline(llm, a: dict) -> list[dict]:
         if not isinstance(x, dict):
             continue
         key = str(x.get("key", "custom")).strip().lower()
-        key = key if key in LIBRARY else "custom"
+        key = key if key in LIBRARY and (key != "choice" or a.get("choice")) else "custom"
         title = str(x.get("title") or (LIBRARY[key][0] if key in LIBRARY else "")).strip()[:80]
         if not title or (key in seen and key != "custom"):
             continue

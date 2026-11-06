@@ -42,7 +42,7 @@ choice:
   options: [Asha Rao, Daniel Okafor, Meera Pillai]
   open_round: 64                # last two days
   close_round: 79
-  turnout_base: -1.6
+  turnout_base: -4.6
   turnout_weight: 3.0
   undecided_below: 0.15
   weights:                      # share of the real electorate (invented)
@@ -54,6 +54,7 @@ choice:
 
 segments:
   - name: young_renters
+    turnout: -0.3
     share: 0.24
     persona: Renter in their twenties or thirties, worried about rent and commute times.
     stance: {mean: 0.0, sd: 0.3}
@@ -64,6 +65,7 @@ segments:
     occupations: [nurse, delivery rider, software tester, shop assistant, teacher]
     age: [22, 36]
   - name: homeowners
+    turnout: 0.4
     share: 0.28
     persona: Family homeowner who watches property tax and school quality closely.
     stance: {mean: 0.0, sd: 0.3}
@@ -74,6 +76,7 @@ segments:
     occupations: [accountant, engineer, government clerk, pharmacist]
     age: [35, 60]
   - name: small_business
+    turnout: 0.3
     share: 0.12
     persona: Runs a small shop or service business and is frustrated by permits and fees.
     stance: {mean: 0.0, sd: 0.3}
@@ -84,6 +87,7 @@ segments:
     occupations: [bakery owner, mechanic, salon owner, restaurant owner]
     age: [30, 65]
   - name: students
+    turnout: -0.6
     share: 0.12
     persona: College student, first-time or second-time voter, gets news from social media.
     stance: {mean: 0.0, sd: 0.35}
@@ -93,6 +97,7 @@ segments:
     platforms: [instagram, tiktok, x, reddit]
     age: [18, 24]
   - name: retirees
+    turnout: 1.0
     share: 0.24
     persona: Retired resident who values honesty, safety and clean streets, and always votes.
     stance: {mean: 0.0, sd: 0.25}
@@ -163,6 +168,7 @@ events:
   - at_round: 40
     type: news
     text: "The Riverton Courier reports that a firm linked to an Okafor donor won a city contract without open bidding. Okafor denies wrongdoing."
+    shift: {Daniel Okafor: -0.15, Meera Pillai: 0.05}   # assumed effect of the story on everyone who hears it
   - at_round: 48
     type: post
     account: rao_campaign

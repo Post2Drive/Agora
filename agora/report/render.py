@@ -24,7 +24,12 @@ def to_markdown(r: dict) -> str:
              f"_Agora simulation report · {r['generated']} · model {r['model']}_", ""]
     for s in r["sections"]:
         lines += [f"## {s['title']}", "", s["text"], ""]
-        if s["key"] == "summary":
+        if s["key"] == "summary" and a.get("choice"):
+            c = a["choice"]
+            lines += ["| Option | Share | ", "|---|---:|"] + [f"| {o} | {pct(v)} |" for o, v in
+                                                          sorted(c["result"].items(), key=lambda x: -x[1])]
+            lines += [f"\nTurnout {pct(c['turnout'])}; based on {c['basis']}, weighted to the electorate.", ""]
+        if s["key"] == "summary" and a["funnel"]:
             lines += ["| Action | People | Eligible | Rate |", "|---|---:|---:|---:|"]
             lines += [f"| {f['label']} | {f['count']} | {f['eligible']} | {pct(f['rate'])} |" for f in a["funnel"]]
             lines.append("")
@@ -127,9 +132,16 @@ a.cite{color:var(--accent);text-decoration:none;font-family:system-ui,sans-serif
 def to_html(r: dict) -> str:
     a = r["analysis"]
     o, op = a["overview"], a["opinion"]
-    kpis = "".join(f'<div class="kpi"><b>{f["count"]:,}</b><span>{_e(f["label"])} · {pct(f["rate"])} of eligible</span></div>'
-                   for f in a["funnel"])
-    kpis += f'<div class="kpi"><b>{op["start"].get("mean", 0):+.2f} → {op["end"].get("mean", 0):+.2f}</b><span>average opinion (−1 to +1)</span></div>'
+    c = a.get("choice") or {}
+    kpis = ""
+    if c:
+        for opt, v in sorted(c["result"].items(), key=lambda x: -x[1]):
+            kpis += f'<div class="kpi"><b>{pct(v)}</b><span>{_e(opt)}{" · leads" if opt == c["leader"] else ""}</span></div>'
+        kpis += f'<div class="kpi"><b>{pct(c["turnout"])}</b><span>turnout ({c["votes_cast"]:,} votes)</span></div>'
+    kpis += "".join(f'<div class="kpi"><b>{f["count"]:,}</b><span>{_e(f["label"])} · {pct(f["rate"])} of eligible</span></div>'
+                    for f in a["funnel"])
+    if not c:
+        kpis += f'<div class="kpi"><b>{op["start"].get("mean", 0):+.2f} → {op["end"].get("mean", 0):+.2f}</b><span>average opinion (−1 to +1)</span></div>'
     if a["economics"]:
         e = a["economics"]
         kpis += f'<div class="kpi"><b>{money(e["net"], e["currency"])}</b><span>net value (cost {money(e["total_cost"], e["currency"])})</span></div>'
@@ -145,6 +157,21 @@ def to_html(r: dict) -> str:
                     + "".join(f'<tr><td>{_e(nice(g))}</td><td class="n">{d["agents"]:,}</td><td class="n">{d.get("start", 0):+.2f}</td>'
                               f'<td class="n">{d["end"]:+.2f}</td><td class="n">{d["change"]:+.2f}</td></tr>'
                               for g, d in op["segments"].items()) + "</tbody></table>")
+    choice_html = ""
+    if c:
+        cols = [SEG_COLORS[i % len(SEG_COLORS)] for i in range(len(c["options"]))]
+        series = [(o, cols[i], [(t["round"] + 1, t["weighted"][o]) for t in c["trend"]]) for i, o in enumerate(c["options"])]
+        bars = "".join(f'<div class="fn"><div class="fnh"><b>{_e(o)}</b><span class="spacer"></span><b>{pct(c["result"][o])}</b></div>'
+                       f'<div class="bar"><i style="width:{c["result"][o] * 100:.1f}%;background:{cols[i]}"></i></div></div>'
+                       for i, o in enumerate(sorted(c["options"], key=lambda o: -c["result"][o])))
+        seg_rows = "".join(f'<tr><td>{_e(nice(g))}</td><td class="n">{pct(d["weight"])}</td><td class="n">{pct(d["turnout"])}</td>'
+                           + "".join(f'<td class="n">{pct(d["shares"][o])}</td>' for o in c["options"]) + "</tr>"
+                           for g, d in c["by_segment"].items())
+        choice_html = (f'<div class="chart"><h3>{_e(c["question"])} <span class="small muted">({_e(c["basis"])}, weighted to the electorate)</span></h3>{bars}</div>'
+                       f'<div class="chart"><h3>Vote intention over time <span class="small muted">(decided voters, weighted)</span></h3>'
+                       f'{_line_chart(series, 0, 1, max(1, o["rounds_done"]))}</div>'
+                       '<table><thead><tr><th>Group</th><th>Weight</th><th>Turnout</th>'
+                       + "".join(f"<th>{_e(x)}</th>" for x in c["options"]) + f"</tr></thead><tbody>{seg_rows}</tbody></table>")
     drivers_html = ""
     if a["influencers"]:
         drivers_html = ("<table><thead><tr><th>Voice</th><th>Group</th><th>Posts</th><th>Reactions</th><th>Shared</th><th>Opinion</th></tr></thead><tbody>"
@@ -166,11 +193,17 @@ def to_html(r: dict) -> str:
         body.append(f'<h2 id="{_e(s["key"])}-{i}">{_e(s["title"])}</h2>')
         body += [f"<p>{_cite_html(p)}</p>" for p in s["text"].split("\n") if p.strip()]
         if i == 0:
-            body.append(f'<div class="kpis">{kpis}</div><div class="chart"><h3>Real-world actions</h3>{_funnel_bars(a["funnel"])}</div>')
-            if "opinion" not in keys:
+            body.append(f'<div class="kpis">{kpis}</div>')
+            if c:
+                body.append(choice_html)
+            if a["funnel"]:
+                body.append(f'<div class="chart"><h3>Real-world actions</h3>{_funnel_bars(a["funnel"])}</div>')
+            if "opinion" not in keys and not c:
                 body.append(opinion_html)
         elif s["key"] == "opinion":
             body.append(opinion_html)
+        elif s["key"] == "choice" and c and i != 0:
+            pass
         elif s["key"] == "drivers":
             body.append(drivers_html)
         elif s["key"] == "decisions":

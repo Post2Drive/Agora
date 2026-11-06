@@ -177,7 +177,11 @@ class App:
                                 "conditional": bool(e.when)} for e in sc.events],
                     "conversions": [{"name": c.name, "label": c.label, "open": c.open_round,
                                      "close": min(c.close_round, sc.rounds)} for c in sc.conversions],
-                    "voices": len(sc.voices)}
+                    "voices": len(sc.voices),
+                    "choice": ({"question": sc.choice.question, "options": sc.choice.options,
+                                "open": sc.choice.open_round, "close": min(sc.choice.close_round, sc.rounds - 1),
+                                "leanings": {g.name: g.leaning for g in sc.segments},
+                                "weights": sc.choice.weights} if sc.choice else None)}
                 info["scenario_error"] = ""
             except Exception as e:  # noqa: BLE001
                 info["scenario_error"] = str(e)
@@ -215,7 +219,7 @@ class App:
                 args.append(after)
             rows = db.execute(
                 "SELECT p.id, p.round, p.platform, p.space, p.kind, p.parent, p.root, p.text, p.stance,"
-                " a.name, a.handle, a.kind, a.segment, s.text, sa.name FROM posts p"
+                " a.name, a.handle, a.kind, a.segment, s.text, sa.name, p.option FROM posts p"
                 " JOIN agents a ON a.id = p.author LEFT JOIN posts s ON s.id = p.root AND p.kind = 'forward'"
                 " LEFT JOIN agents sa ON sa.id = s.author WHERE " + " AND ".join(where) +
                 " ORDER BY p.id DESC LIMIT 80", args).fetchall()
@@ -232,7 +236,7 @@ class App:
                         "GROUP BY parent", ids):
                     counts.setdefault(parent, {})["replies"] = n
             for (pid_, rnd, plat, space, kind, parent, root, text, st, name, handle, akind, seg,
-                 src_text, src_name) in rows:
+                 src_text, src_name, option) in rows:
                 c = counts.get(root if kind == "forward" else pid_, {})
                 to = quoted = None
                 if kind == "dm" and space.startswith("@dm:"):
@@ -245,7 +249,7 @@ class App:
                                     (parent,)).fetchone()
                     quoted = {"author": pr[0], "text": pr[1][:200]} if pr else None
                 out["posts"].append({
-                    "to": to, "quoted": quoted,
+                    "to": to, "quoted": quoted, "option": option or "",
                     "id": pid_, "round": rnd, "platform": plat, "space": space, "kind": kind,
                     "parent": parent, "text": src_text if kind == "forward" else text,
                     "forwarded_from": src_name if kind == "forward" else None, "stance": st,
@@ -269,6 +273,16 @@ class App:
                 "GROUP BY platform").fetchall())
             out["spaces"] = [list(r) for r in db.execute(
                 "SELECT DISTINCT platform, space FROM memberships ORDER BY platform, space")]
+            if (d / "scenario.yaml").exists():
+                try:
+                    from ..report.analysis import Analysis
+                    an = Analysis(d)
+                    try:
+                        out["choice"] = an.choice()
+                    finally:
+                        an.close()
+                except Exception:  # noqa: BLE001 - live view must not fail on a half-written round
+                    out["choice"] = {}
         except sqlite3.Error as e:
             out["error"] = str(e)
         finally:
@@ -322,14 +336,17 @@ class App:
         job = self.jobs.start("create", pid, work)
         return {"id": pid, "job": job.as_dict()}
 
-    def create_demo(self) -> dict:
-        pid = self.new_id("nutrivance-demo")
+    DEMOS = {"sampling": (DEMO, "nutrivance-demo", "Demo: free probiotic sampling"),
+             "election": ("election", "election-demo", "Demo: city mayoral election")}
+
+    def create_demo(self, which: str = "sampling") -> dict:
+        folder, base, title = self.DEMOS.get(which, self.DEMOS["sampling"])
+        pid = self.new_id(base)
         d = self.project_dir(pid, must_exist=False)
         d.mkdir()
-        src = resources.files("agora.examples").joinpath(DEMO, "scenario.yaml")
+        src = resources.files("agora.examples").joinpath(folder, "scenario.yaml")
         (d / "scenario.yaml").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
-        (d / "agora.json").write_text(json.dumps({"title": "Demo: free probiotic sampling"}),
-                                      encoding="utf-8")
+        (d / "agora.json").write_text(json.dumps({"title": title}), encoding="utf-8")
         (d / "prompt.txt").write_text(scenario_mod.load(d / "scenario.yaml").question + "\n",
                                       encoding="utf-8")
         return {"id": pid}
@@ -608,7 +625,7 @@ class Handler(BaseHTTPRequestHandler):
             if method == "POST":
                 return a.create(self._body())
         if p == ["projects", "demo"] and method == "POST":
-            return a.create_demo()
+            return a.create_demo(q.get("which", "sampling"))
         if len(p) >= 2 and p[0] == "projects":
             pid, rest = p[1], p[2:]
             if method == "GET" and not rest:

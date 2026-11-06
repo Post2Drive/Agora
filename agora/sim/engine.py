@@ -163,6 +163,8 @@ class Simulation:
             if ev.type == "news":
                 w.news.append(ev.text)
                 out.events.append(("news", {"text": ev.text}))
+                if ev.shift:
+                    self._shock(ev.shift, rng)
             elif ev.type == "post":
                 self._event_post(ev, r, t0, out)
             elif ev.type == "poll":
@@ -224,6 +226,20 @@ class Simulation:
         self._reflect_all(r, now)
         return out, len(active)
 
+    def _shock(self, shift: dict, rng) -> None:
+        """A news shock moves everyone a little, more for the open-minded."""
+        for a in self.world.agents:
+            if a.kind == "account":
+                continue
+            k = (1 - a.stubbornness) * float(np.clip(rng.normal(1.0, 0.3), 0, 2))
+            for o, d in sorted(shift.items()):
+                if o == "stance":
+                    a.stance = float(np.clip(a.stance + k * d, -1, 1))
+                elif o in a.prefs:
+                    a.prefs[o] = float(np.clip(a.prefs[o] + k * d, -1, 1))
+            if a.prefs:
+                a.stance = a.favourite()[1]
+
     def _vote_open(self, r: int) -> bool:
         ch = self.sc.choice
         return bool(ch) and ch.open_round <= r <= ch.close_round
@@ -232,16 +248,19 @@ class Simulation:
         ch = self.sc.choice
         if not self._vote_open(r):
             return
-        for a in active:
+        # voting happens offline: everyone may vote, not only people online this round
+        seg_turnout = {g.name: g.turnout for g in self.sc.segments}
+        draws = rng.random(len(self.world.agents))
+        for a in self.world.agents:
             if a.choice or a.kind == "account" or not a.prefs:
                 continue
             fav, u = a.favourite()
-            p = opinion.sig(ch.turnout_base + ch.turnout_weight * max(0.0, u))
-            if rng.random() < p:
+            p = opinion.sig(ch.turnout_base + ch.turnout_weight * max(0.0, u) + seg_turnout.get(a.segment, 0.0))
+            if draws[a.id] < p:
                 self._cast(a, fav, out)
 
     def _cast(self, a: Agent, option: str, out: RoundOutput) -> bool:
-        if a.choice or option not in (self.sc.choice.options if self.sc.choice else []):
+        if a.choice or a.kind == "account" or option not in (self.sc.choice.options if self.sc.choice else []):
             return False
         a.choice = option
         out.choices.append((a.id, option))

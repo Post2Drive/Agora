@@ -41,6 +41,7 @@ class Segment:
     llm_share: float | None = None   # share of LLM voices (defaults to `share`)
     active_hours: list[int] = field(default_factory=list)    # [start, end] e.g. [7, 23]; [] = always
     leaning: dict[str, float] = field(default_factory=dict)  # choice mode: option -> -1..1
+    turnout: float = 0.0             # choice mode: extra log-odds of voting (habit), e.g. retirees +1
 
 
 @dataclass
@@ -84,6 +85,9 @@ class Event:
     platform: str = ""
     spaces: list[str] = field(default_factory=list)   # [] or ["*"] = all spaces on platform
     when: dict[str, Any] = field(default_factory=dict)  # {poll: name, result: yes}
+    # news shock: shift opinions of everyone (scaled by how open they are), e.g.
+    # {stance: -0.1} or, with a choice, {"Candidate A": -0.15}
+    shift: dict[str, float] = field(default_factory=dict)
     # poll fields
     name: str = ""
     question: str = ""
@@ -122,7 +126,7 @@ class Choice:
     options: list[str] = field(default_factory=list)
     open_round: int = 0
     close_round: int = 10**9
-    turnout_base: float = -1.0        # log-odds of voting per active round in the window
+    turnout_base: float = -3.5        # log-odds of voting, per round of the voting window
     turnout_weight: float = 3.0       # stronger preferences -> more likely to vote
     undecided_below: float = 0.1      # favourite below this counts as undecided in polls
     weights: dict[str, float] = field(default_factory=dict)   # segment -> share of real electorate
@@ -295,6 +299,9 @@ def validate(sc: Scenario) -> None:
             raise ScenarioError(f"Event at round {e.round}: unknown type '{e.type}'")
         if e.account and e.account not in ids:
             raise ScenarioError(f"Event at round {e.round}: unknown account '{e.account}'")
+        for k in e.shift:
+            if k != "stance" and not (sc.choice and k in sc.choice.options):
+                raise ScenarioError(f"Event at round {e.round}: shift for unknown option '{k}'")
         if e.type == "post" and e.platform not in REGISTRY:
             raise ScenarioError(f"Event at round {e.round}: unknown platform '{e.platform}'")
         for s in e.spaces:
