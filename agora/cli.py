@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import time
@@ -37,9 +38,11 @@ def cmd_hardware(args) -> int:
 def cmd_new(args) -> int:
     dst = Path(args.project)
     src = Path(args.template)
-    if args.template in ("demo", "nutrivance_sampling"):
+    demos = {"demo": "nutrivance_sampling", "nutrivance_sampling": "nutrivance_sampling",
+             "election": "election", "election-demo": "election"}
+    if args.template in demos:
         from importlib import resources
-        src = Path(str(resources.files("agora.examples").joinpath("nutrivance_sampling", SCENARIO_FILE)))
+        src = Path(str(resources.files("agora.examples").joinpath(demos[args.template], SCENARIO_FILE)))
     if src.is_dir():
         src = src / SCENARIO_FILE
     if dst.exists() and any(dst.iterdir()):
@@ -123,6 +126,14 @@ def cmd_status(args) -> int:
     print("  opinion by segment (start -> now):")
     for seg, d in s["segments"].items():
         print(f"    {seg:<26} {d['agents']:>5} agents  {d['stance_start']:+.2f} -> {d['stance_now']:+.2f}")
+    from .report.analysis import Analysis
+    if sc.choice and s["rounds_done"]:
+        an = Analysis(proj)
+        c = an.choice()
+        an.close()
+        print(f"  {c['question']} ({c['basis']}, weighted): " + ", ".join(
+            f"{o} {v * 100:.1f}%" for o, v in sorted(c["result"].items(), key=lambda x: -x[1]))
+            + f"; turnout {c['turnout'] * 100:.1f}%")
     for name, c in s["conversions"].items():
         print(f"  {name}: {c['total']}  " + ", ".join(f"{k} {v}" for k, v in c["by_segment"].items()))
     store.close()
@@ -164,7 +175,8 @@ def cmd_create(args) -> int:
         print(f"{proj} already has a scenario. Use --overwrite to redraft it.", file=sys.stderr)
         return 1
     opts = CreateOptions(fast=args.fast, personas=not args.no_personas, llm_agents=args.llm_agents,
-                         crowd=args.crowd, hours=args.hours, seed=args.seed, llm=_llm_override(args))
+                         crowd=args.crowd, hours=args.hours, seed=args.seed, llm=_llm_override(args),
+                         entity_agents=args.entities)
     try:
         create_project(proj, args.docs, args.prompt, opts, say=lambda m: print(m, flush=True))
     except RuntimeError as e:
@@ -270,6 +282,8 @@ def cmd_inject(args) -> int:
     from .report.interact import inject
     ev = {"type": "post" if args.account else "news", "text": args.text, "account": args.account,
           "platform": args.platform}
+    if args.shift:
+        ev["shift"] = {k.strip(): float(v) for k, _, v in (x.rpartition("=") for x in args.shift)}
     r = inject(Path(args.project), ev, args.round)
     print(f"Added at round {r['round'] + 1}. Run `agora run {args.project}` to continue.")
     return 0
@@ -293,6 +307,61 @@ def cmd_compare(args) -> int:
                                      if n in x["actions"] else "-").ljust(w) for x in cols))
     print("opinion at end".ljust(28) + "".join(f"{x['opinion_end']:+.2f}".ljust(w) for x in cols))
     print("in favour at end".ljust(28) + "".join(f"{x['for_end'] * 100:.1f}%".ljust(w) for x in cols))
+    return 0
+
+
+def cmd_data(args) -> int:
+    from .calibrate.project import save_data
+    text = Path(args.file).read_text(encoding="utf-8-sig")
+    print(json.dumps(save_data(Path(args.project), args.kind, text), indent=1))
+    return 0
+
+
+def cmd_calibrate(args) -> int:
+    from .calibrate.project import apply_calibration, calibrate_project
+    proj = Path(args.project)
+    res = calibrate_project(proj, say=lambda m: print(m, flush=True))
+    print("\nChanges:")
+    for c in res["changes"]:
+        print(f"  {c['what']}: {c['from']} -> {c['to']}")
+    for k, v in (res["fit"].get("score") or {}).items():
+        print(f"  fit {k}: average error {v['mae']}" + (f" ({v['mape'] * 100:.1f}%)" if v.get("mape") is not None else ""))
+    if args.apply:
+        apply_calibration(proj)
+        print("Applied to scenario.yaml (previous version saved).")
+    else:
+        print(f"Review, then: agora calibrate {proj} --apply")
+    return 0
+
+
+def cmd_backtest(args) -> int:
+    from .calibrate.project import backtest_project
+    r = backtest_project(Path(args.project), args.cutoff, say=lambda m: print(m, flush=True))
+    print(f"\nCalibrated on days up to {r['cutoff_day']:g}; predicted {r['test_points']} later points.")
+    for k in r["simulation"]["score"]:
+        sim = r["simulation"]["score"][k]["mae"]
+        base = r["baseline"]["score"].get(k, {}).get("mae")
+        print(f"  {k}: simulation error {sim}" + (f", statistical baseline {base} -> better: {r['better'].get(k)}"
+                                                  if base is not None else ""))
+    return 0
+
+
+def cmd_forecast(args) -> int:
+    from .calibrate.project import forecast_project
+    f = forecast_project(Path(args.project), runs=args.runs, with_sensitivity=not args.no_sensitivity,
+                         say=lambda m: print(m, flush=True))
+    mc = f["monte_carlo"]
+    print("\nLikely range (10th-50th-90th percentile):")
+    for k, v in mc["summary"].items():
+        print(f"  {k}: {v['p10']} / {v['p50']} / {v['p90']}")
+    for o, pwin in mc["win_probability"].items():
+        print(f"  chance {o} wins: {pwin * 100:.0f}%")
+    for n, t in mc["targets"].items():
+        print(f"  chance {n} reaches {t['goal']}: {t['probability'] * 100:.0f}%")
+    if f.get("sensitivity"):
+        print(f"\nWhat matters most for {f['sensitivity']['outcome']}:")
+        for r in f["sensitivity"]["levers"][:6]:
+            print(f"  {r['lever']}: {r['low']} .. {r['high']}")
     return 0
 
 
@@ -337,6 +406,8 @@ def main(argv=None) -> int:
     p.add_argument("--llm-agents", type=int, help="LLM voices (default: fits --hours on this machine)")
     p.add_argument("--crowd", type=int, help="crowd agents (default: up to 3000)")
     p.add_argument("--hours", type=float, default=12, help="run-time budget used to size the population")
+    p.add_argument("--entities", type=int, default=20,
+                   help="named agents made from people/organisations in the documents (0 = none)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--overwrite", action="store_true")
     llm_flags(p)
@@ -360,6 +431,28 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="resume even if scenario.yaml changed")
     llm_flags(p)
     p.set_defaults(f=cmd_run)
+
+    p = sub.add_parser("data", help="add real data: observations (what happened) or reviews")
+    p.add_argument("project")
+    p.add_argument("kind", choices=["observations", "reviews"])
+    p.add_argument("file")
+    p.set_defaults(f=cmd_data)
+
+    p = sub.add_parser("calibrate", help="fit the setup's assumptions to your real data")
+    p.add_argument("project")
+    p.add_argument("--apply", action="store_true", help="write the fitted numbers into scenario.yaml")
+    p.set_defaults(f=cmd_calibrate)
+
+    p = sub.add_parser("backtest", help="calibrate on early data, predict later data, compare with a baseline")
+    p.add_argument("project")
+    p.add_argument("--cutoff", type=float, help="last day used for fitting")
+    p.set_defaults(f=cmd_backtest)
+
+    p = sub.add_parser("forecast", help="Monte Carlo ranges, win/target probabilities, sensitivity")
+    p.add_argument("project")
+    p.add_argument("--runs", type=int, default=30)
+    p.add_argument("--no-sensitivity", action="store_true")
+    p.set_defaults(f=cmd_forecast)
 
     p = sub.add_parser("report", help="write the prediction report (report/report.html)")
     p.add_argument("project")
@@ -393,6 +486,7 @@ def main(argv=None) -> int:
     p.add_argument("--account")
     p.add_argument("--platform")
     p.add_argument("--round", type=int, help="0-based round (default: next)")
+    p.add_argument("--shift", nargs="+", help='news effect, e.g. "Daniel Okafor=-0.15" or stance=-0.1')
     p.set_defaults(f=cmd_inject)
 
     p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")

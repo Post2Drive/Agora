@@ -27,7 +27,7 @@ LLM swarms lack.
 - [x] `agora web`: a local website covering upload and prompt, build progress, graph, setup review and editor, simulation control with live feeds and charts, and a results view
 - [x] Local-only safety: binds to localhost, checks the host header, requires a custom header on every change, never touches paths outside the workspace
 
-## Phase 3: Report and interaction (this release)
+## Phase 3: Report and interaction (done)
 - [x] Analysis layer that computes every number deterministically: opinion shifts, for/against shares, actions as a share of the people actually eligible, decisions with each voter's reason, influencers, most-engaged posts, recurring phrases, busiest groups, cost per outcome
 - [x] Report agent that writes section by section from those numbers and from real posts found by search. Invented numbers and citations are removed. Outputs a printable HTML report and Markdown
 - [x] Ask questions about the results (answers cite real posts)
@@ -37,11 +37,21 @@ LLM swarms lack.
 - [x] Fork a study to try a variation, then compare studies side by side
 - [x] Website: Report and Interact steps, an "add an event" box, Fork, a Compare page. Command line: `report`, `ask`, `chat`, `interview`, `inject`, `fork`, `compare`
 
-## Phase 4: Analytics
-- Seed opinions from real data (reviews, comments, surveys, sales)
-- Fit opinion-dynamics and conversion parameters to observed results
-- Backtests: hide recent data, predict it, and score the error
-- Monte Carlo ensembles: ranges and probabilities, plus sensitivity to each assumption
+## Phase 3b: Parity with MiroFish, plus more (this release)
+- [x] Agents talk to each other: an inbox (replies, @mentions and private messages come first), replies that show the message they answer, quote, mute, unfollow, search, trending terms
+- [x] Time settings: minutes per round, peak and off-peak multipliers, active hours per group or account
+- [x] Feed ranking per app: recency, popularity, relevance, echo chamber, viral threshold
+- [x] Named agents from graph entities, with profiles (bio, persona, stance, influence, activity, hours, age, gender, profession, MBTI, interests)
+- [x] World memory (searchable record of what happened) and reflection (agents summarise their own older memories)
+- [x] Report agent that plans an outline and uses tools (search posts, search the graph and memory, insight, stats, interview) under the guard against invented numbers
+- [x] Elections and other choices between named options: a preference per option, turnout with voting habit, vote intention over time, results weighted to the real electorate, news shocks
+
+## Phase 4: Analytics (this release)
+- [x] Real data in: observations (counts, poll shares, turnout, opinion; long or wide; day or date) and reviews or ratings (set starting opinions)
+- [x] Calibration: action likelihoods, group leanings, turnout and persuasion fitted with fast runs; known decisions fixed; changes and fit error shown; apply keeps a backup
+- [x] Backtest against a statistical baseline (Bass diffusion curve)
+- [x] Monte Carlo ranges (10/50/90%), win and target probabilities, uncertainty bands, sensitivity ("what moves the result most")
+- [x] In the report, the website (Calibrate step) and the command line (`data`, `calibrate`, `backtest`, `forecast`)
 
 ## Phase 5: Product
 - Web UI polish: PDF export button, guided tour, saved interview sets

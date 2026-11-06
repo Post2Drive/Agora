@@ -59,11 +59,19 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
 
     # 1. named accounts first so they get low, stable ids
     for acc in sc.accounts:
+        persona = acc.persona
+        pr = acc.profile or {}
+        extra = [f"{k}: {pr[k]}" for k in ("age", "gender", "profession", "country", "mbti") if pr.get(k)]
+        if pr.get("interests"):
+            extra.append("interests: " + ", ".join(map(str, pr["interests"]))[:150])
+        if extra:
+            persona = f"{persona} ({'; '.join(extra)})"
         new_agent(handle=acc.id, kind="account", name=acc.name, segment=acc.segment,
-                  persona=acc.persona, platforms=list(acc.platforms),
+                  persona=persona, platforms=list(acc.platforms),
                   initial_stance=float(acc.stance), stubbornness=acc.stubbornness,
                   activity=acc.activity, influence=acc.influence, openness=0.3,
-                  attrs={"llm": acc.llm, "spaces": acc.spaces})
+                  attrs={"llm": acc.llm, "spaces": acc.spaces, "active_hours": acc.active_hours,
+                         "profile": acc.profile})
 
     # 2. LLM voices and crowd agents per segment
     llm_counts = _alloc(sc.llm_agents, [s.llm_share if s.llm_share is not None else s.share
@@ -103,9 +111,29 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                     bits = [f"{name}, {age}"] + ([occ] if occ else [])
                     persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
                 infl *= 1.5      # voices that write are a bit more visible
+            if seg.active_hours:
+                attrs["active_hours"] = list(seg.active_hours)
             new_agent(handle=handle, kind=kind, name=name, segment=seg.name, persona=persona,
                       platforms=list(seg.platforms), initial_stance=s0, stubbornness=stub,
                       activity=act, influence=infl, openness=seg.openness, attrs=attrs)
+
+    # 2b. choice mode: each person's preference for every option
+    if sc.choice:
+        opts = sc.choice.options
+        seg_by = {g.name: g for g in sc.segments}
+        acc_by = {a.id: a for a in sc.accounts}
+        for a in w.agents:
+            if a.kind == "account":
+                base = acc_by[a.handle].leaning
+                prefs = {o: float(base.get(o, 0.0)) for o in opts}
+            else:
+                base = seg_by[a.segment].leaning
+                sd = seg_by[a.segment].stance_sd
+                prefs = {o: float(np.clip(rng.normal(base.get(o, 0.0), sd), -1, 1)) for o in opts}
+            a.prefs = {o: round(v, 4) for o, v in prefs.items()}
+            a.attrs["prefs0"] = dict(a.prefs)
+            fav, val = a.favourite()
+            a.stance = a.initial_stance = round(val, 4)
 
     # 3. group / community memberships
     memberships: list[tuple[int, str, str]] = []

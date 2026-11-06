@@ -24,7 +24,12 @@ def to_markdown(r: dict) -> str:
              f"_Agora simulation report · {r['generated']} · model {r['model']}_", ""]
     for s in r["sections"]:
         lines += [f"## {s['title']}", "", s["text"], ""]
-        if s["key"] == "summary":
+        if s["key"] == "summary" and a.get("choice"):
+            c = a["choice"]
+            lines += ["| Option | Share | ", "|---|---:|"] + [f"| {o} | {pct(v)} |" for o, v in
+                                                          sorted(c["result"].items(), key=lambda x: -x[1])]
+            lines += [f"\nTurnout {pct(c['turnout'])}; based on {c['basis']}, weighted to the electorate.", ""]
+        if s["key"] == "summary" and a["funnel"]:
             lines += ["| Action | People | Eligible | Rate |", "|---|---:|---:|---:|"]
             lines += [f"| {f['label']} | {f['count']} | {f['eligible']} | {pct(f['rate'])} |" for f in a["funnel"]]
             lines.append("")
@@ -127,9 +132,16 @@ a.cite{color:var(--accent);text-decoration:none;font-family:system-ui,sans-serif
 def to_html(r: dict) -> str:
     a = r["analysis"]
     o, op = a["overview"], a["opinion"]
-    kpis = "".join(f'<div class="kpi"><b>{f["count"]:,}</b><span>{_e(f["label"])} · {pct(f["rate"])} of eligible</span></div>'
-                   for f in a["funnel"])
-    kpis += f'<div class="kpi"><b>{op["start"].get("mean", 0):+.2f} → {op["end"].get("mean", 0):+.2f}</b><span>average opinion (−1 to +1)</span></div>'
+    c = a.get("choice") or {}
+    kpis = ""
+    if c:
+        for opt, v in sorted(c["result"].items(), key=lambda x: -x[1]):
+            kpis += f'<div class="kpi"><b>{pct(v)}</b><span>{_e(opt)}{" · leads" if opt == c["leader"] else ""}</span></div>'
+        kpis += f'<div class="kpi"><b>{pct(c["turnout"])}</b><span>turnout ({c["votes_cast"]:,} votes)</span></div>'
+    kpis += "".join(f'<div class="kpi"><b>{f["count"]:,}</b><span>{_e(f["label"])} · {pct(f["rate"])} of eligible</span></div>'
+                    for f in a["funnel"])
+    if not c:
+        kpis += f'<div class="kpi"><b>{op["start"].get("mean", 0):+.2f} → {op["end"].get("mean", 0):+.2f}</b><span>average opinion (−1 to +1)</span></div>'
     if a["economics"]:
         e = a["economics"]
         kpis += f'<div class="kpi"><b>{money(e["net"], e["currency"])}</b><span>net value (cost {money(e["total_cost"], e["currency"])})</span></div>'
@@ -137,35 +149,101 @@ def to_html(r: dict) -> str:
     trend = [(nice(g), SEG_COLORS[i % len(SEG_COLORS)], [(rd + 1, v) for rd, gg, v in op["trend"] if gg == g])
              for i, g in enumerate(segs)]
     body = []
-    for s in r["sections"]:
-        body.append(f'<h2 id="{s["key"]}">{_e(s["title"])}</h2>')
-        body += [f"<p>{_cite_html(p)}</p>" for p in s["text"].split("\n") if p.strip()]
-        if s["key"] == "summary":
-            body.append(f'<div class="kpis">{kpis}</div><div class="chart"><h3>Real-world actions</h3>{_funnel_bars(a["funnel"])}</div>')
-        elif s["key"] == "opinion":
-            body.append(f'<div class="chart"><h3>Opinion by group over time <span class="small muted">(round)</span></h3>'
-                        f'{_line_chart(trend, -1, 1, max(1, o["rounds_done"]))}</div>')
-            body.append(f'<div class="chart"><h3>For, undecided, against</h3>{_dist_bars(op["start"], op["end"])}</div>')
-            body.append("<table><thead><tr><th>Group</th><th>People</th><th>Start</th><th>End</th><th>Change</th></tr></thead><tbody>"
-                        + "".join(f'<tr><td>{_e(nice(g))}</td><td class="n">{d["agents"]:,}</td><td class="n">{d.get("start", 0):+.2f}</td>'
-                                  f'<td class="n">{d["end"]:+.2f}</td><td class="n">{d["change"]:+.2f}</td></tr>'
-                                  for g, d in op["segments"].items()) + "</tbody></table>")
-        elif s["key"] == "drivers" and a["influencers"]:
-            body.append("<table><thead><tr><th>Voice</th><th>Group</th><th>Posts</th><th>Reactions</th><th>Shared</th><th>Opinion</th></tr></thead><tbody>"
+    keys = {s["key"] for s in r["sections"]}
+    opinion_html = (f'<div class="chart"><h3>Opinion by group over time <span class="small muted">(round)</span></h3>'
+                    f'{_line_chart(trend, -1, 1, max(1, o["rounds_done"]))}</div>'
+                    f'<div class="chart"><h3>For, undecided, against</h3>{_dist_bars(op["start"], op["end"])}</div>'
+                    "<table><thead><tr><th>Group</th><th>People</th><th>Start</th><th>End</th><th>Change</th></tr></thead><tbody>"
+                    + "".join(f'<tr><td>{_e(nice(g))}</td><td class="n">{d["agents"]:,}</td><td class="n">{d.get("start", 0):+.2f}</td>'
+                              f'<td class="n">{d["end"]:+.2f}</td><td class="n">{d["change"]:+.2f}</td></tr>'
+                              for g, d in op["segments"].items()) + "</tbody></table>")
+    choice_html = ""
+    if c:
+        cols = [SEG_COLORS[i % len(SEG_COLORS)] for i in range(len(c["options"]))]
+        series = [(o, cols[i], [(t["round"] + 1, t["weighted"][o]) for t in c["trend"]]) for i, o in enumerate(c["options"])]
+        bars = "".join(f'<div class="fn"><div class="fnh"><b>{_e(o)}</b><span class="spacer"></span><b>{pct(c["result"][o])}</b></div>'
+                       f'<div class="bar"><i style="width:{c["result"][o] * 100:.1f}%;background:{cols[i]}"></i></div></div>'
+                       for i, o in enumerate(sorted(c["options"], key=lambda o: -c["result"][o])))
+        seg_rows = "".join(f'<tr><td>{_e(nice(g))}</td><td class="n">{pct(d["weight"])}</td><td class="n">{pct(d["turnout"])}</td>'
+                           + "".join(f'<td class="n">{pct(d["shares"][o])}</td>' for o in c["options"]) + "</tr>"
+                           for g, d in c["by_segment"].items())
+        choice_html = (f'<div class="chart"><h3>{_e(c["question"])} <span class="small muted">({_e(c["basis"])}, weighted to the electorate)</span></h3>{bars}</div>'
+                       f'<div class="chart"><h3>Vote intention over time <span class="small muted">(decided voters, weighted)</span></h3>'
+                       f'{_line_chart(series, 0, 1, max(1, o["rounds_done"]))}</div>'
+                       '<table><thead><tr><th>Group</th><th>Weight</th><th>Turnout</th>'
+                       + "".join(f"<th>{_e(x)}</th>" for x in c["options"]) + f"</tr></thead><tbody>{seg_rows}</tbody></table>")
+    range_html = ""
+    f = a.get("forecast") or {}
+    if f:
+        mc = f["monte_carlo"]
+        rows = "".join(f'<tr><td>{_e(k.split(":", 1)[-1].replace("_", " "))}</td>'
+                       + "".join(f'<td class="n">{(pct(v[q]) if (k.startswith("share:") or k in ("turnout", "in_favour")) else f"{v[q]:,.0f}" if k.startswith("action:") else f"{v[q]:+.2f}")}</td>' for q in ("p10", "p50", "p90"))
+                       + "</tr>" for k, v in mc["summary"].items())
+        range_html = (f'<table><thead><tr><th>Outcome</th><th>Low (10%)</th><th>Middle</th><th>High (90%)</th></tr></thead><tbody>{rows}</tbody></table>'
+                      f'<p class="small muted">{mc["runs"]} runs with varied assumptions{" after calibration" if f.get("calibrated") else ""}.</p>')
+        if mc.get("win_probability"):
+            range_html += '<div class="chart"><h3>Chance of winning</h3>' + "".join(
+                f'<div class="fn"><div class="fnh"><b>{_e(o)}</b><span class="spacer"></span><b>{pct(w)}</b></div>'
+                f'<div class="bar"><i style="width:{w * 100:.1f}%"></i></div></div>'
+                for o, w in sorted(mc["win_probability"].items(), key=lambda x: -x[1])) + "</div>"
+        sens = f.get("sensitivity")
+        if sens and sens["levers"]:
+            top = sens["levers"][:8]
+            mx = max(r["swing"] for r in top) or 1
+            range_html += (f'<div class="chart"><h3>What moves {_e(sens["outcome"].split(":", 1)[-1])} most</h3>' + "".join(
+                f'<div class="fn"><div class="fnh"><span>{_e(r["lever"])}</span><span class="spacer"></span>'
+                f'<span class="small muted">{r["low"]:.3g} → {r["high"]:.3g}</span></div>'
+                f'<div class="bar"><i style="width:{r["swing"] / mx * 100:.1f}%"></i></div></div>' for r in top) + "</div>")
+    drivers_html = ""
+    if a["influencers"]:
+        drivers_html = ("<table><thead><tr><th>Voice</th><th>Group</th><th>Posts</th><th>Reactions</th><th>Shared</th><th>Opinion</th></tr></thead><tbody>"
                         + "".join(f'<tr><td>{_e(i["name"])} <span class="muted small">@{_e(i["handle"])}</span></td><td>{_e(nice(i["segment"]))}</td>'
                                   f'<td class="n">{i["posts"]}</td><td class="n">{i["engagement"]:,}</td><td class="n">{i["shared"]}</td>'
                                   f'<td class="n">{i["stance"]:+.2f}</td></tr>' for i in a["influencers"][:8]) + "</tbody></table>")
-            plats = o["posts_by_platform"]
-            if plats:
-                body.append("<p class='small muted'>Posts per app: " + ", ".join(
-                    f"{_e(label(p))} {n}" for p, n in sorted(plats.items(), key=lambda x: -x[1])) + "</p>")
+        plats = o["posts_by_platform"]
+        if plats:
+            drivers_html += "<p class='small muted'>Posts per app: " + ", ".join(
+                f"{_e(label(p))} {n}" for p, n in sorted(plats.items(), key=lambda x: -x[1])) + "</p>"
+    decisions_html = ""
+    for d in a["decisions"]:
+        decisions_html += (f'<h3>{_e(nice(d["name"]))} <span class="pill {"ok" if d["passed"] else "bad"}">'
+                           f'{"approved" if d["passed"] else "rejected"} {d["yes"]}–{d["no"]}</span></h3>')
+        decisions_html += ("<table><tbody>" + "".join(
+            f'<tr><td>{_e(v["name"])}</td><td>{v["vote"]}</td><td class="small">{_e(v["reason"])}</td></tr>'
+            for v in d["votes"][:12]) + "</tbody></table>")
+    for i, s in enumerate(r["sections"]):
+        body.append(f'<h2 id="{_e(s["key"])}-{i}">{_e(s["title"])}</h2>')
+        body += [f"<p>{_cite_html(p)}</p>" for p in s["text"].split("\n") if p.strip()]
+        if i == 0:
+            body.append(f'<div class="kpis">{kpis}</div>')
+            if c:
+                body.append(choice_html)
+            if a["funnel"]:
+                body.append(f'<div class="chart"><h3>Real-world actions</h3>{_funnel_bars(a["funnel"])}</div>')
+            if "opinion" not in keys and not c:
+                body.append(opinion_html)
+        elif s["key"] == "opinion":
+            body.append(opinion_html)
+        elif s["key"] == "choice" and c and i != 0:
+            pass
+        elif s["key"] == "drivers":
+            body.append(drivers_html)
+        elif s["key"] == "range":
+            body.append(range_html)
         elif s["key"] == "decisions":
-            for d in a["decisions"]:
-                body.append(f'<h3>{_e(nice(d["name"]))} <span class="pill {"ok" if d["passed"] else "bad"}">'
-                            f'{"approved" if d["passed"] else "rejected"} {d["yes"]}–{d["no"]}</span></h3>')
-                body.append("<table><tbody>" + "".join(
-                    f'<tr><td>{_e(v["name"])}</td><td>{v["vote"]}</td><td class="small">{_e(v["reason"])}</td></tr>'
-                    for v in d["votes"][:12]) + "</tbody></table>")
+            body.append(decisions_html)
+    if "decisions" not in keys and decisions_html:
+        body.append(f'<h2 id="decision-detail">Decision details</h2>{decisions_html}')
+    if "range" not in keys and range_html:
+        body.append(f'<h2 id="range-detail">Range of outcomes</h2>{range_html}')
+    if "drivers" not in keys and drivers_html:
+        body.append(f'<h2 id="voices-detail">Most influential voices</h2>{drivers_html}')
+    research = r.get("research") or []
+    if research:
+        body.append('<h2 id="research">How this report was researched</h2><ol class="quotes">' + "".join(
+            f'<li><b>{_e(e["section"])}</b>: {_e(e["tool"])} '
+            f'<span class="muted">{_e(e["input"].get("query") or e["input"].get("name") or e["input"].get("question") or "")}</span></li>'
+            for e in research) + "</ol>")
     quotes = "".join(f'<li id="q{pid}">{_e(q)}</li>' for pid, q in r["quotes"].items() if q)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Agora report</title><style>{CSS}</style></head>

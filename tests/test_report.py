@@ -138,3 +138,41 @@ def test_fork_and_compare(ran, tmp_path):
     c = interact.compare([ran, new])
     assert c["columns"][0]["run"] and not c["columns"][1]["run"]
     assert "register_lakeview" in c["actions"]
+
+
+class Researcher(LLMBackend):
+    """Plans a custom outline, uses tools, then writes (with one invented number)."""
+    name = "researcher"
+
+    def __init__(self):
+        super().__init__(LLMConfig(backend="mock"))
+        self.steps = {}
+
+    def _complete(self, messages, *, max_tokens, temperature, json_mode, seed, meta):
+        p = messages[-1]["content"]
+        if "Plan a prediction report" in p:
+            return json.dumps({"sections": [
+                {"key": "summary", "title": "Bottom line", "goal": "answer"},
+                {"key": "custom", "title": "Why seniors hesitate", "goal": "explain senior doubts"},
+                {"key": "voices", "title": "What people said", "goal": "quotes"}]})
+        if "Split this research question" in p:
+            return json.dumps({"queries": ["seniors doubt", "seniors trust doctor"]})
+        if "Tool " in p and "result" in p:
+            return json.dumps({"write": "Seniors held back [p0]. A full 63.7% of them distrusted it."})
+        title = p.split("\n", 1)[0]
+        n = self.steps.get(title, 0)
+        self.steps[title] = n + 1
+        return json.dumps({"tool": ["insight", "stats"][n % 2], "query": "why seniors hesitate", "name": "opinion"})
+
+
+def test_report_agent_plans_and_uses_tools(ran):
+    r = write_report(ran, Researcher())
+    titles = [s["title"] for s in r["sections"]]
+    assert titles[0] == "Bottom line" and "Why seniors hesitate" in titles
+    assert titles[-1] == "How far to trust this"           # always added
+    tools = {e["tool"] for e in r["research"]}
+    assert {"insight"} <= tools
+    for s in r["sections"]:
+        assert "63.7" not in s["text"]
+    html = (ran / "report" / "report.html").read_text()
+    assert "How this report was researched" in html and "Opinion by group" in html

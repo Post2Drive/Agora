@@ -234,6 +234,81 @@ class Analysis:
                 "total_value": round(total_value, 2), "net": round(total_value - total_cost, 2),
                 "cost_per": per}
 
+    def choice(self) -> dict:
+        """Election / multi-option results: intentions over time, votes, turnout, weighting."""
+        ch = self.sc.choice
+        if not ch:
+            return {}
+        q = self.q
+        opts = list(ch.options)
+        seg_size = dict(q("SELECT segment, COUNT(*) FROM agents WHERE kind != 'account' GROUP BY segment"))
+        weights = {g: float(ch.weights.get(g, 0)) for g in seg_size} if ch.weights else {}
+        if not weights or sum(weights.values()) <= 0:
+            weights = {g: n for g, n in seg_size.items()}
+        tot_w = sum(weights.values())
+        weights = {g: w / tot_w for g, w in weights.items()}
+
+        def weighted(by_seg: dict[str, dict[str, float]]) -> dict[str, float]:
+            out = {o: 0.0 for o in opts}
+            for g, shares in by_seg.items():
+                for o in opts:
+                    out[o] += weights.get(g, 0.0) * shares.get(o, 0.0)
+            z = sum(out.values())
+            return {o: round(v / z, 4) if z else 0.0 for o, v in out.items()}
+
+        # intentions over time (decided only)
+        rows = q("SELECT round, segment, option, n FROM intentions ORDER BY round")
+        per_round: dict[int, dict[str, dict[str, int]]] = {}
+        for r, g, o, n in rows:
+            per_round.setdefault(r, {}).setdefault(g, {})[o] = n
+        trend = []
+        for r in sorted(per_round):
+            segs = per_round[r]
+            shares = {g: {o: c.get(o, 0) / max(1, sum(v for k, v in c.items() if k != "undecided")) for o in opts}
+                      for g, c in segs.items()}
+            und = sum(c.get("undecided", 0) for c in segs.values()) / max(1, sum(sum(c.values()) for c in segs.values()))
+            raw_tot = {o: sum(c.get(o, 0) for c in segs.values()) for o in opts}
+            z = sum(raw_tot.values()) or 1
+            trend.append({"round": r, "raw": {o: round(v / z, 4) for o, v in raw_tot.items()},
+                          "weighted": weighted(shares), "undecided": round(und, 4)})
+        # votes
+        votes = q("SELECT a.segment, c.option, COUNT(*) FROM choices c JOIN agents a ON a.id = c.agent "
+                  "GROUP BY a.segment, c.option")
+        vs: dict[str, dict[str, int]] = {}
+        for g, o, n in votes:
+            vs.setdefault(g, {})[o] = n
+        voted = sum(sum(c.values()) for c in vs.values())
+        by_segment = {}
+        for g, size in seg_size.items():
+            c = vs.get(g, {})
+            n = sum(c.values())
+            by_segment[g] = {"turnout": round(n / size, 4) if size else 0.0, "voters": n, "size": size,
+                             "shares": {o: round(c.get(o, 0) / n, 4) if n else 0.0 for o in opts},
+                             "weight": round(weights.get(g, 0.0), 4)}
+        raw = {o: round(sum(c.get(o, 0) for c in vs.values()) / voted, 4) if voted else 0.0 for o in opts}
+        # weighting: each group's share of the real electorate x its turnout
+        tw = {g: weights.get(g, 0) * d["turnout"] for g, d in by_segment.items()}
+        z = sum(tw.values())
+        wshare = {o: 0.0 for o in opts}
+        for g, d in by_segment.items():
+            for o in opts:
+                wshare[o] += (tw[g] / z if z else 0) * d["shares"][o]
+        wshare = {o: round(v, 4) for o, v in wshare.items()}
+        status = "final" if self.q("SELECT COUNT(*) FROM rounds")[0][0] > ch.close_round or \
+            self.q("SELECT COUNT(*) FROM rounds")[0][0] >= self.sc.rounds else ("voting" if voted else "before voting")
+        result = wshare if voted else (trend[-1]["weighted"] if trend else {o: 0.0 for o in opts})
+        ranked = sorted(opts, key=lambda o: -result[o])
+        return {"name": ch.name, "question": ch.question, "options": opts, "status": status,
+                "votes_cast": voted, "electorate": sum(seg_size.values()),
+                "turnout": round(voted / max(1, sum(seg_size.values())), 4),
+                "weighted_turnout": round(sum(weights.get(g, 0) * d["turnout"] for g, d in by_segment.items()), 4),
+                "raw_share": raw, "weighted_share": wshare, "result": result,
+                "basis": "votes" if voted else "latest intentions",
+                "leader": ranked[0], "runner_up": ranked[1] if len(ranked) > 1 else "",
+                "margin": round(result[ranked[0]] - (result[ranked[1]] if len(ranked) > 1 else 0), 4),
+                "by_segment": by_segment, "weights": {g: round(w, 4) for g, w in weights.items()},
+                "trend": trend}
+
     def everything(self) -> dict:
         f = self.funnel()
         return {"scenario": {"name": self.sc.name, "question": " ".join(self.sc.question.split()), "topic": self.sc.topic,
@@ -242,7 +317,7 @@ class Analysis:
                 "overview": self.overview(), "opinion": self.opinion(), "funnel": f,
                 "decisions": self.decisions(), "influencers": self.influencers(),
                 "top_posts": self.top_posts(), "themes": self.themes(), "spread": self.spread(),
-                "economics": self.economics(f)}
+                "economics": self.economics(f), "choice": self.choice()}
 
 
 def _cond_polls(cond: dict) -> list[str]:

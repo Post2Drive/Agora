@@ -30,23 +30,13 @@ from ..store import Store
 from . import llm_agent, opinion, population
 from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
-from .world import Agent, Post, World
+from .memory import WorldMemory
+from .timing import Rhythm
+from .world import Agent, Post, World, dm_people, dm_space
 
 SCENARIO_FILE = "scenario.yaml"
 DB_FILE = "agora.db"
 CACHE_FILE = "llm_cache.db"
-
-
-def hour_factor(h: int) -> float:
-    if h < 6:
-        return 0.08
-    if h < 9:
-        return 0.7
-    if h < 17:
-        return 0.5
-    if h < 22:
-        return 1.0
-    return 0.4
 
 
 def _seed(*parts) -> int:
@@ -63,6 +53,10 @@ class RoundOutput:
         self.polls: list[tuple[str, int, int, str]] = []
         self.poll_results: list[tuple[str, int, int, bool]] = []
         self.events: list[tuple[str, dict]] = []
+        self.unfollows: list[tuple[str, int, int]] = []
+        self.choices: list[tuple[int, str]] = []
+        self.intentions: list[tuple[str, str, int]] = []
+        self.mutes: list[tuple[int, int]] = []
 
 
 class Simulation:
@@ -75,6 +69,8 @@ class Simulation:
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
         self.store = Store(self.dir / DB_FILE)
         self.world: World | None = None
+        self._rhythm = Rhythm(self.sc.time)
+        self._to_reflect: list[Agent] = []
         self.facts = None
         gpath = self.dir / "graph.db"
         if gpath.exists():
@@ -117,6 +113,7 @@ class Simulation:
                     "scenario.yaml changed since this run started. Start a fresh project "
                     "(or delete agora.db), or resume anyway with --force.")
             self.world = World.load(self.store)
+        self.memory = WorldMemory.load(self.sc, self.world, self.store)
         return self.world
 
     # ---------------------------------------------------------------- running
@@ -131,6 +128,7 @@ class Simulation:
             t_start = time.time()
             c0, h0 = self.llm.calls, getattr(self.llm, "hits", 0)
             out, active = self.step(r)
+            self.memory.add_round(w, r, out.posts, out.conversions, out.events)
             stats = {"active": active, "llm_calls": self.llm.calls - c0,
                      "cache_hits": getattr(self.llm, "hits", 0) - h0,
                      "seconds": round(time.time() - t_start, 2)}
@@ -138,7 +136,8 @@ class Simulation:
                 r, sim_time=self.now(r).isoformat(), agents=w.agents, posts=out.posts,
                 engagements=out.engagements, follows=out.follows, conversions=out.conversions,
                 thoughts=out.thoughts, polls=out.polls, poll_results=out.poll_results,
-                events=out.events, stats=stats)
+                events=out.events, stats=stats, unfollows=out.unfollows, mutes=out.mutes,
+                choices=out.choices, intentions=out.intentions)
             if progress:
                 progress({"round": r, "of": self.sc.rounds, "posts": len(out.posts),
                           "conversions": len(out.conversions), **stats})
@@ -151,6 +150,7 @@ class Simulation:
         sc, w = self.sc, self.world
         rng = np.random.default_rng([sc.seed, r, 1])
         out = RoundOutput()
+        sc._vote_open_now = self._vote_open(r)
         t0 = r * sc.round_hours
         now = self.now(r)
         self._post_clock = 0
@@ -163,6 +163,8 @@ class Simulation:
             if ev.type == "news":
                 w.news.append(ev.text)
                 out.events.append(("news", {"text": ev.text}))
+                if ev.shift:
+                    self._shock(ev.shift, rng)
             elif ev.type == "post":
                 self._event_post(ev, r, t0, out)
             elif ev.type == "poll":
@@ -172,14 +174,14 @@ class Simulation:
         self._experiences(r, now, rng, out)
 
         # 2. who is awake
-        hf = hour_factor(now.hour)
+        rhythm = self._rhythm
         draws = rng.random(len(w.agents))
         active = [a for a in w.agents
                   if not (a.kind == "account" and not a.attrs.get("llm", True))
-                  and draws[a.id] < a.activity * hf]
+                  and draws[a.id] < a.activity * rhythm.factor(now.hour, a.attrs.get("active_hours"))]
 
         # 3. feeds from the snapshot
-        index = FeedIndex(w, t0)
+        index = self._index = FeedIndex(w, t0, feeds=sc.feeds)
         feeds = {a.id: [w.posts[p] for p in index.feed(a, sc.feed_size, rng)] for a in active}
         opens = {a.id: self._open_conversions(a, r) for a in active}
 
@@ -194,13 +196,23 @@ class Simulation:
                 d = decisions.get(a.id)
                 if d is None:
                     continue
-                a.stance = float(np.clip(a.stance + (1 - a.stubbornness) * (d["stance"] - a.stance), -1, 1))
+                if sc.choice and d.get("prefs"):
+                    for o, v in d["prefs"].items():
+                        if o in a.prefs:
+                            a.prefs[o] = float(np.clip(a.prefs[o] + (1 - a.stubbornness) * (v - a.prefs[o]), -1, 1))
+                    a.stance = a.favourite()[1]
+                else:
+                    a.stance = float(np.clip(a.stance + (1 - a.stubbornness) * (d["stance"] - a.stance), -1, 1))
                 if d["thoughts"]:
                     out.thoughts.append((a.id, d["thoughts"]))
                 done = [self._apply(a, x, r, t0, opens[a.id], rng, out) for x in d["actions"]]
                 self._remember(a, feed, [x for x in done if x], d["thoughts"], now)
             else:
-                a.stance = opinion.update_stance(w, a, feed, rng)
+                if sc.choice:
+                    a.prefs = opinion.update_prefs(w, a, feed, rng, mu=sc.persuasion)
+                    a.stance = a.favourite()[1]
+                else:
+                    a.stance = opinion.update_stance(w, a, feed, rng, mu=sc.persuasion)
                 for x in opinion.crowd_engagement(w, a, feed, rng):
                     self._apply(a, x, r, t0, opens[a.id], rng, out)
                 for c in opens[a.id]:
@@ -208,7 +220,62 @@ class Simulation:
                     if rng.random() < opinion.sig(logit):
                         self._convert(a, c.name, out)
             a.last_seen = t0
+        if sc.choice:
+            self._vote(r, active, rng, out)
+            out.intentions = self._intentions()
+        self._reflect_all(r, now)
         return out, len(active)
+
+    def _shock(self, shift: dict, rng) -> None:
+        """A news shock moves everyone a little, more for the open-minded."""
+        for a in self.world.agents:
+            if a.kind == "account":
+                continue
+            k = (1 - a.stubbornness) * float(np.clip(rng.normal(1.0, 0.3), 0, 2))
+            for o, d in sorted(shift.items()):
+                if o == "stance":
+                    a.stance = float(np.clip(a.stance + k * d, -1, 1))
+                elif o in a.prefs:
+                    a.prefs[o] = float(np.clip(a.prefs[o] + k * d, -1, 1))
+            if a.prefs:
+                a.stance = a.favourite()[1]
+
+    def _vote_open(self, r: int) -> bool:
+        ch = self.sc.choice
+        return bool(ch) and ch.open_round <= r <= ch.close_round
+
+    def _vote(self, r: int, active: list[Agent], rng, out: RoundOutput) -> None:
+        ch = self.sc.choice
+        if not self._vote_open(r):
+            return
+        # voting happens offline: everyone may vote, not only people online this round
+        seg_turnout = {g.name: g.turnout for g in self.sc.segments}
+        draws = rng.random(len(self.world.agents))
+        for a in self.world.agents:
+            if a.choice or a.kind == "account" or not a.prefs:
+                continue
+            fav, u = a.favourite()
+            p = opinion.sig(ch.turnout_base + ch.turnout_weight * max(0.0, u) + seg_turnout.get(a.segment, 0.0))
+            if draws[a.id] < p:
+                self._cast(a, fav, out)
+
+    def _cast(self, a: Agent, option: str, out: RoundOutput) -> bool:
+        if a.choice or a.kind == "account" or option not in (self.sc.choice.options if self.sc.choice else []):
+            return False
+        a.choice = option
+        out.choices.append((a.id, option))
+        return True
+
+    def _intentions(self) -> list[tuple[str, str, int]]:
+        ch = self.sc.choice
+        counts: dict[tuple[str, str], int] = {}
+        for a in self.world.agents:
+            if a.kind == "account" or not a.prefs:
+                continue
+            fav, u = a.favourite()
+            key = (a.segment, fav if u >= ch.undecided_below else "undecided")
+            counts[key] = counts.get(key, 0) + 1
+        return [(g, o, n) for (g, o), n in sorted(counts.items())]
 
     def _injected(self, r: int) -> list:
         evs = []
@@ -260,7 +327,14 @@ class Simulation:
                 texts = " ".join(w.posts[p.root if p.kind in ("repost", "forward") else p.id].text
                                  for p in feeds[a.id])
                 facts = self.facts.search(f"{sc.topic} {texts} {a.persona}", k=3)
-            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts)
+            trending = {p: self._index.trends(p) for p in a.platforms if REGISTRY[p].kind == "feed"}
+            recalled = []
+            if sc.world_memory and getattr(self, "memory", None) is not None:
+                recalled = self.memory.recall(f"{sc.topic} {texts if self.facts else ''} " +
+                                              " ".join(p.text for p in feeds[a.id]), r,
+                                              {p.id for p in feeds[a.id]} | {p.root for p in feeds[a.id]})
+            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending,
+                                               recalled)
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             try:
                 raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,
@@ -304,6 +378,8 @@ class Simulation:
         yes = sum(v for _, v, _ in results)
         no = len(results) - yes
         passed = bool(results) and yes / len(results) >= ev.threshold
+        if ev.name in self.sc.fixed_polls:          # outcome already known in real life
+            passed = bool(self.sc.fixed_polls[ev.name])
         w.poll_results[ev.name] = passed
         for aid, v, why in results:
             out.polls.append((ev.name, aid, v, why))
@@ -316,12 +392,20 @@ class Simulation:
     def _new_post(self, a: Agent, r, t0, platform, space, kind, text, stance, parent=None,
                   root=None, out: RoundOutput | None = None) -> Post:
         w = self.world
+        option = ""
+        if self.sc.choice:
+            if kind in ("repost", "forward") and root is not None:
+                option, stance = w.posts[root].option, w.posts[root].stance
+            elif a.prefs:
+                # people talk about the option they feel most strongly about (for or against)
+                option = max(sorted(a.prefs), key=lambda k: abs(a.prefs[k]))
+                stance = a.prefs[option]
         self._post_clock += 1
         t = t0 + self.sc.round_hours * min(0.99, 0.01 + 0.0005 * self._post_clock)
         pid = w.next_post_id
         p = Post(id=pid, round=r, t=t, platform=platform, space=space, author=a.id,
                  parent=parent, root=pid if root is None else root, kind=kind,
-                 text=text.strip()[:1000], stance=round(float(stance), 4))
+                 text=text.strip()[:1000], stance=round(float(stance), 4), option=option)
         w.add_post(p)
         if out is not None:
             out.posts.append(p)
@@ -353,7 +437,11 @@ class Simulation:
         p = w.posts[pid]
         if p.platform not in a.platforms:
             return None
-        if p.space and p.space not in w.member_of.get(a.id, {}).get(p.platform, []):
+        if p.kind == "dm":
+            pair = dm_people(p.space)
+            if not pair or a.id not in pair:
+                return None
+        elif p.space and p.space not in w.member_of.get(a.id, {}).get(p.platform, []):
             return None
         return p
 
@@ -386,6 +474,34 @@ class Simulation:
                 self._convert(a, name, out)
                 return f"you decided to {name.replace('_', ' ')}"
             return None
+        if kind in ("dm", "message", "private message", "pm"):
+            return self._dm(a, x, r, t0, out)
+        if kind in ("vote", "choose"):
+            if self._vote_open(r) and self._cast(a, str(x.get("option", "")).strip(), out):
+                return f"you voted for {a.choice}"
+            return None
+        if kind == "search":
+            return self._search(a, str(x.get("query", "")))
+        if kind in ("mute", "block", "unfollow"):
+            ref = str(x.get("target", ""))
+            if ref.startswith("@"):
+                dst = w.by_handle.get(ref[1:])
+            else:
+                p = self._target(a, ref)
+                dst = w.agents[p.author] if p else None
+            if dst is None or dst.id == a.id:
+                return None
+            if kind == "unfollow":
+                plat = resolve(x.get("platform") or "") or next(
+                    (q for q in a.platforms if dst.id in w.following[q].get(a.id, ())), None)
+                if plat and w.remove_follow(plat, a.id, dst.id):
+                    out.unfollows.append((plat, a.id, dst.id))
+                    return f"you unfollowed @{dst.handle}"
+                return None
+            if w.mute(a.id, dst.id):
+                out.mutes.append((a.id, dst.id))
+                return f"you muted @{dst.handle}"
+            return None
         if kind in ("follow", "subscribe", "connect", "add friend"):
             ref = str(x.get("target", ""))
             plat = resolve(x.get("platform") or x.get("where") or "")
@@ -410,6 +526,15 @@ class Simulation:
         if p is None or p.author == a.id:
             return None
         pkind = REGISTRY[p.platform].kind
+        if kind in ("quote", "quote post", "quote tweet"):
+            if not text or pkind != "feed" or "quote" not in REGISTRY[p.platform].actions:
+                return None
+            self._new_post(a, r, t0, p.platform, "", "quote", text[:REGISTRY[p.platform].max_len],
+                           a.stance, parent=p.id, out=out)
+            return f"you quoted {w.agents[p.author].name}: \"{text[:120]}\""
+        if p.kind == "dm" and kind in ("reply", "comment", "answer"):
+            return self._dm(a, {"to": f"@{w.agents[p.author].handle}", "text": text,
+                                "platform": p.platform}, r, t0, out)
         if kind in ("reply", "comment", "answer"):
             if not text:
                 return None
@@ -452,6 +577,48 @@ class Simulation:
                                parent=p.id, root=src_id, out=out)
                 return f"you forwarded a message to {to}"
         return None
+
+    def _dm(self, a: Agent, x: dict, r, t0, out: RoundOutput) -> str | None:
+        w = self.world
+        to = str(x.get("to") or x.get("target") or "").strip()
+        dst = w.by_handle.get(to.lstrip("@")) if to.startswith("@") or to in w.by_handle else None
+        if dst is None and to:
+            p = self._target(a, to)
+            dst = w.agents[p.author] if p else None
+        text = str(x.get("text") or "").strip()
+        if dst is None or dst.id == a.id or not text:
+            return None
+        want = resolve(x.get("platform") or "")
+        shared = [q for q in a.platforms if q in dst.platforms and REGISTRY[q].dms]
+        plat = want if want in shared else (shared[0] if shared else None)
+        if plat is None:
+            return None
+        self._new_post(a, r, t0, plat, dm_space(a.id, dst.id), "dm", text[:REGISTRY[plat].max_len],
+                       a.stance, out=out)
+        return f"you messaged {dst.name} privately on {REGISTRY[plat].label}: \"{text[:100]}\""
+
+    def _search(self, a: Agent, query: str) -> str | None:
+        """Look something up: the best matching recent posts go straight into memory."""
+        from ..graph.retrieve import tokens
+        q = set(tokens(query))
+        if not q:
+            return None
+        w = self.world
+        scored = []
+        for p in w.posts[-2000:]:
+            if p.kind not in ("post", "reply", "quote") or not p.text or p.kind == "dm":
+                continue
+            if p.space and p.space not in w.member_of.get(a.id, {}).get(p.platform, []):
+                continue
+            hit = len(q & set(tokens(p.text)))
+            if hit:
+                scored.append((hit, p.t, p.id))
+        scored.sort(reverse=True)
+        found = [w.posts[pid] for _, _, pid in scored[:3]]
+        if not found:
+            return f"you searched for \"{query[:60]}\" and found nothing"
+        res = "; ".join(f"{w.agents[p.author].name}: \"{p.text[:80]}\"" for p in found)
+        return f"you searched for \"{query[:60]}\" and found: {res}"
 
     def _convert(self, a: Agent, name: str, out: RoundOutput) -> None:
         if name not in a.converted:
@@ -499,7 +666,40 @@ class Simulation:
             a.memory.append(f"{stamp}: you thought: {thoughts[:120]}")
         keep = self.sc.memory_size * 2
         if len(a.memory) > keep:
-            del a.memory[: len(a.memory) - keep]
+            if self.sc.reflection:
+                self._to_reflect.append(a)       # summarised after this round's decisions
+            else:
+                del a.memory[: len(a.memory) - keep]
+
+    def _reflect_all(self, r: int, now) -> None:
+        """Compress older memories into a short 'looking back' note, in the agent's own words."""
+        todo = list({a.id: a for a in self._to_reflect}.values())
+        self._to_reflect = []
+        if not todo:
+            return
+        keep = self.sc.memory_size
+
+        def one(a: Agent):
+            old = a.memory[: len(a.memory) - keep]
+            prev = old[0] if old and old[0].startswith("Looking back:") else ""
+            items = [m for m in old if not m.startswith("Looking back:")]
+            msgs = [{"role": "system", "content": f"You are {a.name}. {a.persona}"},
+                    {"role": "user", "content": (f"{prev}\nThese are things you did and saw recently:\n"
+                     + "\n".join(f"- {m}" for m in items)
+                     + f"\n\nIn 2-3 sentences, in the first person, sum up what matters to you about "
+                       f"{self.sc.topic}: who you trust, what you decided, what you still doubt.")}]
+            default = (prev.replace("Looking back:", "").strip() + " " + " ".join(i.split(": ", 1)[-1] for i in items[-3:]))[:400]
+            try:
+                txt = self.llm.generate(msgs, max_tokens=160, temperature=0.4, seed=_seed(self.sc.seed, r, a.id, "reflect"),
+                                        meta={"default_text": default}).strip()
+            except LLMError:
+                txt = default
+            return a, "Looking back: " + " ".join(txt.split())[:500]
+
+        with ThreadPoolExecutor(max_workers=max(1, self.llm_cfg.parallel)) as ex:
+            results = list(ex.map(one, sorted(todo, key=lambda x: x.id)))
+        for a, note in results:
+            a.memory = [note] + a.memory[len(a.memory) - keep:]
 
     def close(self) -> None:
         self.store.close()

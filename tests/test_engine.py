@@ -17,7 +17,7 @@ def dump(project):
     return out
 
 
-def run(project, rounds=None):
+def run(project, rounds=None):  # noqa: D103
     sim = Simulation(project)
     sim.prepare()
     sim.run(rounds=rounds)
@@ -108,3 +108,20 @@ def test_rejected_poll_blocks_announcement(tmp_path):
     assert all(r[4] == 0 for r in d["poll_results"])
     assert not d["conversions"]          # registration never opened
     assert any(r[1] == "skipped" for r in d["event_log"])
+
+
+def test_same_result_across_processes(tmp_path):
+    """Hash randomisation must not change results (resume happens in a new process)."""
+    import os
+    import subprocess
+    import sys
+    outs = []
+    for i, seed in enumerate(("1", "2")):
+        p = make_project(tmp_path, f"proc{i}", rounds=40)
+        root = str(__import__("pathlib").Path(__file__).resolve().parents[1])
+        env = {**os.environ, "PYTHONHASHSEED": seed,
+               "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", "")}
+        subprocess.run([sys.executable, "-m", "agora", "run", str(p), "--mock"], check=True, env=env,
+                       capture_output=True, cwd=str(tmp_path))
+        outs.append(dump(p))
+    assert outs[0] == outs[1]

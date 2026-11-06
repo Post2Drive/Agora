@@ -40,7 +40,7 @@ class FactIndex:
         scored = []
         for i, d in enumerate(self.docs):
             s = 0.0
-            for t in q:
+            for t in sorted(q):
                 f = d.get(t)
                 if f:
                     s += self.idf[t] * f * (self.k1 + 1) / (

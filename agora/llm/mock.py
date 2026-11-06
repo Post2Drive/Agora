@@ -49,6 +49,15 @@ class MockBackend(LLMBackend):
 
         acts: list[dict] = []
         allowed = set(m.get("actions", []))
+        for f in feed:
+            if f.get("to_me") and rng.random() < 0.7:     # people answer when addressed
+                if f.get("dm"):
+                    acts.append({"type": "dm", "to": f.get("author", ""), "text": self._say(stance, topic, rng)})
+                else:
+                    acts.append({"type": "reply", "target": f["id"],
+                                 "text": f"{f.get('author', '')} " + self._say(stance, topic, rng)})
+                if len(acts) >= 2:
+                    break
         for f in feed[:6]:
             agree = 1 - abs(f.get("stance", 0.0) - stance) / 2
             if "like" in allowed and rng.random() < 0.35 * agree:
@@ -57,6 +66,9 @@ class MockBackend(LLMBackend):
                 acts.append({"type": "reply", "target": f["id"], "text": self._say(stance, topic, rng)})
             if len(acts) >= 2:
                 break
+        others = [f.get("author") for f in feed if f.get("author") and not f.get("to_me")]
+        if others and rng.random() < 0.05:
+            acts.append({"type": "dm", "to": rng.choice(others), "text": self._say(stance, topic, rng)})
         where = m.get("where", [])
         if "post" in allowed and where and rng.random() < 0.3:
             acts.append({"type": "post", "where": rng.choice(where),
@@ -64,7 +76,20 @@ class MockBackend(LLMBackend):
         for c in m.get("conversions", []):
             if stance > c.get("mock_threshold", 0.3) and rng.random() < 0.4:
                 acts.append({"type": "convert", "name": c["name"]})
-        return {"thoughts": "mock reasoning", "stance": round(stance, 3), "actions": acts[:3]}
+        res = {"thoughts": "mock reasoning", "stance": round(stance, 3), "actions": acts[:3]}
+        prefs = dict(m.get("prefs") or {})
+        if prefs:
+            for o in sorted(prefs):
+                about = [f["stance"] for f in feed if f.get("option") == o]
+                if about:
+                    prefs[o] += 0.25 * (sum(about) / len(about) - prefs[o])
+                prefs[o] = round(max(-1.0, min(1.0, prefs[o] + rng.gauss(0, 0.05))), 3)
+            res["prefs"] = prefs
+            if m.get("vote_open") and rng.random() < 0.5:
+                fav = max(sorted(prefs), key=lambda k: prefs[k])
+                if prefs[fav] > 0:
+                    res["actions"] = (res["actions"] + [{"type": "vote", "option": fav}])[-3:]
+        return res
 
     @staticmethod
     def _say(stance: float, topic: str, rng: random.Random) -> str:

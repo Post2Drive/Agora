@@ -26,12 +26,14 @@ class PlatformSpec:
     max_len: int = 500
     half_life_h: float = 10.0         # feed: how fast posts fade
     window_h: float = 48.0            # how far back feeds look
+    dms: bool = True                  # private messages between two people
     aliases: tuple[str, ...] = ()
 
 
-FEED = ("post", "reply", "like", "repost", "follow")
-FORUM = ("post", "reply", "upvote", "downvote")
-CHAT = ("post", "reply", "like", "forward")
+FEED = ("post", "reply", "like", "repost", "quote", "follow", "unfollow", "mute")
+FEED_NO_QUOTE = ("post", "reply", "like", "repost", "follow", "unfollow", "mute")
+FORUM = ("post", "reply", "upvote", "downvote", "mute")
+CHAT = ("post", "reply", "like", "forward", "mute")
 
 REGISTRY: dict[str, PlatformSpec] = {p.key: p for p in [
     PlatformSpec("x", "X", "feed", FEED,
@@ -40,7 +42,7 @@ REGISTRY: dict[str, PlatformSpec] = {p.key: p for p in [
     PlatformSpec("threads", "Threads", "feed", FEED,
                  "casual conversational posts, friendlier than X",
                  {"repost": "repost", "reply": "reply"}, 500, aliases=("meta threads",)),
-    PlatformSpec("instagram", "Instagram", "feed", FEED,
+    PlatformSpec("instagram", "Instagram", "feed", FEED_NO_QUOTE,
                  "a post is a photo or reel caption: describe the picture in [brackets], then a "
                  "short caption with emojis and a few hashtags; comments are short",
                  {"repost": "share to story", "reply": "comment"}, 400, half_life_h=14,
@@ -53,25 +55,25 @@ REGISTRY: dict[str, PlatformSpec] = {p.key: p for p in [
                  "professional tone, work and industry angle, measured opinions",
                  {"repost": "repost", "reply": "comment", "follow": "connect"}, 900,
                  half_life_h=24, aliases=("linked in",)),
-    PlatformSpec("youtube", "YouTube", "feed", FEED,
+    PlatformSpec("youtube", "YouTube", "feed", FEED_NO_QUOTE,
                  "a post is a video: give a title and a one-line description; most people only "
                  "watch, like and comment",
                  {"post": "upload video", "repost": "share", "reply": "comment",
-                  "follow": "subscribe"}, 400, half_life_h=36, window_h=120,
+                  "follow": "subscribe"}, 400, half_life_h=36, window_h=120, dms=False,
                  aliases=("yt", "youtube shorts")),
-    PlatformSpec("tiktok", "TikTok", "feed", FEED,
+    PlatformSpec("tiktok", "TikTok", "feed", FEED_NO_QUOTE,
                  "a post is a short video: describe it in [brackets] plus a punchy caption; "
                  "comments are very short and informal",
                  {"post": "post video", "repost": "repost", "reply": "comment"}, 300,
                  half_life_h=12, aliases=("tik tok",)),
     PlatformSpec("reddit", "Reddit", "forum", FORUM,
                  "anonymous, detailed and skeptical; threads have a title-like first line",
-                 {"post": "start thread", "reply": "comment"}, 1500, window_h=120,
+                 {"post": "start thread", "reply": "comment"}, 1500, window_h=120, dms=False,
                  aliases=("subreddit",)),
     PlatformSpec("facebook_groups", "Facebook Groups", "forum", FORUM,
                  "community group posts asking for recommendations and experiences",
                  {"post": "post in group", "reply": "comment", "upvote": "like",
-                  "downvote": "hide"}, 1000, window_h=120,
+                  "downvote": "hide"}, 1000, window_h=120, dms=False,
                  aliases=("facebook group", "fb group", "fb groups")),
     PlatformSpec("whatsapp", "WhatsApp", "chat", CHAT,
                  "group chat messages: short, informal, sometimes mixed with emojis",

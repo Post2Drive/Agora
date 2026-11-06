@@ -168,3 +168,36 @@ def test_report_and_interaction_endpoints(web):
     # a real model that is not running gives a clear 503, not a crash
     st, r = call(base, "POST", f"/api/projects/{pid}/ask", {"question": "x"})
     assert st == 503 and "Ollama" in r["error"]
+
+
+def test_calibrate_and_forecast_endpoints(web, tmp_path):
+    import shutil
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from conftest import make_project
+    base, app = web
+    src = make_project(tmp_path, "small", rounds=24)
+    import yaml
+    d = yaml.safe_load((src / "scenario.yaml").read_text())
+    d["population"] = {"llm_agents": 4, "crowd_agents": 120}
+    (src / "scenario.yaml").write_text(yaml.safe_dump(d))
+    shutil.copytree(src, app.ws / "small")
+    st, r = call(base, "POST", "/api/projects/small/data", {"kind": "observations", "text": "day,nonsense\n1,3"})
+    assert st == 400 and "Unknown metric" in r["error"]
+    st, r = call(base, "POST", "/api/projects/small/data",
+                 {"kind": "observations", "text": "day,register_lakeview\n1,5\n2,12\n3,15\n4,16"})
+    assert st == 200 and r["points"] == 4
+    call(base, "POST", "/api/projects/small/calibrate", {})
+    p = wait_job(base, "small", timeout=300)
+    assert p["job"]["state"] == "done", p["job"]
+    cs = call(base, "GET", "/api/projects/small/calibration")[1]
+    assert cs["calibration"]["changes"] and not cs["applied"]
+    assert call(base, "POST", "/api/projects/small/calibration/apply", {})[0] == 200
+    assert call(base, "GET", "/api/projects/small/calibration")[1]["applied"]
+    assert call(base, "GET", "/api/projects/small")[1]["scenario"]["name"]
+    call(base, "POST", "/api/projects/small/forecast", {"runs": 5, "sensitivity": False})
+    p = wait_job(base, "small", timeout=300)
+    assert p["job"]["state"] == "done", p["job"]
+    f = call(base, "GET", "/api/projects/small/calibration")[1]["forecast"]
+    assert f["calibrated"] and f["monte_carlo"]["runs"] == 5
+    assert "action:register_lakeview" in f["monte_carlo"]["summary"]

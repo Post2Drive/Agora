@@ -1,0 +1,179 @@
+# Demo: a fictional city mayoral election with three candidates.
+# All names, places and numbers are invented. Leanings are starting assumptions;
+# calibrate with real polls (agora calibrate) before trusting the result.
+
+name: riverton-mayor-election
+topic: the Riverton mayoral election
+question: >
+  Who will win the Riverton mayoral election, by how much, and which groups decide it?
+context: |
+  Riverton is a mid-sized city choosing a new mayor. Three candidates are running:
+  Asha Rao (Civic Renewal) promises better buses and cheaper housing, funded by a small
+  property-tax rise. Daniel Okafor (Riverton First) promises to cut property tax and
+  speed up business permits. Meera Pillai (independent) is a retired judge running on
+  anti-corruption and cleaner city services. Polls open on the last two days.
+
+seed: 7
+start: "2026-12-01T08:00:00"
+minutes_per_round: 180          # 3-hour rounds
+rounds: 80                      # 10 days
+feed_size: 8
+memory_size: 10
+
+population:
+  llm_agents: 40
+  crowd_agents: 2500
+
+llm:
+  backend: ollama
+  model: llama3.2:3b
+
+time:
+  peak_hours: [18, 19, 20, 21, 22]
+  peak: 1.0
+
+feeds:
+  x: {echo_chamber: 0.5}
+  facebook: {echo_chamber: 0.4}
+
+choice:
+  name: vote
+  question: Who will you vote for as mayor of Riverton?
+  options: [Asha Rao, Daniel Okafor, Meera Pillai]
+  open_round: 64                # last two days
+  close_round: 79
+  turnout_base: -4.6
+  turnout_weight: 3.0
+  undecided_below: 0.15
+  weights:                      # share of the real electorate (invented)
+    young_renters: 0.22
+    homeowners: 0.30
+    small_business: 0.12
+    students: 0.10
+    retirees: 0.26
+
+segments:
+  - name: young_renters
+    turnout: -0.3
+    share: 0.24
+    persona: Renter in their twenties or thirties, worried about rent and commute times.
+    stance: {mean: 0.0, sd: 0.3}
+    leaning: {Asha Rao: 0.35, Daniel Okafor: -0.2, Meera Pillai: 0.1}
+    stubbornness: 0.3
+    activity: 0.5
+    platforms: [instagram, x, whatsapp, reddit]
+    occupations: [nurse, delivery rider, software tester, shop assistant, teacher]
+    age: [22, 36]
+  - name: homeowners
+    turnout: 0.4
+    share: 0.28
+    persona: Family homeowner who watches property tax and school quality closely.
+    stance: {mean: 0.0, sd: 0.3}
+    leaning: {Asha Rao: -0.15, Daniel Okafor: 0.3, Meera Pillai: 0.15}
+    stubbornness: 0.5
+    activity: 0.4
+    platforms: [facebook, whatsapp, facebook_groups]
+    occupations: [accountant, engineer, government clerk, pharmacist]
+    age: [35, 60]
+  - name: small_business
+    turnout: 0.3
+    share: 0.12
+    persona: Runs a small shop or service business and is frustrated by permits and fees.
+    stance: {mean: 0.0, sd: 0.3}
+    leaning: {Asha Rao: -0.2, Daniel Okafor: 0.45, Meera Pillai: 0.05}
+    stubbornness: 0.55
+    activity: 0.45
+    platforms: [facebook, whatsapp, x, linkedin]
+    occupations: [bakery owner, mechanic, salon owner, restaurant owner]
+    age: [30, 65]
+  - name: students
+    turnout: -0.6
+    share: 0.12
+    persona: College student, first-time or second-time voter, gets news from social media.
+    stance: {mean: 0.0, sd: 0.35}
+    leaning: {Asha Rao: 0.3, Daniel Okafor: -0.3, Meera Pillai: 0.2}
+    stubbornness: 0.25
+    activity: 0.6
+    platforms: [instagram, tiktok, x, reddit]
+    age: [18, 24]
+  - name: retirees
+    turnout: 1.0
+    share: 0.24
+    persona: Retired resident who values honesty, safety and clean streets, and always votes.
+    stance: {mean: 0.0, sd: 0.25}
+    leaning: {Asha Rao: 0.0, Daniel Okafor: 0.15, Meera Pillai: 0.35}
+    stubbornness: 0.65
+    activity: 0.35
+    platforms: [facebook, whatsapp, youtube]
+    age: [62, 85]
+
+accounts:
+  - id: rao_campaign
+    name: Asha Rao for Mayor
+    persona: Campaign account of Asha Rao. Upbeat, talks about buses, housing and fairness.
+    leaning: {Asha Rao: 1.0, Daniel Okafor: -0.6, Meera Pillai: -0.1}
+    activity: 0.4
+    influence: 3.0
+    platforms: [instagram, x, facebook]
+  - id: okafor_campaign
+    name: Daniel Okafor for Mayor
+    persona: Campaign account of Daniel Okafor. Direct, talks about taxes, jobs and red tape.
+    leaning: {Asha Rao: -0.6, Daniel Okafor: 1.0, Meera Pillai: -0.1}
+    activity: 0.4
+    influence: 3.0
+    platforms: [facebook, x, linkedin]
+  - id: pillai_campaign
+    name: Meera Pillai for Mayor
+    persona: Campaign account of Meera Pillai. Calm, formal, focuses on integrity and services.
+    leaning: {Asha Rao: -0.1, Daniel Okafor: -0.2, Meera Pillai: 1.0}
+    activity: 0.3
+    influence: 2.5
+    platforms: [facebook, youtube, x]
+  - id: riverton_courier
+    name: The Riverton Courier
+    persona: Local newspaper. Neutral, factual, reports polls and debates, asks hard questions of all candidates.
+    leaning: {Asha Rao: 0.0, Daniel Okafor: 0.0, Meera Pillai: 0.0}
+    activity: 0.5
+    influence: 4.0
+    platforms: [x, facebook, instagram]
+
+spaces:
+  whatsapp:
+    - name: Eastside Residents
+      size: 400
+    - name: Old Town Families
+      size: 350
+      segments: {homeowners: 3, retirees: 2}
+  facebook_groups:
+    - name: Riverton Community Forum
+      size: 700
+      segments: {homeowners: 2, retirees: 2, small_business: 1}
+  reddit:
+    - name: r/riverton
+      size: 450
+      segments: {young_renters: 2, students: 2}
+
+events:
+  - at_round: 0
+    type: news
+    text: The Riverton mayoral campaign officially begins; the election is in ten days.
+  - at_round: 1
+    type: post
+    account: riverton_courier
+    platform: x
+    text: "Campaign starts today. Rao promises buses and housing, Okafor promises tax cuts, Pillai promises clean government. Who has your vote?"
+  - at_round: 24
+    type: news
+    text: "TV debate: Rao and Okafor clash over property tax; Pillai is praised for a calm, detailed answer on city services."
+  - at_round: 40
+    type: news
+    text: "The Riverton Courier reports that a firm linked to an Okafor donor won a city contract without open bidding. Okafor denies wrongdoing."
+    shift: {Daniel Okafor: -0.15, Meera Pillai: 0.05}   # assumed effect of the story on everyone who hears it
+  - at_round: 48
+    type: post
+    account: rao_campaign
+    platform: instagram
+    text: "[photo: Asha Rao at a packed bus stop at 7am] Every morning thousands wait too long. We can fix this. #Riverton #RaoForMayor"
+  - at_round: 64
+    type: news
+    text: Polls are open today and tomorrow.

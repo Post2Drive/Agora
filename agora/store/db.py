@@ -18,14 +18,14 @@ CREATE TABLE IF NOT EXISTS agents (
     activity REAL, influence REAL, openness REAL, attrs TEXT);
 CREATE TABLE IF NOT EXISTS agent_state (
     id INTEGER PRIMARY KEY, stance REAL, memory TEXT, converted TEXT,
-    last_seen REAL, round INTEGER);
+    last_seen REAL, round INTEGER, prefs TEXT, choice TEXT);
 CREATE TABLE IF NOT EXISTS follows (platform TEXT, src INTEGER, dst INTEGER, round INTEGER,
     PRIMARY KEY (platform, src, dst));
 CREATE TABLE IF NOT EXISTS memberships (agent INTEGER, platform TEXT, space TEXT,
     PRIMARY KEY (agent, platform, space));
 CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY, round INTEGER, t REAL, platform TEXT, space TEXT,
-    author INTEGER, parent INTEGER, root INTEGER, kind TEXT, text TEXT, stance REAL);
+    author INTEGER, parent INTEGER, root INTEGER, kind TEXT, text TEXT, stance REAL, option TEXT);
 CREATE INDEX IF NOT EXISTS posts_round ON posts(round);
 CREATE TABLE IF NOT EXISTS engagements (round INTEGER, agent INTEGER, post INTEGER,
     type TEXT, PRIMARY KEY (agent, post, type));
@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS poll_results (name TEXT PRIMARY KEY, round INTEGER,
 CREATE TABLE IF NOT EXISTS rounds (round INTEGER PRIMARY KEY, sim_time TEXT,
     active INTEGER, llm_calls INTEGER, cache_hits INTEGER, seconds REAL, finished_at TEXT);
 CREATE TABLE IF NOT EXISTS event_log (round INTEGER, kind TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS choices (round INTEGER, agent INTEGER PRIMARY KEY, option TEXT);
+CREATE TABLE IF NOT EXISTS intentions (round INTEGER, segment TEXT, option TEXT, n INTEGER,
+    PRIMARY KEY (round, segment, option));
+CREATE TABLE IF NOT EXISTS mutes (src INTEGER, dst INTEGER, round INTEGER, PRIMARY KEY (src, dst));
 CREATE TABLE IF NOT EXISTS injected (id INTEGER PRIMARY KEY AUTOINCREMENT, round INTEGER, event TEXT,
     added_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT, role TEXT,
@@ -59,7 +63,8 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         cols = [r[1] for r in self.db.execute("PRAGMA table_info(follows)")]
-        if cols and "platform" not in cols:
+        pcols = [r[1] for r in self.db.execute("PRAGMA table_info(posts)")]
+        if (cols and "platform" not in cols) or (pcols and "option" not in pcols):
             raise RuntimeError(f"{self.path} was made by an older Agora version. "
                                "Delete agora.db to start the run again.")
         self.db.executescript(SCHEMA)
@@ -90,9 +95,9 @@ class Store:
                   a.initial_stance, a.stubbornness, a.activity, a.influence, a.openness,
                   json.dumps(a.attrs)) for a in agents])
             self.db.executemany(
-                "INSERT INTO agent_state VALUES (?,?,?,?,?,?)",
+                "INSERT INTO agent_state VALUES (?,?,?,?,?,?,?,?)",
                 [(a.id, a.stance, json.dumps(a.memory), json.dumps(sorted(a.converted)),
-                  a.last_seen, -1) for a in agents])
+                  a.last_seen, -1, json.dumps(a.prefs), a.choice) for a in agents])
             self.db.executemany("INSERT INTO follows VALUES (?,?,?,?)",
                                 [(p, s, d, -1) for p, s, d in follows])
             self.db.executemany("INSERT INTO memberships VALUES (?,?,?)", memberships)
@@ -100,17 +105,23 @@ class Store:
                                 [(-1, a.id, a.stance) for a in agents])
 
     def commit_round(self, r: int, *, sim_time: str, agents, posts, engagements, follows,
-                     conversions, thoughts, polls, poll_results, events, stats) -> None:
+                     conversions, thoughts, polls, poll_results, events, stats,
+                     unfollows=(), mutes=(), choices=(), intentions=()) -> None:
         """Write everything a round produced atomically."""
         with self.db:
             self.db.executemany(
-                "INSERT INTO posts VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO posts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(p.id, p.round, p.t, p.platform, p.space, p.author, p.parent, p.root,
-                  p.kind, p.text, p.stance) for p in posts])
+                  p.kind, p.text, p.stance, p.option) for p in posts])
             self.db.executemany("INSERT OR IGNORE INTO engagements VALUES (?,?,?,?)",
                                 [(r, a, p, t) for a, p, t in engagements])
             self.db.executemany("INSERT OR IGNORE INTO follows VALUES (?,?,?,?)",
                                 [(p, s, d, r) for p, s, d in follows])
+            self.db.executemany("DELETE FROM follows WHERE platform=? AND src=? AND dst=?", list(unfollows))
+            self.db.executemany("INSERT OR IGNORE INTO mutes VALUES (?,?,?)", [(s, d, r) for s, d in mutes])
+            self.db.executemany("INSERT OR IGNORE INTO choices VALUES (?,?,?)", [(r, a, o) for a, o in choices])
+            self.db.executemany("INSERT OR REPLACE INTO intentions VALUES (?,?,?,?)",
+                                [(r, g, o, n) for g, o, n in intentions])
             self.db.executemany("INSERT OR IGNORE INTO conversions VALUES (?,?,?)",
                                 [(r, a, n) for a, n in conversions])
             self.db.executemany("INSERT OR REPLACE INTO thoughts VALUES (?,?,?)",
@@ -122,9 +133,10 @@ class Store:
             self.db.executemany("INSERT INTO event_log VALUES (?,?,?)",
                                 [(r, k, json.dumps(d)) for k, d in events])
             self.db.executemany(
-                "INSERT OR REPLACE INTO agent_state VALUES (?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO agent_state VALUES (?,?,?,?,?,?,?,?)",
                 [(a.id, a.stance, json.dumps(a.memory), json.dumps(sorted(a.converted)),
-                  a.last_seen, r) for a in agents])
+                  a.last_seen, r, json.dumps({k: round(v, 4) for k, v in a.prefs.items()}), a.choice)
+                 for a in agents])
             self.db.executemany("INSERT OR REPLACE INTO opinions VALUES (?,?,?)",
                                 [(r, a.id, round(a.stance, 4)) for a in agents])
             self.db.execute("INSERT OR REPLACE INTO rounds VALUES (?,?,?,?,?,?,datetime('now'))",
