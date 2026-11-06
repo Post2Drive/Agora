@@ -51,6 +51,26 @@ def update_stance(world: World, a: Agent, feed: list[Post], rng: np.random.Gener
     return float(np.clip(x, -1, 1))
 
 
+def update_prefs(world: World, a: Agent, feed: list[Post], rng: np.random.Generator,
+                 mu: float = MU) -> dict:
+    """Choice mode: the same rule, applied to each option a post is about."""
+    prefs = dict(a.prefs)
+    p0 = a.attrs.get("prefs0") or prefs
+    by_opt: dict[str, list[tuple[float, float]]] = {}
+    for p in feed:
+        src = world.posts[p.root] if p.kind in ("repost", "forward") else p
+        if src.option in prefs and abs(src.stance - prefs[src.option]) <= a.openness:
+            by_opt.setdefault(src.option, []).append((exposure_weight(world, p), src.stance))
+    for o in sorted(prefs):
+        x = prefs[o]
+        if o in by_opt:
+            den = sum(w for w, _ in by_opt[o])
+            social = sum(w * v for w, v in by_opt[o]) / den
+            x = a.stubbornness * p0.get(o, x) + (1 - a.stubbornness) * ((1 - mu) * x + mu * social)
+        prefs[o] = float(np.clip(x + rng.normal(0, 0.01), -1, 1))
+    return prefs
+
+
 def crowd_engagement(world: World, a: Agent, feed: list[Post], rng: np.random.Generator
                      ) -> list[dict]:
     """Likes, votes, shares and follows a crowd agent makes. Crowd agents never write
@@ -61,7 +81,7 @@ def crowd_engagement(world: World, a: Agent, feed: list[Post], rng: np.random.Ge
             target = world.posts[p.root]
         else:
             target = p
-        agree = 1 - abs(target.stance - a.stance) / 2
+        agree = 1 - abs(target.stance - a.view_of(target.option)) / 2
         strength = 0.5 + abs(target.stance)
         kind = REGISTRY[p.platform].kind
         if kind == "forum":

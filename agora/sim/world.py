@@ -42,6 +42,20 @@ class Agent:
     memory: list[str] = field(default_factory=list)
     converted: set[str] = field(default_factory=set)
     last_seen: float = -1e9   # sim hours; WhatsApp shows messages newer than this
+    prefs: dict = field(default_factory=dict)   # choice mode: option -> -1..1
+    choice: str = ""                            # option voted for ("" = not yet)
+
+    def favourite(self) -> tuple[str, float]:
+        if not self.prefs:
+            return "", 0.0
+        o = max(sorted(self.prefs), key=lambda k: self.prefs[k])
+        return o, self.prefs[o]
+
+    def view_of(self, option: str) -> float:
+        """This agent's opinion relevant to a post about `option` (or the topic)."""
+        if option and self.prefs:
+            return self.prefs.get(option, 0.0)
+        return self.stance
 
     @property
     def is_llm(self) -> bool:
@@ -58,9 +72,10 @@ class Post:
     author: int
     parent: int | None
     root: int
-    kind: str                 # post | reply | repost | forward
+    kind: str                 # post | reply | repost | forward | quote | dm
     text: str
     stance: float
+    option: str = ""          # choice mode: the option this post is about (stance = for/against it)
     likes: int = 0
     ups: int = 0
     downs: int = 0
@@ -188,7 +203,7 @@ class World:
     def load(cls, store) -> "World":
         w = cls()
         state = {r[0]: r[1:] for r in store.rows(
-            "SELECT id, stance, memory, converted, last_seen FROM agent_state")}
+            "SELECT id, stance, memory, converted, last_seen, prefs, choice FROM agent_state")}
         for row in store.rows("SELECT * FROM agents ORDER BY id"):
             (aid, handle, kind, name, seg, persona, plats, s0, stub, act, infl, opn, attrs) = row
             st = state[aid]
@@ -196,7 +211,8 @@ class World:
                               persona=persona, platforms=json.loads(plats), initial_stance=s0,
                               stubbornness=stub, activity=act, influence=infl, openness=opn,
                               attrs=json.loads(attrs), stance=st[0], memory=json.loads(st[1]),
-                              converted=set(json.loads(st[2])), last_seen=st[3]))
+                              converted=set(json.loads(st[2])), last_seen=st[3],
+                              prefs=json.loads(st[4] or "{}"), choice=st[5] or ""))
         for plat, s, d in store.rows("SELECT platform, src, dst FROM follows ORDER BY rowid"):
             w.add_follow(plat, s, d)
         for a, p, sp in store.rows("SELECT agent, platform, space FROM memberships ORDER BY rowid"):

@@ -117,6 +117,24 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                       platforms=list(seg.platforms), initial_stance=s0, stubbornness=stub,
                       activity=act, influence=infl, openness=seg.openness, attrs=attrs)
 
+    # 2b. choice mode: each person's preference for every option
+    if sc.choice:
+        opts = sc.choice.options
+        seg_by = {g.name: g for g in sc.segments}
+        acc_by = {a.id: a for a in sc.accounts}
+        for a in w.agents:
+            if a.kind == "account":
+                base = acc_by[a.handle].leaning
+                prefs = {o: float(base.get(o, 0.0)) for o in opts}
+            else:
+                base = seg_by[a.segment].leaning
+                sd = seg_by[a.segment].stance_sd
+                prefs = {o: float(np.clip(rng.normal(base.get(o, 0.0), sd), -1, 1)) for o in opts}
+            a.prefs = {o: round(v, 4) for o, v in prefs.items()}
+            a.attrs["prefs0"] = dict(a.prefs)
+            fav, val = a.favourite()
+            a.stance = a.initial_stance = round(val, 4)
+
     # 3. group / community memberships
     memberships: list[tuple[int, str, str]] = []
     taken: dict[str, set[int]] = {}           # exclusive tag -> agents already placed

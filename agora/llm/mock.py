@@ -76,7 +76,20 @@ class MockBackend(LLMBackend):
         for c in m.get("conversions", []):
             if stance > c.get("mock_threshold", 0.3) and rng.random() < 0.4:
                 acts.append({"type": "convert", "name": c["name"]})
-        return {"thoughts": "mock reasoning", "stance": round(stance, 3), "actions": acts[:3]}
+        res = {"thoughts": "mock reasoning", "stance": round(stance, 3), "actions": acts[:3]}
+        prefs = dict(m.get("prefs") or {})
+        if prefs:
+            for o in sorted(prefs):
+                about = [f["stance"] for f in feed if f.get("option") == o]
+                if about:
+                    prefs[o] += 0.25 * (sum(about) / len(about) - prefs[o])
+                prefs[o] = round(max(-1.0, min(1.0, prefs[o] + rng.gauss(0, 0.05))), 3)
+            res["prefs"] = prefs
+            if m.get("vote_open") and rng.random() < 0.5:
+                fav = max(sorted(prefs), key=lambda k: prefs[k])
+                if prefs[fav] > 0:
+                    res["actions"] = (res["actions"] + [{"type": "vote", "option": fav}])[-3:]
+        return res
 
     @staticmethod
     def _say(stance: float, topic: str, rng: random.Random) -> str:

@@ -89,7 +89,13 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         lines.append("Your memory:\n" + "\n".join(f"- {m}" for m in mem))
     if recalled:
         lines.append("You also remember hearing:\n" + "\n".join(f"- {m}" for m in recalled))
-    lines.append(f"Your current feeling about {sc.topic}: {stance_words(a.stance)}.")
+    if sc.choice and a.prefs:
+        lines.append(f"The choice: {sc.choice.question} Options: {', '.join(sc.choice.options)}.\n"
+                     "How you feel about each right now: "
+                     + "; ".join(f"{o}: {stance_words(v)}" for o, v in sorted(a.prefs.items(), key=lambda x: -x[1]))
+                     + (f". You already voted for {a.choice}." if a.choice else "."))
+    else:
+        lines.append(f"Your current feeling about {sc.topic}: {stance_words(a.stance)}.")
     if trending:
         lines.append("Trending: " + "; ".join(f"{label(k)}: {', '.join(v)}" for k, v in trending.items() if v))
     if feed:
@@ -111,25 +117,31 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         "\"text\": \"...\"}, mention someone with @handle in any text, or {\"type\": \"search\", "
         "\"query\": \"...\"} to look something up. If someone replied to you or messaged you, it is "
         "natural to answer.")
+    if sc.choice and not a.choice and getattr(sc, "_vote_open_now", False):
+        lines.append(f"Voting is open now. If you would vote today: {{\"type\": \"vote\", \"option\": \"<one of: "
+                     f"{', '.join(sc.choice.options)}>\"}}. Not voting is also possible.")
     if conversions:
         lines.append("Real-life actions open to you right now (only if you truly would):\n" +
                      "\n".join(f"- {c.name}: {c.label}" for c in conversions))
     lines.append(
         f"Reply with JSON only, at most {MAX_ACTIONS} actions (an empty list is normal):\n"
-        '{"thoughts": "one short sentence of what you privately think", '
-        '"stance": <number from -1 (strongly against) to 1 (strongly for) on ' + sc.topic + '>, '
-        '"actions": [{"type": "post", "where": "<a place from the list>", "text": "..."}, '
-        '{"type": "reply", "target": "p12", "text": "..."}, {"type": "like", "target": "p7"}, '
-        '{"type": "convert", "name": "..."}]}')
+        + '{"thoughts": "one short sentence of what you privately think", '
+        + (('"prefs": {' + ", ".join(f'"{o}": <-1..1>' for o in sc.choice.options) + '}, ')
+           if sc.choice else ('"stance": <number from -1 (strongly against) to 1 (strongly for) on ' + sc.topic + '>, '))
+        + '"actions": [{"type": "post", "where": "<a place from the list>", "text": "..."}, '
+        + '{"type": "reply", "target": "p12", "text": "..."}, {"type": "like", "target": "p7"}, '
+        + '{"type": "convert", "name": "..."}]}')
     return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(lines)}]
 
 
 def decision_meta(world: World, sc, a: Agent, feed: list[Post], conversions: list) -> dict:
     """Extra info only the mock backend uses."""
-    return {"task": "decide", "stance": a.stance, "topic": sc.topic,
+    return {"task": "decide", "stance": a.stance, "topic": sc.topic, "prefs": dict(a.prefs),
+            "vote_open": bool(sc.choice and not a.choice and getattr(sc, "_vote_open_now", False)),
             "feed": [{"id": f"p{p.id}", "stance": world.posts[p.root].stance if p.kind in
                       ("repost", "forward") else p.stance, "dm": p.kind == "dm",
                       "author": f"@{world.agents[p.author].handle}",
+                      "option": world.posts[p.root].option if p.kind in ("repost", "forward") else p.option,
                       "to_me": p.kind == "dm" or (p.parent is not None and world.posts[p.parent].author == a.id)
                       or f"@{a.handle}" in (p.text or "")} for p in feed],
             "actions": sorted({x for p in a.platforms for x in actions_for(p)}),
@@ -152,7 +164,14 @@ def parse_decision(raw: str, a: Agent) -> dict:
         if isinstance(x, dict) and isinstance(x.get("type"), str):
             clean.append(x)
     thoughts = str(d.get("thoughts", ""))[:300]
-    return {"stance": stance, "actions": clean, "thoughts": thoughts, "ok": bool(d)}
+    prefs = {}
+    if isinstance(d.get("prefs"), dict):
+        for o, v in d["prefs"].items():
+            try:
+                prefs[str(o)] = max(-1.0, min(1.0, float(v)))
+            except (TypeError, ValueError):
+                pass
+    return {"stance": stance, "actions": clean, "thoughts": thoughts, "ok": bool(d), "prefs": prefs}
 
 
 def poll_messages(world: World, sc, a: Agent, question: str, now: datetime) -> list[dict]:

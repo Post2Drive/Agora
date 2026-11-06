@@ -54,6 +54,8 @@ class RoundOutput:
         self.poll_results: list[tuple[str, int, int, bool]] = []
         self.events: list[tuple[str, dict]] = []
         self.unfollows: list[tuple[str, int, int]] = []
+        self.choices: list[tuple[int, str]] = []
+        self.intentions: list[tuple[str, str, int]] = []
         self.mutes: list[tuple[int, int]] = []
 
 
@@ -134,7 +136,8 @@ class Simulation:
                 r, sim_time=self.now(r).isoformat(), agents=w.agents, posts=out.posts,
                 engagements=out.engagements, follows=out.follows, conversions=out.conversions,
                 thoughts=out.thoughts, polls=out.polls, poll_results=out.poll_results,
-                events=out.events, stats=stats, unfollows=out.unfollows, mutes=out.mutes)
+                events=out.events, stats=stats, unfollows=out.unfollows, mutes=out.mutes,
+                choices=out.choices, intentions=out.intentions)
             if progress:
                 progress({"round": r, "of": self.sc.rounds, "posts": len(out.posts),
                           "conversions": len(out.conversions), **stats})
@@ -147,6 +150,7 @@ class Simulation:
         sc, w = self.sc, self.world
         rng = np.random.default_rng([sc.seed, r, 1])
         out = RoundOutput()
+        sc._vote_open_now = self._vote_open(r)
         t0 = r * sc.round_hours
         now = self.now(r)
         self._post_clock = 0
@@ -190,13 +194,23 @@ class Simulation:
                 d = decisions.get(a.id)
                 if d is None:
                     continue
-                a.stance = float(np.clip(a.stance + (1 - a.stubbornness) * (d["stance"] - a.stance), -1, 1))
+                if sc.choice and d.get("prefs"):
+                    for o, v in d["prefs"].items():
+                        if o in a.prefs:
+                            a.prefs[o] = float(np.clip(a.prefs[o] + (1 - a.stubbornness) * (v - a.prefs[o]), -1, 1))
+                    a.stance = a.favourite()[1]
+                else:
+                    a.stance = float(np.clip(a.stance + (1 - a.stubbornness) * (d["stance"] - a.stance), -1, 1))
                 if d["thoughts"]:
                     out.thoughts.append((a.id, d["thoughts"]))
                 done = [self._apply(a, x, r, t0, opens[a.id], rng, out) for x in d["actions"]]
                 self._remember(a, feed, [x for x in done if x], d["thoughts"], now)
             else:
-                a.stance = opinion.update_stance(w, a, feed, rng, mu=sc.persuasion)
+                if sc.choice:
+                    a.prefs = opinion.update_prefs(w, a, feed, rng, mu=sc.persuasion)
+                    a.stance = a.favourite()[1]
+                else:
+                    a.stance = opinion.update_stance(w, a, feed, rng, mu=sc.persuasion)
                 for x in opinion.crowd_engagement(w, a, feed, rng):
                     self._apply(a, x, r, t0, opens[a.id], rng, out)
                 for c in opens[a.id]:
@@ -204,8 +218,45 @@ class Simulation:
                     if rng.random() < opinion.sig(logit):
                         self._convert(a, c.name, out)
             a.last_seen = t0
+        if sc.choice:
+            self._vote(r, active, rng, out)
+            out.intentions = self._intentions()
         self._reflect_all(r, now)
         return out, len(active)
+
+    def _vote_open(self, r: int) -> bool:
+        ch = self.sc.choice
+        return bool(ch) and ch.open_round <= r <= ch.close_round
+
+    def _vote(self, r: int, active: list[Agent], rng, out: RoundOutput) -> None:
+        ch = self.sc.choice
+        if not self._vote_open(r):
+            return
+        for a in active:
+            if a.choice or a.kind == "account" or not a.prefs:
+                continue
+            fav, u = a.favourite()
+            p = opinion.sig(ch.turnout_base + ch.turnout_weight * max(0.0, u))
+            if rng.random() < p:
+                self._cast(a, fav, out)
+
+    def _cast(self, a: Agent, option: str, out: RoundOutput) -> bool:
+        if a.choice or option not in (self.sc.choice.options if self.sc.choice else []):
+            return False
+        a.choice = option
+        out.choices.append((a.id, option))
+        return True
+
+    def _intentions(self) -> list[tuple[str, str, int]]:
+        ch = self.sc.choice
+        counts: dict[tuple[str, str], int] = {}
+        for a in self.world.agents:
+            if a.kind == "account" or not a.prefs:
+                continue
+            fav, u = a.favourite()
+            key = (a.segment, fav if u >= ch.undecided_below else "undecided")
+            counts[key] = counts.get(key, 0) + 1
+        return [(g, o, n) for (g, o), n in sorted(counts.items())]
 
     def _injected(self, r: int) -> list:
         evs = []
@@ -322,12 +373,20 @@ class Simulation:
     def _new_post(self, a: Agent, r, t0, platform, space, kind, text, stance, parent=None,
                   root=None, out: RoundOutput | None = None) -> Post:
         w = self.world
+        option = ""
+        if self.sc.choice:
+            if kind in ("repost", "forward") and root is not None:
+                option, stance = w.posts[root].option, w.posts[root].stance
+            elif a.prefs:
+                # people talk about the option they feel most strongly about (for or against)
+                option = max(sorted(a.prefs), key=lambda k: abs(a.prefs[k]))
+                stance = a.prefs[option]
         self._post_clock += 1
         t = t0 + self.sc.round_hours * min(0.99, 0.01 + 0.0005 * self._post_clock)
         pid = w.next_post_id
         p = Post(id=pid, round=r, t=t, platform=platform, space=space, author=a.id,
                  parent=parent, root=pid if root is None else root, kind=kind,
-                 text=text.strip()[:1000], stance=round(float(stance), 4))
+                 text=text.strip()[:1000], stance=round(float(stance), 4), option=option)
         w.add_post(p)
         if out is not None:
             out.posts.append(p)
@@ -398,6 +457,10 @@ class Simulation:
             return None
         if kind in ("dm", "message", "private message", "pm"):
             return self._dm(a, x, r, t0, out)
+        if kind in ("vote", "choose"):
+            if self._vote_open(r) and self._cast(a, str(x.get("option", "")).strip(), out):
+                return f"you voted for {a.choice}"
+            return None
         if kind == "search":
             return self._search(a, str(x.get("query", "")))
         if kind in ("mute", "block", "unfollow"):

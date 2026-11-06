@@ -99,9 +99,10 @@ class FeedIndex:
             c: Counter[str] = Counter()
             for pid in self.score.get(platform, {}):
                 txt = self.world.posts[pid].text.lower()
-                c.update(set(re.findall(r"#[a-z0-9_]{3,30}", txt)))
-                c.update(w for w in set(re.findall(r"[a-z]{5,}", txt)) if w not in _COMMON)
-            cache[platform] = [t for t, n in c.most_common(k) if n >= 2]
+                c.update(sorted(set(re.findall(r"#[a-z0-9_]{3,30}", txt))))
+                c.update(w for w in sorted(set(re.findall(r"[a-z]{5,}", txt))) if w not in _COMMON)
+            ranked = sorted(c.items(), key=lambda x: (-x[1], x[0]))     # stable across processes
+            cache[platform] = [t for t, n in ranked[:k] if n >= 2]
         return cache[platform]
 
     def feed(self, a: Agent, k: int, rng: np.random.Generator) -> list[int]:

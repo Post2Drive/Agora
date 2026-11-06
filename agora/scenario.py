@@ -40,6 +40,7 @@ class Segment:
     names: list[str] = field(default_factory=list)
     llm_share: float | None = None   # share of LLM voices (defaults to `share`)
     active_hours: list[int] = field(default_factory=list)    # [start, end] e.g. [7, 23]; [] = always
+    leaning: dict[str, float] = field(default_factory=dict)  # choice mode: option -> -1..1
 
 
 @dataclass
@@ -57,6 +58,7 @@ class Account:
     llm: bool = True                 # acts on its own each round
     spaces: list[str] = field(default_factory=list)   # groups/communities it joins
     active_hours: list[int] = field(default_factory=list)
+    leaning: dict[str, float] = field(default_factory=dict)
     # profile details (shown in prompts and the UI): age, gender, profession, mbti,
     # country, interests, kind (individual | group), source (graph entity name)
     profile: dict[str, Any] = field(default_factory=dict)
@@ -109,6 +111,24 @@ class Conversion:
 
 
 @dataclass
+class Choice:
+    """A decision between named options: an election, a product choice, a policy option.
+
+    Each person holds a preference from -1 to +1 for every option; talk moves those
+    preferences; during the voting window people turn out (or not) and pick their
+    favourite. Results can be weighted to the real population with `weights`."""
+    name: str = "vote"
+    question: str = "Who will you vote for?"
+    options: list[str] = field(default_factory=list)
+    open_round: int = 0
+    close_round: int = 10**9
+    turnout_base: float = -1.0        # log-odds of voting per active round in the window
+    turnout_weight: float = 3.0       # stronger preferences -> more likely to vote
+    undecided_below: float = 0.1      # favourite below this counts as undecided in polls
+    weights: dict[str, float] = field(default_factory=dict)   # segment -> share of real electorate
+
+
+@dataclass
 class Scenario:
     name: str
     topic: str
@@ -143,6 +163,7 @@ class Scenario:
     #                            echo_chamber: 0.3, viral_threshold: 10}}
     feeds: dict[str, dict[str, float]] = field(default_factory=dict)
     targets: dict[str, float] = field(default_factory=dict)  # goals for forecasts, e.g. {buy: 50}
+    choice: Choice | None = None
     # force decision outcomes that are already known (votes are still simulated)
     fixed_polls: dict[str, bool] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)
@@ -221,11 +242,14 @@ def from_dict(d: dict) -> Scenario:
         if isinstance(c.get("requires"), str):
             c["requires"] = [c["requires"]] if c["requires"] else []
         convs.append(Conversion(**_pick(c, Conversion)))
+    ch = d.pop("choice", None)
+    if ch:
+        ch = Choice(**_pick(ch, Choice))
     if "minutes_per_round" in d:
         d["round_hours"] = float(d.pop("minutes_per_round")) / 60
     if "start" in d and not isinstance(d["start"], datetime):
         d["start"] = datetime.fromisoformat(str(d["start"]))
-    sc = Scenario(**_pick(d, Scenario), segments=segs, accounts=accts, spaces=spaces,
+    sc = Scenario(**_pick(d, Scenario), choice=ch, segments=segs, accounts=accts, spaces=spaces,
                   events=events, conversions=convs, raw=raw,
                   **{k: pop[k] for k in ("llm_agents", "crowd_agents") if k in pop})
     validate(sc)
@@ -310,6 +334,19 @@ def validate(sc: Scenario) -> None:
     for v in sc.voices:
         if not isinstance(v, dict) or v.get("segment") not in names or not v.get("persona"):
             raise ScenarioError("Each voice needs a known 'segment' and a 'persona'")
+    if sc.choice:
+        ch = sc.choice
+        if len(ch.options) < 2 or len(set(ch.options)) != len(ch.options):
+            raise ScenarioError("choice needs at least two different options")
+        for x in list(sc.segments) + list(sc.accounts):
+            for o, v in x.leaning.items():
+                if o not in ch.options:
+                    raise ScenarioError(f"leaning: unknown option '{o}'")
+                if not -1 <= float(v) <= 1:
+                    raise ScenarioError(f"leaning for '{o}' must be between -1 and 1")
+        for g in ch.weights:
+            if g not in names:
+                raise ScenarioError(f"choice.weights: unknown segment '{g}'")
     for k in sc.feeds:
         if k not in REGISTRY or REGISTRY[k].kind != "feed":
             raise ScenarioError(f"feeds: '{k}' is not a feed app")

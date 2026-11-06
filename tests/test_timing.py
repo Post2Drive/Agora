@@ -38,14 +38,17 @@ def test_echo_chamber_setting_changes_what_people_see(tmp_path):
     s.run()
     w = s.world
 
+    plats = ("x", "instagram", "facebook")
+
     def closeness(echo):
-        idx = FeedIndex(w, 30 * 4.0, feeds={"x": {"echo_chamber": echo, "relevance": 0.0}})
+        idx = FeedIndex(w, 30 * 4.0, feeds={p: {"echo_chamber": echo, "relevance": 0.0} for p in plats})
         vals = []
-        for a in w.agents:
-            if "x" not in a.platforms:
-                continue
-            for pid in idx._feed("x", a, 2, np.random.default_rng(a.id)):
-                vals.append(1 - abs(w.posts[w.posts[pid].root].stance - a.stance) / 2)
+        for plat in plats:
+            for a in w.agents:
+                if plat not in a.platforms:
+                    continue
+                for pid in idx._feed(plat, a, 1, np.random.default_rng(a.id)):
+                    vals.append(1 - abs(w.posts[w.posts[pid].root].stance - a.stance) / 2)
         return sum(vals) / len(vals)
 
     assert closeness(1.0) > closeness(0.0)
