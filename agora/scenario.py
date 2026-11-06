@@ -39,6 +39,7 @@ class Segment:
     age: tuple[int, int] = (25, 60)
     names: list[str] = field(default_factory=list)
     llm_share: float | None = None   # share of LLM voices (defaults to `share`)
+    active_hours: list[int] = field(default_factory=list)    # [start, end] e.g. [7, 23]; [] = always
 
 
 @dataclass
@@ -55,6 +56,7 @@ class Account:
     platforms: list[str] = field(default_factory=lambda: list(DEFAULT_PLATFORMS))
     llm: bool = True                 # acts on its own each round
     spaces: list[str] = field(default_factory=list)   # groups/communities it joins
+    active_hours: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -129,6 +131,12 @@ class Scenario:
     # value: {conversion: per person}, fixed_cost}
     economics: dict[str, Any] = field(default_factory=dict)
     persuasion: float = 0.35          # how far one round of exposure moves an open-minded person
+    # daily rhythm: {peak_hours: [19,20,21,22], peak: 1.0, off_peak_hours: [0..5], off_peak: 0.08,
+    #                morning_hours: [6,7,8], morning: 0.7, other: 0.5}  (multipliers on activity)
+    time: dict[str, Any] = field(default_factory=dict)
+    # feed ranking per app: {x: {recency: 0.4, popularity: 0.3, relevance: 0.3,
+    #                            echo_chamber: 0.3, viral_threshold: 10}}
+    feeds: dict[str, dict[str, float]] = field(default_factory=dict)
     targets: dict[str, float] = field(default_factory=dict)  # goals for forecasts, e.g. {buy: 50}
     # force decision outcomes that are already known (votes are still simulated)
     fixed_polls: dict[str, bool] = field(default_factory=dict)
@@ -208,6 +216,8 @@ def from_dict(d: dict) -> Scenario:
         if isinstance(c.get("requires"), str):
             c["requires"] = [c["requires"]] if c["requires"] else []
         convs.append(Conversion(**_pick(c, Conversion)))
+    if "minutes_per_round" in d:
+        d["round_hours"] = float(d.pop("minutes_per_round")) / 60
     if "start" in d and not isinstance(d["start"], datetime):
         d["start"] = datetime.fromisoformat(str(d["start"]))
     sc = Scenario(**_pick(d, Scenario), segments=segs, accounts=accts, spaces=spaces,
@@ -295,6 +305,13 @@ def validate(sc: Scenario) -> None:
     for v in sc.voices:
         if not isinstance(v, dict) or v.get("segment") not in names or not v.get("persona"):
             raise ScenarioError("Each voice needs a known 'segment' and a 'persona'")
+    for k in sc.feeds:
+        if k not in REGISTRY or REGISTRY[k].kind != "feed":
+            raise ScenarioError(f"feeds: '{k}' is not a feed app")
+    for seg in list(sc.segments) + list(sc.accounts):
+        ah = seg.active_hours
+        if ah and (len(ah) != 2 or not all(isinstance(h, int) and 0 <= h <= 24 for h in ah)):
+            raise ScenarioError(f"{getattr(seg, 'name', getattr(seg, 'id', ''))}: active_hours must be [start, end], hours 0-24")
     for name in sc.fixed_polls:
         if name not in polls:
             raise ScenarioError(f"fixed_polls: unknown decision '{name}'")

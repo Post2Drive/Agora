@@ -30,23 +30,12 @@ from ..store import Store
 from . import llm_agent, opinion, population
 from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
+from .timing import Rhythm
 from .world import Agent, Post, World, dm_people, dm_space
 
 SCENARIO_FILE = "scenario.yaml"
 DB_FILE = "agora.db"
 CACHE_FILE = "llm_cache.db"
-
-
-def hour_factor(h: int) -> float:
-    if h < 6:
-        return 0.08
-    if h < 9:
-        return 0.7
-    if h < 17:
-        return 0.5
-    if h < 22:
-        return 1.0
-    return 0.4
 
 
 def _seed(*parts) -> int:
@@ -77,6 +66,7 @@ class Simulation:
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
         self.store = Store(self.dir / DB_FILE)
         self.world: World | None = None
+        self._rhythm = Rhythm(self.sc.time)
         self.facts = None
         gpath = self.dir / "graph.db"
         if gpath.exists():
@@ -174,14 +164,14 @@ class Simulation:
         self._experiences(r, now, rng, out)
 
         # 2. who is awake
-        hf = hour_factor(now.hour)
+        rhythm = self._rhythm
         draws = rng.random(len(w.agents))
         active = [a for a in w.agents
                   if not (a.kind == "account" and not a.attrs.get("llm", True))
-                  and draws[a.id] < a.activity * hf]
+                  and draws[a.id] < a.activity * rhythm.factor(now.hour, a.attrs.get("active_hours"))]
 
         # 3. feeds from the snapshot
-        index = self._index = FeedIndex(w, t0)
+        index = self._index = FeedIndex(w, t0, feeds=sc.feeds)
         feeds = {a.id: [w.posts[p] for p in index.feed(a, sc.feed_size, rng)] for a in active}
         opens = {a.id: self._open_conversions(a, r) for a in active}
 

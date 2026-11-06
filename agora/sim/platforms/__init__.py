@@ -16,6 +16,7 @@ from collections import Counter
 import numpy as np
 
 from ...platforms import REGISTRY
+from ..timing import feed_cfg
 from ..world import Agent, Post, World
 
 
@@ -26,26 +27,36 @@ def actions_for(platform: str) -> tuple[str, ...]:
 class FeedIndex:
     """Per-round snapshot used to build feeds."""
 
-    def __init__(self, world: World, t: float, top_n: int = 60):
+    def __init__(self, world: World, t: float, top_n: int = 60, feeds: dict | None = None):
         self.world = world
         self.t = t
         posts = world.posts
-        self.score: dict[str, dict[int, float]] = {}
+        self.cfg = {plat: feed_cfg(feeds, plat) for plat in REGISTRY if REGISTRY[plat].kind == "feed"}
+        self.score: dict[str, dict[int, float]] = {}       # global part: recency + popularity
         self.trending: dict[str, list[int]] = {}
+        self.viral: dict[str, set[int]] = {}
         for plat, pids in world.feed_posts.items():
-            spec = REGISTRY[plat]
-            sc: dict[int, float] = {}
+            spec, c = REGISTRY[plat], self.cfg[plat]
+            recent = []
             for pid in reversed(pids):
                 p = posts[pid]
                 age = t - p.t
                 if age > spec.window_h:
                     break
-                src = posts[p.root]
-                author = world.agents[p.author]
-                sc[pid] = ((1 + math.log1p(max(0, src.engagement)))
-                           * math.exp(-max(0.0, age) * math.log(2) / spec.half_life_h)
-                           * math.sqrt(max(0.05, author.influence)))
+                recent.append((pid, age, max(0, posts[p.root].engagement)))
+            top = max([e for _, _, e in recent] + [1])
+            sc: dict[int, float] = {}
+            viral = set()
+            for pid, age, eng in recent:
+                rec = math.exp(-max(0.0, age) * math.log(2) / spec.half_life_h)
+                pop = math.log1p(eng) / math.log1p(top)
+                author = world.agents[posts[pid].author]
+                sc[pid] = (c["recency"] * rec + c["popularity"] * pop + 0.05) * math.sqrt(max(0.05, author.influence))
+                if eng >= c["viral_threshold"]:
+                    viral.add(pid)
+                    sc[pid] *= 1.5
             self.score[plat] = sc
+            self.viral[plat] = viral
             self.trending[plat] = sorted(sc, key=sc.get, reverse=True)[:top_n]
         # forums: hot threads per community, each followed by its best comments
         self.hot: dict[tuple[str, str], list[int]] = {}
@@ -123,14 +134,26 @@ class FeedIndex:
         score = self.score.get(plat, {})
         if not score:
             return []
+        c = self.cfg[plat]
+        follows = w.following[plat].get(a.id, ())
+        posts = w.posts
+
+        def personal(pid: int, followed: bool) -> float:
+            # relevance: people you follow, and (echo chamber) views close to yours
+            st = posts[posts[pid].root].stance
+            agree = 1 - abs(st - a.stance) / 2
+            rel = 0.6 * followed + 0.4 * agree
+            echo = 1 + c["echo_chamber"] * (2 * agree - 1)
+            return (score[pid] + c["relevance"] * rel) * max(0.05, echo)
+
         cand: dict[int, float] = {}
-        for f in w.following[plat].get(a.id, ()):
+        for f in follows:
             for pid in reversed(w.author_posts.get(f, [])[-6:]):
-                s = score.get(pid)
-                if s is not None:
-                    cand[pid] = s * 3.0
+                if pid in score:
+                    cand[pid] = personal(pid, True)
         for pid in self.trending.get(plat, []):
-            cand.setdefault(pid, score[pid] * (0.6 + 0.8 * rng.random()))
+            if pid not in cand:
+                cand[pid] = personal(pid, posts[pid].author in follows) * (0.7 + 0.6 * rng.random())
         ranked = sorted(cand, key=cand.get, reverse=True)
         out, sources = [], set()
         for pid in ranked:

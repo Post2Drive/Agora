@@ -63,7 +63,7 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                   persona=acc.persona, platforms=list(acc.platforms),
                   initial_stance=float(acc.stance), stubbornness=acc.stubbornness,
                   activity=acc.activity, influence=acc.influence, openness=0.3,
-                  attrs={"llm": acc.llm, "spaces": acc.spaces})
+                  attrs={"llm": acc.llm, "spaces": acc.spaces, "active_hours": acc.active_hours})
 
     # 2. LLM voices and crowd agents per segment
     llm_counts = _alloc(sc.llm_agents, [s.llm_share if s.llm_share is not None else s.share
@@ -103,6 +103,8 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                     bits = [f"{name}, {age}"] + ([occ] if occ else [])
                     persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
                 infl *= 1.5      # voices that write are a bit more visible
+            if seg.active_hours:
+                attrs["active_hours"] = list(seg.active_hours)
             new_agent(handle=handle, kind=kind, name=name, segment=seg.name, persona=persona,
                       platforms=list(seg.platforms), initial_stance=s0, stubbornness=stub,
                       activity=act, influence=infl, openness=seg.openness, attrs=attrs)
