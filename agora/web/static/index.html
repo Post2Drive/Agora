@@ -125,7 +125,7 @@ function nav(){document.querySelectorAll('[data-nav]').forEach(a=>a.classList.to
 
 /* ------------------------------------------------------------ router */
 async function route(){clearInterval(timer);timer=null;nav();const h=location.hash.slice(2).split('/');
-  try{if(h[0]==='new')return newStudy();if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
+  try{if(h[0]==='new')return newStudy();if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
   catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to studies</a></div>`}}
 window.addEventListener('hashchange',route);
 
@@ -140,7 +140,7 @@ async function home(){const ps=await api('projects');
     return `<a class="card" style="text-decoration:none;display:block" href="#/p/${p.id}/"><div class="row"><h3 style="margin:0">${esc(p.title)}</h3><span class="spacer"></span>${st}</div>
       <p class="muted small" style="margin:8px 0 0">${esc(p.prompt||'')}</p></a>`};
   $('#view').innerHTML=`<div class="row" style="margin-bottom:18px"><div><h1>Studies</h1><p class="muted" style="margin:0">Upload documents, ask what will happen, and watch a simulated public react.</p></div><span class="spacer"></span>
-    <button class="btn" id="demo">Open the demo</button><a class="btn primary" href="#/new">New study</a></div>
+    ${ps.filter(p=>p.run.started).length>1?'<a class="btn" href="#/compare">Compare studies</a>':''}<button class="btn" id="demo">Open the demo</button><a class="btn primary" href="#/new">New study</a></div>
     ${ps.length?`<div class="grid g3">${ps.map(card).join('')}</div>`:`<div class="card empty"><h2>No studies yet</h2><p class="muted">Start with your own documents, or open the demo: a free probiotic sampling campaign in apartment communities.</p><div class="row" style="justify-content:center"><button class="btn" id="demo2">Open the demo</button><a class="btn primary" href="#/new">New study</a></div></div>`}`;
   const d=async()=>{const r=await api('projects/demo',{method:'POST'});location.hash=`#/p/${r.id}/setup`};
   $('#demo').onclick=d;if($('#demo2'))$('#demo2').onclick=d;
@@ -186,14 +186,15 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
     catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Build the study'}}}
 
 /* ------------------------------------------------------------ project */
-const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['sim','Simulation'],['report','Report']];
+const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['sim','Simulation'],['report','Report'],['people','Interact']];
 async function project(id,tab){const p=await api('projects/'+encodeURIComponent(id));state.p=p;
   if(!tab){tab=p.job&&p.job.state==='running'&&p.job.kind==='create'?'build':p.run.started?'sim':p.has_scenario?'setup':'build';history.replaceState(null,'',`#/p/${id}/${tab}`)}
-  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:false};
-  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span><button class="btn danger small" id="del">Delete</button></div>
+  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false};
+  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span>${p.has_scenario?'<button class="btn" id="fork" title="Copy this setup into a new study to try a variation">Fork</button>':''}<button class="btn danger" id="del">Delete</button></div>
     <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':i+1}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
   $('#del').onclick=async()=>{if(!confirm('Delete this study and all its files?'))return;try{await api('projects/'+id,{method:'DELETE'});location.hash='#/'}catch(e){toast(e.message)}};
-  ({build:tabBuild,graph:tabGraph,setup:tabSetup,sim:tabSim,report:tabReport}[tab]||tabSetup)(p)}
+  if($('#fork'))$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
+  ({build:tabBuild,graph:tabGraph,setup:tabSetup,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
 
 function tabBuild(p){const j=p.job;
   if(!j||j.kind!=='create'){$('#tab').innerHTML=`<div class="card"><h2>Material</h2>${p.sources.length?`<p class="muted">Documents in this study:</p><div class="files">${p.sources.map(s=>`<span class="file">${esc(s)}</span>`).join('')}</div>`:'<p class="muted">This study was set up by hand (no documents).</p>'}
@@ -250,12 +251,25 @@ function lineChart(series,{ymin,ymax,xmax,ylab,fmt}){const W=640,H=230,L=44,R=10
 
 function tabSim(p){if(!p.scenario){$('#tab').innerHTML='<div class="card">Set up the study first.</div>';return}
   state.filter=state.filter||{platform:'',space:''};
-  $('#tab').innerHTML=`<div class="card" id="ctl"></div><div class="split" style="margin-top:16px"><div class="grid" id="left"></div><div class="card"><div class="row"><h2 style="margin:0">Live feed</h2><span class="spacer"></span><select id="sp" style="width:auto;max-width:220px"></select></div><div class="chips" id="pf" style="margin-top:10px"></div><div class="feed" id="feed"></div></div></div>`;
+  $('#tab').innerHTML=`<div class="card" id="ctl"></div><div class="split" style="margin-top:16px"><div class="grid"><div class="grid" id="left"></div>${injectCard(p)}</div><div class="card"><div class="row"><h2 style="margin:0">Live feed</h2><span class="spacer"></span><select id="sp" style="width:auto;max-width:220px"></select></div><div class="chips" id="pf" style="margin-top:10px"></div><div class="feed" id="feed"></div></div></div>`;
   const tick=async()=>{const [q,l]=await Promise.all([api('projects/'+p.id),api(`projects/${p.id}/live?platform=${encodeURIComponent(state.filter.platform)}&space=${encodeURIComponent(state.filter.space)}`)]);drawSim(q,l);
     if(!(q.job&&q.job.state==='running')&&timer){clearInterval(timer);timer=null}};
-  tick();timer=setInterval(tick,2500)}
+  bindInject(p);tick();timer=setInterval(tick,2500)}
 
-function drawSim(p,l){const r=l.run,j=p.job,running=j&&j.kind==='run'&&j.state==='running',pct=r.rounds_total?r.rounds_done/r.rounds_total*100:0,complete=r.rounds_done>=r.rounds_total;
+function injectCard(p){const s=p.scenario;return `<div class="card"><h3>Add an event</h3><p class="muted small" style="margin-top:-4px">Happens at the next round, as if it were in the plan. Try "a doctor says…" or a new offer.</p>
+  <div class="row"><select id="ity" style="width:auto"><option value="news">News everyone hears</option>${s.accounts.length?'<option value="post">A post by an account</option>':''}</select>
+  <select id="iac" style="width:auto;display:none">${s.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select>
+  <select id="ipl" style="width:auto;display:none"></select></div>
+  <textarea id="itx" style="min-height:70px;margin-top:8px" placeholder="A local doctor posts that probiotics are a waste of money."></textarea>
+  <div class="row" style="margin-top:8px"><span id="ilist" class="small muted"></span><span class="spacer"></span><button class="btn" id="igo">Add</button></div></div>`}
+async function bindInject(p){const s=p.scenario;if(!$('#ity'))return;
+  const plat=()=>{const a=s.accounts.find(x=>x.id===$('#iac').value);$('#ipl').innerHTML=(a?a.platforms:[]).map(k=>`<option value="${k}">${esc(plabel(k))}</option>`).join('')};
+  $('#ity').onchange=()=>{const post=$('#ity').value==='post';$('#iac').style.display=$('#ipl').style.display=post?'':'none';plat()};$('#iac').onchange=plat;
+  const list=async()=>{try{const xs=await api(`projects/${p.id}/injected`);$('#ilist').textContent=xs.length?`${xs.length} added: `+xs.map(x=>`round ${x.round+1}`).join(', '):''}catch(e){}};list();
+  $('#igo').onclick=async()=>{const body={type:$('#ity').value,text:$('#itx').value,account:$('#iac').value,platform:$('#ipl').value};
+    try{const r=await api(`projects/${p.id}/inject`,{method:'POST',body});toast(`Added at round ${r.round+1}. ${state.p.job&&state.p.job.state==='running'?'':'Resume the run to see the reaction.'}`);$('#itx').value='';list()}catch(e){toast(e.message)}}}
+
+function drawSim(p,l){if(!$('#ctl'))return;const r=l.run,j=p.job,running=j&&j.kind==='run'&&j.state==='running',pct=r.rounds_total?r.rounds_done/r.rounds_total*100:0,complete=r.rounds_done>=r.rounds_total;
   const s=p.scenario;const simT=r.sim_time?new Date(r.sim_time):null;
   $('#ctl').innerHTML=`<div class="row"><div><h2 style="margin:0">${running?(j.stopping?'Stopping after this round…':'Simulating…'):complete?'Simulation complete':r.started?'Paused':'Ready to start'}</h2>
     <span class="muted small">Round ${r.rounds_done} of ${r.rounds_total}${simT?` · simulated time ${simT.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:''}${r.seconds?` · ${fmtDur(r.seconds)} so far · ${r.llm_calls} model calls`:''}</span></div><span class="spacer"></span>
@@ -294,15 +308,84 @@ function drawSim(p,l){const r=l.run,j=p.job,running=j&&j.kind==='run'&&j.state==
   if(atTop)feed.scrollTop=0}
 
 /* ------------------------------------------------------------ report */
-async function tabReport(p){const l=await api(`projects/${p.id}/live`);const s=p.scenario;
-  if(!s||!l.run.started){$('#tab').innerHTML=`<div class="card empty"><h2>No results yet</h2><p class="muted">Run the simulation first.</p><a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a></div>`;return}
-  const segs=[...new Set(l.trend.map(t=>t[1]))];const first={},last={};l.trend.forEach(([r,g,v])=>{if(!(g in first))first[g]=v;last[g]=v});
-  const tot={};l.conversions.forEach(([,n,c])=>tot[n]=(tot[n]||0)+c);const pop=Object.values(l.conversion_base||{}).reduce((a,b)=>a+b,0);
-  $('#tab').innerHTML=`<div class="card"><h2>Results so far</h2><p class="muted small">After ${l.run.rounds_done} of ${l.run.rounds_total} rounds. The written report, cited quotes and chatting with agents arrive in the next phase.</p>
-    <div class="kpis">${s.conversions.map(c=>`<div class="kpi"><b>${(tot[c.name]||0).toLocaleString()}</b><span>${esc(c.label)}${pop?` · ${((tot[c.name]||0)/pop*100).toFixed(1)}% of people`:''}</span></div>`).join('')}</div>
-    <h3 style="margin-top:20px">How opinion moved</h3><table><thead><tr><th>Group</th><th>Start</th><th>Now</th><th>Change</th></tr></thead><tbody>${segs.map(g=>`<tr><td>${esc(g.replace(/_/g,' '))}</td><td>${stance(first[g])} ${first[g].toFixed(2)}</td><td>${stance(last[g])} ${last[g].toFixed(2)}</td><td>${(last[g]-first[g]>=0?'+':'')+(last[g]-first[g]).toFixed(2)}</td></tr>`).join('')}</tbody></table>
-    <h3 style="margin-top:20px">Decisions</h3>${l.polls.map(x=>`<p><span class="pill ${x.passed?'ok':'bad'}">${x.passed?'Approved':'Rejected'}</span> ${esc(x.name.replace(/_/g,' '))} — ${x.yes} yes, ${x.no} no</p>`).join('')||'<p class="muted">None</p>'}
-    <p class="muted small" style="margin-top:20px">These numbers come from assumptions in the setup until they are calibrated with real data. Treat them as comparisons between options, not exact forecasts.</p></div>`}
+async function tabReport(p){
+  if(!p.run.started){$('#tab').innerHTML=`<div class="card empty"><h2>No results yet</h2><p class="muted">Run the simulation first.</p><a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a></div>`;return}
+  const j=p.job&&p.job.kind==='report'?p.job:null,running=j&&j.state==='running';
+  $('#tab').innerHTML=`<div class="card"><div class="row"><div><h2 style="margin:0">${running?'Writing the report…':p.has_report?'Report':'Write the report'}</h2>
+    <span class="muted small">The report agent reads every number from the simulation, searches what people said, and writes each section. Numbers it was not given are removed.</span></div><span class="spacer"></span>
+    ${running?`<button class="btn" id="rstop">Stop</button>`:`<label class="check"><input type="checkbox" id="rmock"> without a model</label><button class="btn ${p.has_report?'':'primary'}" id="rgo">${p.has_report?'Rewrite':'Write the report'}</button>`}
+    ${p.has_report&&!running?`<a class="btn" href="/api/projects/${p.id}/report.md" download="report.md">Markdown</a><a class="btn" href="/api/projects/${p.id}/report" target="_blank" rel="noopener">Open full page</a>`:''}</div>
+    ${j&&(running||j.state==='error')?`<div class="log" style="margin-top:12px">${esc(j.log.join('\n'))}</div>`:''}</div>
+    ${p.has_report&&!running?`<iframe style="margin-top:16px" src="/api/projects/${p.id}/report?t=${Date.now()}" title="Report"></iframe>`:''}
+    <div class="card" style="margin-top:16px"><h2>Ask about the results</h2><p class="muted small" style="margin-top:-6px">Answers use only the simulation's numbers and real posts, with citations like [p123].</p>
+      <div id="qa" class="grid" style="gap:10px"></div>
+      <div class="row" style="margin-top:12px"><input type="text" id="qq" placeholder="Why did senior residents hold back?" style="flex:1"><label class="check"><input type="checkbox" id="qmock"> without a model</label><button class="btn primary" id="qgo">Ask</button></div></div>`;
+  if($('#rgo'))$('#rgo').onclick=async()=>{try{await api(`projects/${p.id}/report`,{method:'POST',body:{mock:$('#rmock').checked}});route()}catch(e){toast(e.message)}};
+  if($('#rstop'))$('#rstop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'});
+  if(running)timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job||q.job.state!=='running'){clearInterval(timer);route()}else $('.log')&&($('.log').textContent=q.job.log.join('\n'))},2000);
+  const bubble=(role,text)=>`<div class="post" style="${role==='user'?'background:var(--sunk)':''}"><div class="meta">${role==='user'?'You':'Report agent'}</div><div class="txt">${esc(text).replace(/\[p(\d+)\]/g,'<b>[p$1]</b>')}</div></div>`;
+  const hist=await api(`projects/${p.id}/history?thread=report`);$('#qa').innerHTML=hist.map(h=>bubble(h.role,h.text)).join('');
+  const go=async()=>{const q=$('#qq').value.trim();if(!q)return;$('#qa').insertAdjacentHTML('beforeend',bubble('user',q)+'<p class="muted small" id="thinking">Thinking… (a local model can take a minute)</p>');$('#qq').value='';$('#qgo').disabled=true;
+    try{const r=await api(`projects/${p.id}/ask`,{method:'POST',body:{question:q,mock:$('#qmock').checked}});$('#thinking').remove();
+      $('#qa').insertAdjacentHTML('beforeend',bubble('agent',r.answer)+Object.values(r.quotes).map(x=>`<div class="small muted" style="margin-left:14px">${esc(x)}</div>`).join(''))}
+    catch(e){$('#thinking').remove();toast(e.message)}finally{$('#qgo').disabled=false}};
+  $('#qgo').onclick=go;$('#qq').onkeydown=e=>{if(e.key==='Enter')go()}}
+
+/* ------------------------------------------------------------ interact */
+async function tabPeople(p){
+  if(!p.run.started){$('#tab').innerHTML=`<div class="card empty"><h2>Nobody to talk to yet</h2><p class="muted">Run the simulation first; then you can interview anyone who took part.</p><a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a></div>`;return}
+  const s=p.scenario;state.person=state.person||'';
+  $('#tab').innerHTML=`<div class="card"><h2>Interview a group</h2><div class="row"><input type="text" id="iq" style="flex:1;min-width:240px" placeholder="Would you pay Rs 69 a sachet after the free week? Why?">
+      <select id="iseg" style="width:auto"><option value="">Everyone</option>${s.segments.map(g=>`<option value="${esc(g.name)}">${esc(g.name.replace(/_/g,' '))}</option>`).join('')}</select>
+      <input type="number" id="in" value="8" min="1" max="40" style="width:80px" title="How many people"><label class="check"><input type="checkbox" id="imock"> without a model</label><button class="btn primary" id="igo2">Ask them</button></div><div id="ires"></div></div>
+    <div class="split" style="margin-top:16px;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)"><div class="card"><div class="row"><h2 style="margin:0">People</h2><span class="spacer"></span>
+      <select id="pseg" style="width:auto"><option value="">All groups</option>${s.segments.map(g=>`<option value="${esc(g.name)}">${esc(g.name.replace(/_/g,' '))}</option>`).join('')}<option value="accounts">named accounts</option></select></div>
+      <input type="text" id="pq" placeholder="Search by name" style="margin:10px 0"><div id="plist" class="feed" style="max-height:70vh"></div></div><div class="card" id="pdet"><p class="muted">Choose someone to see what they did and talk to them.</p></div></div>`;
+  const load=async()=>{const xs=await api(`projects/${p.id}/people?segment=${encodeURIComponent($('#pseg').value)}&q=${encodeURIComponent($('#pq').value)}`);
+    $('#plist').innerHTML=xs.map(x=>`<div class="post" style="cursor:pointer;${x.handle===state.person?'border-color:var(--accent)':''}" data-h="${esc(x.handle)}"><div class="row"><b>${esc(x.name)}</b><span class="muted small">${x.kind==='account'?'official':esc(x.segment.replace(/_/g,' '))}</span><span class="spacer"></span>${stance(x.stance)}</div>
+      <div class="small muted">${x.posts} posts${x.actions.length?' · '+x.actions.map(a=>esc(a.replace(/_/g,' '))).join(', '):''}</div></div>`).join('')||'<p class="muted">No one found.</p>';
+    $('#plist').querySelectorAll('[data-h]').forEach(e=>e.onclick=()=>{state.person=e.dataset.h;load();person(p,e.dataset.h)})};
+  $('#pseg').onchange=load;$('#pq').oninput=()=>{clearTimeout(state.pt);state.pt=setTimeout(load,250)};load();if(state.person)person(p,state.person);
+  const showRes=r=>{$('#ires').innerHTML=`<p style="margin-top:14px"><b>${r.tally.yes} yes</b> · ${r.tally.unsure} unsure · <b>${r.tally.no} no</b> <span class="muted small">(average ${r.tally.average>=0?'+':''}${r.tally.average})</span></p>`+
+    r.answers.map(a=>`<div class="post" style="margin-top:8px"><div class="row"><b>${esc(a.name)}</b><span class="muted small">${esc(a.segment.replace(/_/g,' '))}</span><span class="spacer"></span>${stance(a.agree)}</div><div class="txt">${esc(a.answer)}</div></div>`).join('')};
+  const j=p.job;if(j&&j.kind==='interview'){if(j.state==='running'){$('#ires').innerHTML=`<p class="muted small" id="ilog">${esc(j.log.slice(-1)[0]||'Starting…')}</p>`;
+      timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(q.job.state!=='running'){clearInterval(timer);if(q.job.progress.result)showRes(q.job.progress.result);else $('#ires').innerHTML=`<p class="pill bad">${esc(q.job.error||'Stopped')}</p>`}else $('#ilog').textContent=q.job.log.slice(-1)[0]||''},1500)}
+    else if(j.progress&&j.progress.result)showRes(j.progress.result)}
+  $('#igo2').onclick=async()=>{try{await api(`projects/${p.id}/interview`,{method:'POST',body:{question:$('#iq').value,segment:$('#iseg').value,n:+$('#in').value||8,mock:$('#imock').checked}});route()}catch(e){toast(e.message)}}}
+
+async function person(p,h){const x=await api(`projects/${p.id}/people/${encodeURIComponent(h)}`);
+  const bubble=(role,t)=>`<div class="post" style="${role==='user'?'background:var(--sunk)':''}"><div class="meta">${role==='user'?'You':esc(x.name)}</div><div class="txt">${esc(t)}</div></div>`;
+  $('#pdet').innerHTML=`<div class="row"><div><h2 style="margin:0">${esc(x.name)} <span class="muted small">@${esc(x.handle)}</span></h2><span class="muted small">${x.kind==='account'?'named account':esc(x.segment.replace(/_/g,' '))} · ${x.platforms.map(pbadge).join('')}</span></div><span class="spacer"></span><span class="small muted">opinion ${stance(x.stance_start)} → ${stance(x.stance)}</span></div>
+    <p class="small">${esc(x.persona)}</p>
+    ${x.actions.length?`<p class="small"><b>Did:</b> ${x.actions.map(a=>esc(a.name.replace(/_/g,' '))+` (round ${a.round+1})`).join(', ')}</p>`:''}
+    ${x.votes.map(v=>`<p class="small"><b>Voted ${v.vote}</b> on ${esc(v.poll.replace(/_/g,' '))}: <span class="muted">${esc(v.reason)}</span></p>`).join('')}
+    <details><summary class="small">${x.posts.length} posts · ${x.thoughts.length} private thoughts · memory</summary>
+      ${x.posts.slice(0,8).map(q=>`<div class="post" style="margin-top:8px"><div class="meta">${pbadge(q.platform)}${q.space?esc(q.space):''} · round ${q.round+1}</div><div class="txt small">${esc(q.text)}</div></div>`).join('')}
+      ${x.thoughts.slice(0,6).map(t=>`<p class="small muted">Round ${t.round+1}: <i>${esc(t.text)}</i></p>`).join('')}
+      <div class="log" style="margin-top:8px">${esc(x.memory.join('\n'))||'(empty)'}</div></details>
+    <h3 style="margin-top:18px">Talk to ${esc(x.name)}</h3><div id="chat" class="grid" style="gap:8px">${x.chat.map(c=>bubble(c.role,c.text)).join('')}</div>
+    <div class="row" style="margin-top:10px"><input type="text" id="cm" placeholder="Did you register? What would change your mind?" style="flex:1"><label class="check"><input type="checkbox" id="cmock"> without a model</label><button class="btn primary" id="cgo">Send</button></div>`;
+  const send=async()=>{const m=$('#cm').value.trim();if(!m)return;$('#chat').insertAdjacentHTML('beforeend',bubble('user',m)+'<p class="muted small" id="typing">…</p>');$('#cm').value='';
+    try{const r=await api(`projects/${p.id}/people/${encodeURIComponent(h)}/chat`,{method:'POST',body:{message:m,mock:$('#cmock').checked}});$('#typing').remove();$('#chat').insertAdjacentHTML('beforeend',bubble('agent',r.reply))}catch(e){$('#typing').remove();toast(e.message)}};
+  $('#cgo').onclick=send;$('#cm').onkeydown=e=>{if(e.key==='Enter')send()}}
+
+/* ------------------------------------------------------------ compare */
+async function comparePage(ids){const ps=(await api('projects')).filter(p=>p.run.started);const sel=new Set(ids?ids.split(','):ps.slice(0,2).map(p=>p.id));
+  $('#view').innerHTML=`<a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">Compare studies</h1><p class="muted">Pick two or more runs, for example a study and its fork with a different offer.</p>
+    <div class="chips">${ps.map(p=>`<span class="chip ${sel.has(p.id)?'on':''}" data-id="${p.id}">${esc(p.title)}</span>`).join('')}</div><div id="cmp"></div>`;
+  document.querySelectorAll('.chip[data-id]').forEach(c=>c.onclick=()=>{sel.has(c.dataset.id)?sel.delete(c.dataset.id):sel.add(c.dataset.id);location.hash='#/compare/'+[...sel].join(',')});
+  if(sel.size<2){$('#cmp').innerHTML='<p class="muted">Choose at least two.</p>';return}
+  const c=await api('compare?ids='+[...sel].join(','));const cols=c.columns.filter(x=>x.run);
+  const row=(lab,f)=>`<tr><td>${lab}</td>${cols.map(x=>`<td class="n">${f(x)}</td>`).join('')}</tr>`;
+  $('#cmp').innerHTML=`<div class="card" style="overflow:auto"><table><thead><tr><th></th>${cols.map(x=>`<th><a href="#/p/${x.id}/report">${esc(x.title)}</a></th>`).join('')}</tr></thead><tbody>
+    ${row('Rounds',x=>x.rounds)}
+    ${c.actions.map(n=>row(`<b>${esc(n.replace(/_/g,' '))}</b>`,x=>{const a=x.actions[n];return a?`${a.count.toLocaleString()} <span class="muted small">(${(a.rate*100).toFixed(1)}%)</span>${a.blocked?' <span class="pill bad">blocked</span>':''}`:'—'})).join('')}
+    ${row('Average opinion at end',x=>(x.opinion_end>=0?'+':'')+(x.opinion_end??0).toFixed(2))}
+    ${row('In favour at end',x=>((x.for_end||0)*100).toFixed(1)+'%')}
+    ${row('Against at end',x=>((x.against_end||0)*100).toFixed(1)+'%')}
+    ${c.segments.map(g=>row(`<span class="muted">${esc(g.replace(/_/g,' '))}</span>`,x=>x.segments[g]!==undefined?stance(x.segments[g])+' '+x.segments[g].toFixed(2):'—')).join('')}
+    ${c.decisions.map(d=>row(esc(d.replace(/_/g,' ')),x=>x.decisions[d]===undefined?'—':x.decisions[d]?'<span class="pill ok">approved</span>':'<span class="pill bad">rejected</span>')).join('')}
+    ${row('Posts',x=>x.posts.toLocaleString())}</tbody></table></div>`}
 
 /* ------------------------------------------------------------ boot */
 (async()=>{INFO=await api('info');const h=INFO.hardware;$('#hw').textContent=`${h.tier} machine · ${h.ram_gb} GB · ${h.model}`;route()})();

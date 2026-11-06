@@ -125,6 +125,9 @@ class Scenario:
     events: list[Event] = field(default_factory=list)
     conversions: list[Conversion] = field(default_factory=list)
     voices: list[dict[str, Any]] = field(default_factory=list)  # hand-written/drafted LLM personas
+    # optional money view for the report: {currency, cost: {conversion: per person},
+    # value: {conversion: per person}, fixed_cost}
+    economics: dict[str, Any] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -278,6 +281,13 @@ def validate(sc: Scenario) -> None:
         for s in c.eligible_segments:
             if s not in names:
                 raise ScenarioError(f"Conversion {c.name}: unknown segment '{s}'")
+    if sc.economics:
+        for k in ("cost", "value"):
+            for name, amt in (sc.economics.get(k) or {}).items():
+                if name not in conv_names:
+                    raise ScenarioError(f"economics.{k}: unknown conversion '{name}'")
+                if not isinstance(amt, (int, float)):
+                    raise ScenarioError(f"economics.{k}.{name} must be a number")
     for v in sc.voices:
         if not isinstance(v, dict) or v.get("segment") not in names or not v.get("persona"):
             raise ScenarioError("Each voice needs a known 'segment' and a 'persona'")

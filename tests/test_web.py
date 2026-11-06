@@ -134,3 +134,37 @@ def test_upload_validation(web):
     assert st == 400 and "unsupported" in r["error"]
     st, r = call(base, "POST", "/api/projects", {"name": "x", "prompt": "", "files": []})
     assert st == 400
+
+
+def test_report_and_interaction_endpoints(web):
+    base, _ = web
+    pid = call(base, "POST", "/api/projects/demo")[1]["id"]
+    assert call(base, "POST", f"/api/projects/{pid}/report", {"mock": True})[0] == 400   # not run yet
+    call(base, "POST", f"/api/projects/{pid}/run", {"mock": True, "rounds": 20})
+    wait_job(base, pid)
+    assert call(base, "POST", f"/api/projects/{pid}/inject", {"type": "news", "text": "Big news"})[1]["round"] == 20
+    assert len(call(base, "GET", f"/api/projects/{pid}/injected")[1]) == 1
+    call(base, "POST", f"/api/projects/{pid}/report", {"mock": True})
+    p = wait_job(base, pid)
+    assert p["job"]["state"] == "done" and p["has_report"]
+    st, html = call(base, "GET", f"/api/projects/{pid}/report")
+    assert st == 200 and b"Opinion by group" in html
+    assert call(base, "GET", f"/api/projects/{pid}/report.md")[0] == 200
+    ans = call(base, "POST", f"/api/projects/{pid}/ask", {"question": "Who registered?", "mock": True})[1]
+    assert ans["answer"]
+    ppl = call(base, "GET", f"/api/projects/{pid}/people")[1]
+    h = next(x["handle"] for x in ppl if x["kind"] == "llm")
+    assert call(base, "GET", f"/api/projects/{pid}/people/{h}")[1]["handle"] == h
+    assert call(base, "POST", f"/api/projects/{pid}/people/{h}/chat", {"message": "hi", "mock": True})[1]["reply"]
+    assert call(base, "GET", f"/api/projects/{pid}/people/nobody")[0] == 404
+    call(base, "POST", f"/api/projects/{pid}/interview", {"question": "Buy?", "n": 3, "mock": True})
+    p = wait_job(base, pid)
+    assert len(p["job"]["progress"]["result"]["answers"]) == 3
+    new = call(base, "POST", f"/api/projects/{pid}/fork", {"title": "Variant"})[1]["id"]
+    assert call(base, "GET", f"/api/projects/{new}")[1]["forked_from"] == pid
+    assert call(base, "GET", f"/api/compare?ids={pid}")[0] == 400
+    c = call(base, "GET", f"/api/compare?ids={pid},{new}")[1]
+    assert len(c["columns"]) == 2
+    # a real model that is not running gives a clear 503, not a crash
+    st, r = call(base, "POST", f"/api/projects/{pid}/ask", {"question": "x"})
+    assert st == 503 and "Ollama" in r["error"]

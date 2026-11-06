@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS poll_results (name TEXT PRIMARY KEY, round INTEGER,
 CREATE TABLE IF NOT EXISTS rounds (round INTEGER PRIMARY KEY, sim_time TEXT,
     active INTEGER, llm_calls INTEGER, cache_hits INTEGER, seconds REAL, finished_at TEXT);
 CREATE TABLE IF NOT EXISTS event_log (round INTEGER, kind TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS injected (id INTEGER PRIMARY KEY AUTOINCREMENT, round INTEGER, event TEXT,
+    added_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT, role TEXT,
+    text TEXT, at TEXT DEFAULT (datetime('now')));
 """
 
 

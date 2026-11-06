@@ -155,8 +155,8 @@ class Simulation:
         now = self.now(r)
         self._post_clock = 0
 
-        # 1. scheduled events
-        for ev in [e for e in sc.events if e.round == r]:
+        # 1. scheduled events, plus any the user added while the run was going
+        for ev in [e for e in sc.events if e.round == r] + self._injected(r):
             if ev.when and not self._when_ok(ev.when):
                 out.events.append(("skipped", {"type": ev.type, "why": ev.when}))
                 continue
@@ -209,6 +209,14 @@ class Simulation:
                         self._convert(a, c.name, out)
             a.last_seen = t0
         return out, len(active)
+
+    def _injected(self, r: int) -> list:
+        evs = []
+        for (raw,) in self.store.rows("SELECT event FROM injected WHERE round = ? ORDER BY id", (r,)):
+            d = json.loads(raw)
+            evs.append(scenario_mod.Event(**{k: v for k, v in d.items()
+                                             if k in scenario_mod.Event.__dataclass_fields__}))
+        return evs
 
     def _experiences(self, r, now, rng, out: RoundOutput) -> None:
         exps = [c for c in self.sc.conversions if c.experience]
