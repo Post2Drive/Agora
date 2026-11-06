@@ -5,6 +5,7 @@ import re
 
 import numpy as np
 
+from ..platforms import REGISTRY
 from ..scenario import Scenario
 from .world import Agent, World
 
@@ -71,9 +72,11 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
     used_handles: set[str] = set(w.by_handle)
     for seg, n_llm, n_crowd in zip(sc.segments, llm_counts, crowd_counts):
         names = seg.names or DEFAULT_NAMES
+        voices = [v for v in sc.voices if v.get("segment") == seg.name]
         for i in range(n_llm + n_crowd):
             kind = "llm" if i < n_llm else "crowd"
-            name = str(rng.choice(names))
+            voice = voices[i] if kind == "llm" and i < len(voices) else None
+            name = str(voice["name"]) if voice and voice.get("name") else str(rng.choice(names))
             base = _slug(name)
             handle = f"{base}{rng.integers(10, 9999)}"
             while handle in used_handles:
@@ -89,9 +92,16 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                 age = int(rng.integers(seg.age[0], seg.age[1] + 1))
                 occ = str(rng.choice(seg.occupations)) if seg.occupations else ""
                 trait = str(rng.choice(TRAITS))
-                attrs = {"age": age, "occupation": occ, "trait": trait}
-                bits = [f"{name}, {age}"] + ([occ] if occ else [])
-                persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
+                if voice:
+                    age = int(voice.get("age") or age)
+                    occ = str(voice.get("occupation") or occ)
+                    attrs = {"age": age, "occupation": occ, "voice": True}
+                    bits = [f"{name}, {age}"] + ([occ] if occ else [])
+                    persona = f"{', '.join(bits)}. {voice['persona']} ({seg.persona})"
+                else:
+                    attrs = {"age": age, "occupation": occ, "trait": trait}
+                    bits = [f"{name}, {age}"] + ([occ] if occ else [])
+                    persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
                 infl *= 1.5      # voices that write are a bit more visible
             new_agent(handle=handle, kind=kind, name=name, segment=seg.name, persona=persona,
                       platforms=list(seg.platforms), initial_stance=s0, stubbornness=stub,
@@ -124,16 +134,18 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                 w.add_member(a.id, sp.platform, sp.name)
                 memberships.append((a.id, sp.platform, sp.name))
 
-    # 4. X follow network: homophily + preferential attachment on influence
-    follows: list[tuple[int, int]] = []
-    on_x = [a for a in w.agents if "x" in a.platforms]
-    if len(on_x) > 1:
-        ids = np.array([a.id for a in on_x])
-        infl = np.array([a.influence for a in on_x])
-        segs = np.array([seg_idx.get(a.segment, -1) for a in on_x])
+    # 4. follow networks, one per feed platform: homophily + preferential attachment
+    follows: list[tuple[str, int, int]] = []
+    for plat in [k for k in REGISTRY if REGISTRY[k].kind == "feed"]:
+        on = [a for a in w.agents if plat in a.platforms]
+        if len(on) < 2:
+            continue
+        ids = np.array([a.id for a in on])
+        infl = np.array([a.influence for a in on])
+        segs = np.array([seg_idx.get(a.segment, -1) for a in on])
         by_seg = {s: np.where(segs == s)[0] for s in set(segs.tolist())}
         p_all = infl / infl.sum()
-        for k, a in enumerate(on_x):
+        for k, a in enumerate(on):
             n = max(1, int(rng.poisson(sc.avg_follows)))
             same = by_seg[segs[k]]
             n_same = int(round(n * sc.homophily))
@@ -141,10 +153,10 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
             if len(same) > 1 and n_same:
                 ps = infl[same] / infl[same].sum()
                 choices += rng.choice(same, size=min(n_same, len(same)), replace=False, p=ps).tolist()
-            choices += rng.choice(len(on_x), size=min(n - n_same, len(on_x)), replace=False,
+            choices += rng.choice(len(on), size=min(max(0, n - n_same), len(on)), replace=False,
                                   p=p_all).tolist()
             for j in choices:
                 dst = int(ids[j])
-                if w.add_follow(a.id, dst):
-                    follows.append((a.id, dst))
+                if w.add_follow(plat, a.id, dst):
+                    follows.append((plat, a.id, dst))
     return w, follows, memberships

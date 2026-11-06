@@ -28,6 +28,7 @@ from .. import scenario as scenario_mod
 from ..llm import LLMConfig, LLMError, make_backend, parse_json
 from ..store import Store
 from . import llm_agent, opinion, population
+from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
 from .world import Agent, Post, World
 
@@ -74,6 +75,14 @@ class Simulation:
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
         self.store = Store(self.dir / DB_FILE)
         self.world: World | None = None
+        self.facts = None
+        gpath = self.dir / "graph.db"
+        if gpath.exists():
+            from ..graph import GraphStore
+            from ..graph.retrieve import FactIndex
+            gs = GraphStore(gpath)
+            self.facts = FactIndex.from_graph(gs) or None
+            gs.close()
         self._post_clock = 0
 
     # ---------------------------------------------------------------- setup
@@ -88,7 +97,7 @@ class Simulation:
             w, follows, members = population.build(self.sc)
             # accounts that post into groups by schedule are members of those groups
             for ev in self.sc.events:
-                if ev.type != "post" or ev.platform not in ("reddit", "whatsapp"):
+                if ev.type != "post" or not is_spaced(ev.platform):
                     continue
                 aid = w.by_handle[ev.account].id
                 names = [s.name for s in self.sc.spaces_on(ev.platform)]
@@ -112,11 +121,13 @@ class Simulation:
 
     # ---------------------------------------------------------------- running
     def run(self, rounds: int | None = None, progress: Callable[[dict], None] | None = None,
-            force: bool = False) -> int:
+            force: bool = False, should_stop: Callable[[], bool] | None = None) -> int:
         w = self.world or self.prepare(force=force)
         start = self.store.last_round() + 1
         end = self.sc.rounds if rounds is None else min(self.sc.rounds, start + rounds)
         for r in range(start, end):
+            if should_stop and should_stop():
+                return r
             t_start = time.time()
             c0, h0 = self.llm.calls, getattr(self.llm, "hits", 0)
             out, active = self.step(r)
@@ -236,7 +247,12 @@ class Simulation:
         sc, w = self.sc, self.world
 
         def one(a: Agent):
-            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id])
+            facts = []
+            if self.facts:
+                texts = " ".join(w.posts[p.root if p.kind in ("repost", "forward") else p.id].text
+                                 for p in feeds[a.id])
+                facts = self.facts.search(f"{sc.topic} {texts} {a.persona}", k=3)
+            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts)
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             try:
                 raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,
@@ -307,8 +323,8 @@ class Simulation:
         w = self.world
         a = w.by_handle[ev.account]
         targets: list[tuple[str, str]] = []
-        if ev.platform == "x":
-            targets = [("x", "")]
+        if not is_spaced(ev.platform):
+            targets = [(ev.platform, "")]
         else:
             names = [s.name for s in self.sc.spaces_on(ev.platform)]
             chosen = names if (not ev.spaces or "*" in ev.spaces) else ev.spaces
@@ -340,45 +356,61 @@ class Simulation:
         text = str(x.get("text", "") or "").strip()
         if kind == "post":
             where = str(x.get("where") or x.get("platform") or "").strip()
-            if where.lower() in ("x", "twitter"):
-                where = "x"
-            if where not in where_options(w, a) or not text:
+            plat_part, sep, space_part = where.partition(":")
+            plat = resolve(plat_part) or plat_part
+            where = plat + (sep + space_part.strip() if sep else "")
+            options = where_options(w, a)
+            if where not in options:
+                # "whatsapp" alone is fine when the agent is in exactly one such group
+                mine = [o for o in options if o.startswith(plat + ":")]
+                if sep or len(mine) != 1:
+                    return None
+                where = mine[0]
+            if not text:
                 return None
             plat, _, space = where.partition(":")
+            text = text[:REGISTRY[plat].max_len]
             self._new_post(a, r, t0, plat, space, "post", text, a.stance, out=out)
-            return f"you posted on {where}: \"{text[:120]}\""
+            return f"you posted on {REGISTRY[plat].label}{' in ' + space if space else ''}: \"{text[:120]}\""
         if kind == "convert":
             name = str(x.get("name", ""))
             if any(c.name == name for c in opens):
                 self._convert(a, name, out)
                 return f"you decided to {name.replace('_', ' ')}"
             return None
-        if kind == "follow":
+        if kind in ("follow", "subscribe", "connect", "add friend"):
             ref = str(x.get("target", ""))
+            plat = resolve(x.get("platform") or x.get("where") or "")
             if ref.startswith("@"):
                 dst = w.by_handle.get(ref[1:])
             else:
                 p = self._target(a, ref)
                 dst = w.agents[p.author] if p else None
-            if dst is None or "x" not in a.platforms or "x" not in dst.platforms:
+                plat = plat or (p.platform if p else None)
+            if plat is None:     # follow on the first feed app both use
+                plat = next((q for q in a.platforms if REGISTRY[q].kind == "feed"
+                             and dst is not None and q in dst.platforms), None)
+            if (dst is None or plat is None or REGISTRY[plat].kind != "feed"
+                    or plat not in a.platforms or plat not in dst.platforms):
                 return None
-            if w.add_follow(a.id, dst.id):
-                out.follows.append((a.id, dst.id))
-                return f"you followed @{dst.handle}"
+            if w.add_follow(plat, a.id, dst.id):
+                out.follows.append((plat, a.id, dst.id))
+                return f"you followed @{dst.handle} on {REGISTRY[plat].label}"
             return None
 
         p = self._target(a, x.get("target"))
         if p is None or p.author == a.id:
             return None
-        if kind == "reply":
+        pkind = REGISTRY[p.platform].kind
+        if kind in ("reply", "comment", "answer"):
             if not text:
                 return None
             root = p.root if p.kind == "reply" else p.id
-            self._new_post(a, r, t0, p.platform, p.space, "reply", text, a.stance,
-                           parent=p.id, root=root, out=out)
+            self._new_post(a, r, t0, p.platform, p.space, "reply", text[:REGISTRY[p.platform].max_len],
+                           a.stance, parent=p.id, root=root, out=out)
             return f"you replied to {w.agents[p.author].name}: \"{text[:120]}\""
-        if kind in ("like", "upvote", "downvote", "react"):
-            if p.platform == "reddit":
+        if kind in ("like", "upvote", "downvote", "react", "heart"):
+            if pkind == "forum":
                 kind = "downvote" if kind == "downvote" else "upvote"
             elif kind == "downvote":
                 return None
@@ -388,27 +420,27 @@ class Simulation:
                 out.engagements.append((a.id, p.id, kind))
                 return f"you {kind}d a post by {w.agents[p.author].name}"
             return None
-        if kind in ("repost", "forward", "share", "retweet"):
+        if kind in ("repost", "forward", "share", "retweet", "share to story"):
             src_id = p.root if p.kind in ("repost", "forward") else p.id
             src = w.posts[src_id]
-            if p.platform == "x" and "x" in a.platforms:
-                if not w.engage(a.id, src_id, "repost"):
+            if pkind == "feed":
+                if not w.engage(a.id, src_id, f"repost:{p.platform}"):
                     return None
-                out.engagements.append((a.id, src_id, "repost"))
-                self._new_post(a, r, t0, "x", "", "repost", "", src.stance, parent=p.id,
+                out.engagements.append((a.id, src_id, f"repost:{p.platform}"))
+                self._new_post(a, r, t0, p.platform, "", "repost", "", src.stance, parent=p.id,
                                root=src_id, out=out)
-                return f"you reposted {w.agents[src.author].name}"
-            if p.platform == "whatsapp":
-                groups = [g for g in w.member_of.get(a.id, {}).get("whatsapp", []) if g != p.space]
+                return f"you shared {w.agents[src.author].name}'s post on {REGISTRY[p.platform].label}"
+            if pkind == "chat":
+                groups = [g for g in w.member_of.get(a.id, {}).get(p.platform, []) if g != p.space]
                 if not groups:
                     return None
                 to = str(x.get("to", ""))
                 if to not in groups:
                     to = groups[int(rng.integers(len(groups)))]
-                if not w.engage(a.id, src_id, f"forward:{to}"):
+                if not w.engage(a.id, src_id, f"forward:{p.platform}:{to}"):
                     return None
-                out.engagements.append((a.id, src_id, f"forward:{to}"))
-                self._new_post(a, r, t0, "whatsapp", to, "forward", "", src.stance,
+                out.engagements.append((a.id, src_id, f"forward:{p.platform}:{to}"))
+                self._new_post(a, r, t0, p.platform, to, "forward", "", src.stance,
                                parent=p.id, root=src_id, out=out)
                 return f"you forwarded a message to {to}"
         return None

@@ -13,7 +13,10 @@ from typing import Any
 
 import yaml
 
-PLATFORMS = ("x", "reddit", "whatsapp")
+from .platforms import REGISTRY, is_spaced, resolve
+
+PLATFORMS = tuple(REGISTRY)
+DEFAULT_PLATFORMS = ("whatsapp", "instagram", "x")
 
 
 class ScenarioError(ValueError):
@@ -31,7 +34,7 @@ class Segment:
     activity: float = 0.4            # chance of being active in a waking round
     influence: float = 1.0           # how much others weigh this segment's posts
     openness: float = 0.6            # bounded-confidence width: how different an opinion can be and still persuade
-    platforms: list[str] = field(default_factory=lambda: list(PLATFORMS))
+    platforms: list[str] = field(default_factory=lambda: list(DEFAULT_PLATFORMS))
     occupations: list[str] = field(default_factory=list)
     age: tuple[int, int] = (25, 60)
     names: list[str] = field(default_factory=list)
@@ -49,7 +52,7 @@ class Account:
     stubbornness: float = 0.9
     activity: float = 0.3
     influence: float = 3.0
-    platforms: list[str] = field(default_factory=lambda: list(PLATFORMS))
+    platforms: list[str] = field(default_factory=lambda: list(DEFAULT_PLATFORMS))
     llm: bool = True                 # acts on its own each round
     spaces: list[str] = field(default_factory=list)   # groups/communities it joins
 
@@ -121,6 +124,7 @@ class Scenario:
     spaces: list[Space] = field(default_factory=list)
     events: list[Event] = field(default_factory=list)
     conversions: list[Conversion] = field(default_factory=list)
+    voices: list[dict[str, Any]] = field(default_factory=list)  # hand-written/drafted LLM personas
     llm: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -168,17 +172,29 @@ def _segment(d: dict) -> Segment:
     return Segment(**kw)
 
 
+def _plat(p) -> str:
+    """'Twitter' -> 'x', 'IG' -> 'instagram'; unknown names pass through to fail validation."""
+    return resolve(p) or str(p)
+
+
 def from_dict(d: dict) -> Scenario:
     d = dict(d)
     raw = dict(d)
     pop = d.pop("population", {}) or {}
     segs = [_segment(s) for s in d.pop("segments", [])]
+    for s in segs:
+        s.platforms = list(dict.fromkeys(_plat(p) for p in s.platforms))
     accts = [Account(**_pick(a, Account)) for a in d.pop("accounts", [])]
+    for a in accts:
+        a.platforms = list(dict.fromkeys(_plat(p) for p in a.platforms))
     spaces = []
     for p, items in (d.pop("spaces", {}) or {}).items():
         for s in items:
-            spaces.append(Space(platform=p, **_pick(s, Space)))
+            spaces.append(Space(platform=_plat(p), **_pick(s, Space)))
     events = [Event(**_pick(e, Event, {"at_round": "round"})) for e in d.pop("events", [])]
+    for e in events:
+        if e.platform:
+            e.platform = _plat(e.platform)
     convs = []
     for c in d.pop("conversions", []):
         c = dict(c)
@@ -210,15 +226,21 @@ def validate(sc: Scenario) -> None:
     for s in sc.segments:
         bad = set(s.platforms) - set(PLATFORMS)
         if bad:
-            raise ScenarioError(f"Segment {s.name}: unknown platforms {bad}")
+            raise ScenarioError(f"Segment {s.name}: unknown platforms {bad}. "
+                                f"Available: {', '.join(PLATFORMS)}")
         if not -1 <= s.stance_mean <= 1:
             raise ScenarioError(f"Segment {s.name}: stance mean must be between -1 and 1")
     for sp in sc.spaces:
-        if sp.platform not in ("reddit", "whatsapp"):
-            raise ScenarioError(f"Space {sp.name}: spaces exist on reddit or whatsapp only")
+        if sp.platform not in REGISTRY or not is_spaced(sp.platform):
+            spaced = [k for k in PLATFORMS if is_spaced(k)]
+            raise ScenarioError(f"Space {sp.name}: groups/communities exist on {', '.join(spaced)} only")
         for seg in sp.segments:
             if seg not in names:
                 raise ScenarioError(f"Space {sp.name}: unknown segment '{seg}'")
+    for a in sc.accounts:
+        bad = set(a.platforms) - set(PLATFORMS)
+        if bad:
+            raise ScenarioError(f"Account {a.id}: unknown platforms {bad}")
     space_names = {sp.name for sp in sc.spaces}
     polls = set()
     conv_names = {c.name for c in sc.conversions}
@@ -227,6 +249,8 @@ def validate(sc: Scenario) -> None:
             raise ScenarioError(f"Event at round {e.round}: unknown type '{e.type}'")
         if e.account and e.account not in ids:
             raise ScenarioError(f"Event at round {e.round}: unknown account '{e.account}'")
+        if e.type == "post" and e.platform not in REGISTRY:
+            raise ScenarioError(f"Event at round {e.round}: unknown platform '{e.platform}'")
         for s in e.spaces:
             if s != "*" and s not in space_names:
                 raise ScenarioError(f"Event at round {e.round}: unknown space '{s}'")
@@ -254,6 +278,9 @@ def validate(sc: Scenario) -> None:
         for s in c.eligible_segments:
             if s not in names:
                 raise ScenarioError(f"Conversion {c.name}: unknown segment '{s}'")
+    for v in sc.voices:
+        if not isinstance(v, dict) or v.get("segment") not in names or not v.get("persona"):
+            raise ScenarioError("Each voice needs a known 'segment' and a 'persona'")
     if sc.rounds < 1 or sc.round_hours <= 0:
         raise ScenarioError("rounds must be >= 1 and round_hours > 0")
 

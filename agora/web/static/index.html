@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora</title>
+<style>
+:root{
+  --bg:#f7f6f2;--surface:#ffffff;--sunk:#efede7;--fg:#1c1b18;--muted:#6d6a62;--line:#e1ded6;
+  --accent:#2f5d50;--accent-fg:#ffffff;--accent-soft:#e3ece8;--warn:#a25b12;--bad:#a83232;--good:#2f7a4a;
+  --radius:12px;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#141412;--surface:#1c1c19;--sunk:#24241f;--fg:#ecebe5;--muted:#9d9a90;--line:#33322c;
+  --accent:#7fb8a6;--accent-fg:#10201b;--accent-soft:#22332e;--warn:#e0a35c;--bad:#e07a7a;--good:#7fc79a;
+  --shadow:none}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:20px;padding:12px 24px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:18px;letter-spacing:-.01em;text-decoration:none;display:flex;align-items:center;gap:8px}
+.brand i{width:22px;height:22px;border-radius:7px;background:var(--accent);display:inline-block;position:relative}
+.brand i:after{content:"";position:absolute;inset:6px;border-radius:50%;border:2px solid var(--accent-fg)}
+header nav{display:flex;gap:4px;flex:1}
+header nav a{text-decoration:none;padding:6px 12px;border-radius:8px;color:var(--muted)}
+header nav a.on,header nav a:hover{background:var(--sunk);color:var(--fg)}
+.pill{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.ok{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+.pill.run{background:var(--accent-soft);color:var(--accent)}
+main{max-width:1200px;margin:0 auto;padding:28px 24px 80px}
+h1{font-size:28px;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:18px;margin:0 0 12px}
+h3{font-size:15px;margin:0 0 8px}
+.muted{color:var(--muted)}.small{font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.g3{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:9px;cursor:pointer;text-decoration:none;display:inline-flex;gap:6px;align-items:center}
+.btn:hover{background:var(--sunk)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+label{display:block;font-weight:600;font-size:13px;margin:14px 0 6px}
+input[type=text],input[type=number],input[type=url],select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+textarea{min-height:110px;resize:vertical}
+textarea.code{font:13px/1.5 var(--mono);min-height:460px;white-space:pre;tab-size:2}
+.check{display:flex;gap:8px;align-items:center;font-weight:400;font-size:14px;margin:8px 0}
+.drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:26px;text-align:center;cursor:pointer;background:var(--sunk)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.file{font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:flex;gap:6px;align-items:center}
+.file button{border:0;background:none;cursor:pointer;color:var(--muted);padding:0}
+.steps{display:flex;gap:6px;margin:18px 0 22px;flex-wrap:wrap}
+.step{display:flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);text-decoration:none;font-size:14px;color:var(--muted)}
+.step b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--sunk);font-size:12px;color:var(--fg)}
+.step.done b{background:var(--accent);color:var(--accent-fg)}
+.step.on{border-color:var(--accent);color:var(--fg);box-shadow:0 0 0 2px var(--accent-soft)}
+.log{font:12.5px/1.55 var(--mono);background:var(--sunk);border-radius:10px;padding:14px;max-height:420px;overflow:auto;white-space:pre-wrap}
+.bar{height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--sunk);margin:2px 3px 2px 0;white-space:nowrap}
+.badge i{width:8px;height:8px;border-radius:50%}
+.stance{display:inline-block;width:70px;height:6px;border-radius:9px;background:linear-gradient(90deg,var(--bad),var(--sunk),var(--good));position:relative;vertical-align:middle}
+.stance:after{content:"";position:absolute;top:-3px;width:3px;height:12px;border-radius:2px;background:var(--fg);left:var(--x)}
+.feed{display:flex;flex-direction:column;gap:10px;max-height:78vh;overflow:auto;padding-right:4px}
+.post{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.post .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.post .who{font-weight:600;color:var(--fg);font-size:14px}
+.post .txt{white-space:pre-wrap;word-break:break-word}
+.post .counts{font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:12px}
+.post.reply{margin-left:22px;border-left:3px solid var(--line)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:13px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip i{width:8px;height:8px;border-radius:50%}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.kpi{background:var(--sunk);border-radius:10px;padding:12px}
+.kpi b{display:block;font-size:22px;letter-spacing:-.02em}
+.kpi span{font-size:12px;color:var(--muted)}
+.chart svg{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.timeline{border-left:2px solid var(--line);margin-left:6px;padding-left:16px}
+.tl{position:relative;padding:4px 0 10px}
+.tl:before{content:"";position:absolute;left:-22px;top:10px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.empty{text-align:center;padding:60px 20px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:90vw}
+iframe{width:100%;height:76vh;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+details>summary{cursor:pointer;font-weight:600}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+@media (max-width:900px){.split{grid-template-columns:1fr}header{padding:10px 16px}main{padding:20px 16px 60px}header nav{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="#/"><i></i>Agora</a>
+  <nav><a href="#/" data-nav="home">Studies</a><a href="#/new" data-nav="new">New study</a></nav>
+  <span class="pill" id="hw" title="This machine"></span>
+</header>
+<main id="view"></main>
+<script>
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PCOL={x:'#5b5b5b',threads:'#7a7a7a',instagram:'#d6249f',facebook:'#1877f2',linkedin:'#0a66c2',youtube:'#e62117',tiktok:'#19b3b1',reddit:'#ff4500',facebook_groups:'#4a7fd4',whatsapp:'#25a85a',telegram:'#229ed9'};
+const SCOL=['#2f6f8f','#c46b2d','#7a5aa6','#3d8b5a','#b8456b','#8a7a2e','#3f7fbf','#a0522d'];
+let INFO=null, timer=null, state={};
+async function api(path,opts={}){const o={...opts,headers:{'X-Agora':'1',...(opts.body?{'Content-Type':'application/json'}:{})}};
+  if(o.body&&typeof o.body!=='string')o.body=JSON.stringify(o.body);
+  const r=await fetch('/api/'+path,o);const j=await r.json().catch(()=>({error:r.statusText}));if(!r.ok)throw new Error(j.error||r.statusText);return j}
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),3500)}
+const plabel=k=>(INFO?.platforms.find(p=>p.key===k)||{label:k}).label;
+const pbadge=k=>`<span class="badge"><i style="background:${PCOL[k]||'#888'}"></i>${esc(plabel(k))}</span>`;
+const stance=x=>`<span class="stance" style="--x:${((+x+1)/2*100).toFixed(0)}%" title="${(+x).toFixed(2)}"></span>`;
+const fmtDur=s=>s<90?`${Math.round(s)} s`:s<5400?`${Math.round(s/60)} min`:`${(s/3600).toFixed(1)} h`;
+function nav(){document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('on',location.hash.startsWith('#/new')?a.dataset.nav==='new':a.dataset.nav==='home'&&!location.hash.startsWith('#/new')))}
+
+/* ------------------------------------------------------------ router */
+async function route(){clearInterval(timer);timer=null;nav();const h=location.hash.slice(2).split('/');
+  try{if(h[0]==='new')return newStudy();if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
+  catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to studies</a></div>`}}
+window.addEventListener('hashchange',route);
+
+/* ------------------------------------------------------------ home */
+async function home(){const ps=await api('projects');
+  const card=p=>{const r=p.run,j=p.job;let st='<span class="pill">Setup ready</span>';
+    if(j&&j.state==='running')st=`<span class="pill run">${j.kind==='create'?'Building…':'Simulating…'}</span>`;
+    else if(j&&j.state==='error')st='<span class="pill bad">Needs attention</span>';
+    else if(r.started&&r.rounds_done>=r.rounds_total)st='<span class="pill ok">Complete</span>';
+    else if(r.started)st=`<span class="pill">${r.rounds_done}/${r.rounds_total} rounds</span>`;
+    else if(!p.has_scenario)st='<span class="pill">Not set up</span>';
+    return `<a class="card" style="text-decoration:none;display:block" href="#/p/${p.id}/"><div class="row"><h3 style="margin:0">${esc(p.title)}</h3><span class="spacer"></span>${st}</div>
+      <p class="muted small" style="margin:8px 0 0">${esc(p.prompt||'')}</p></a>`};
+  $('#view').innerHTML=`<div class="row" style="margin-bottom:18px"><div><h1>Studies</h1><p class="muted" style="margin:0">Upload documents, ask what will happen, and watch a simulated public react.</p></div><span class="spacer"></span>
+    <button class="btn" id="demo">Open the demo</button><a class="btn primary" href="#/new">New study</a></div>
+    ${ps.length?`<div class="grid g3">${ps.map(card).join('')}</div>`:`<div class="card empty"><h2>No studies yet</h2><p class="muted">Start with your own documents, or open the demo: a free probiotic sampling campaign in apartment communities.</p><div class="row" style="justify-content:center"><button class="btn" id="demo2">Open the demo</button><a class="btn primary" href="#/new">New study</a></div></div>`}`;
+  const d=async()=>{const r=await api('projects/demo',{method:'POST'});location.hash=`#/p/${r.id}/setup`};
+  $('#demo').onclick=d;if($('#demo2'))$('#demo2').onclick=d;
+  if(ps.some(p=>p.job&&p.job.state==='running'))timer=setInterval(()=>{if(location.hash===''||location.hash==='#/')home()},4000)}
+
+/* ------------------------------------------------------------ new study */
+const ACCEPT='.pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm';
+async function newStudy(){const files=[];const d=INFO.llm_default;
+  $('#view').innerHTML=`<h1>New study</h1><p class="muted">Step 1 of 5 — give Agora your material and your question.</p>
+  <div class="grid g2" style="margin-top:18px"><div class="card">
+    <label for="name">Name</label><input type="text" id="name" placeholder="e.g. Apartment sampling, Guntur">
+    <label for="prompt">What do you want to predict?</label>
+    <textarea id="prompt" placeholder="How will residents of premium apartments react to a free 7-day probiotic sample, how many flats will register, and how many will buy afterwards?"></textarea>
+    <label>Documents</label><div class="drop" id="drop"><b>Drop files here</b> or click to choose<br><span class="muted small">PDF, Word, text, Markdown, CSV, JSON, web pages</span></div>
+    <input type="file" id="fi" multiple accept="${ACCEPT}" hidden><div class="files" id="fl"></div></div>
+  <div class="card"><h2>Model</h2><p class="muted small" style="margin-top:-6px">Runs on your machine. Nothing is sent online.</p>
+    <label for="backend">Model server</label><select id="backend"><option value="ollama">Ollama</option><option value="openai">llama.cpp / LM Studio / vLLM (OpenAI-compatible)</option><option value="mock">No model — quick test with placeholder agents</option></select>
+    <div id="mrow"><label for="model">Model</label><input type="text" id="model" value="${esc(d.model)}">
+    <label for="url">Server address</label><input type="url" id="url" value="${esc(d.url)}">
+    <div class="row" style="margin-top:10px"><button class="btn" id="chk">Check model</button><span id="mst" class="small muted"></span></div></div>
+    <details style="margin-top:18px"><summary>More options</summary>
+      <label class="check"><input type="checkbox" id="fast"> Build the graph without the model (faster, rougher)</label>
+      <label class="check"><input type="checkbox" id="personas" checked> Write an individual background for every AI resident</label>
+      <label for="hours">Time budget for the simulation (hours on this machine)</label><input type="number" id="hours" value="12" min="1" max="200">
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label for="voices">AI voices</label><input type="number" id="voices" placeholder="auto"></div><div><label for="crowd">Crowd agents</label><input type="number" id="crowd" placeholder="auto"></div></div>
+    </details></div></div>
+  <div class="row" style="margin-top:18px"><span class="spacer"></span><a class="btn" href="#/">Cancel</a><button class="btn primary" id="go">Build the study</button></div>`;
+  const fl=()=>{$('#fl').innerHTML=files.map((f,i)=>`<span class="file">${esc(f.name)} <span class="muted">${(f.size/1024).toFixed(0)} KB</span><button data-i="${i}" title="Remove">✕</button></span>`).join('');
+    $('#fl').querySelectorAll('button').forEach(b=>b.onclick=()=>{files.splice(+b.dataset.i,1);fl()})};
+  const add=list=>{for(const f of list)files.push(f);fl()};
+  $('#drop').onclick=()=>$('#fi').click();$('#fi').onchange=e=>add(e.target.files);
+  ['dragenter','dragover'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over')}));
+  ['dragleave','drop'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.remove('over')}));
+  $('#drop').addEventListener('drop',e=>add(e.dataTransfer.files));
+  const bk=()=>{$('#mrow').style.display=$('#backend').value==='mock'?'none':'';if($('#backend').value==='openai'&&$('#url').value.includes('11434'))$('#url').value='http://localhost:8080'};$('#backend').onchange=bk;
+  $('#chk').onclick=async()=>{$('#mst').textContent='Checking…';const r=await api(`llm/status?backend=${encodeURIComponent($('#backend').value)}&model=${encodeURIComponent($('#model').value)}&url=${encodeURIComponent($('#url').value)}`);$('#mst').innerHTML=`<span class="pill ${r.ok?'ok':'bad'}">${esc(r.message)}</span>`};
+  $('#go').onclick=async()=>{const prompt=$('#prompt').value.trim();if(!prompt)return toast('Describe what you want to predict.');if(!files.length)return toast('Add at least one document.');
+    $('#go').disabled=true;$('#go').textContent='Uploading…';
+    try{const enc=await Promise.all(files.map(f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res({name:f.name,data:String(r.result).split(',')[1]||''});r.onerror=rej;r.readAsDataURL(f)})));
+      const b=$('#backend').value;
+      const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:b==='mock',backend:b==='mock'?'':b,model:$('#model').value,url:$('#url').value,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
+      const r=await api('projects',{method:'POST',body});location.hash=`#/p/${r.id}/build`}
+    catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Build the study'}}}
+
+/* ------------------------------------------------------------ project */
+const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['sim','Simulation'],['report','Report']];
+async function project(id,tab){const p=await api('projects/'+encodeURIComponent(id));state.p=p;
+  if(!tab){tab=p.job&&p.job.state==='running'&&p.job.kind==='create'?'build':p.run.started?'sim':p.has_scenario?'setup':'build';history.replaceState(null,'',`#/p/${id}/${tab}`)}
+  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:false};
+  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span><button class="btn danger small" id="del">Delete</button></div>
+    <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':i+1}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
+  $('#del').onclick=async()=>{if(!confirm('Delete this study and all its files?'))return;try{await api('projects/'+id,{method:'DELETE'});location.hash='#/'}catch(e){toast(e.message)}};
+  ({build:tabBuild,graph:tabGraph,setup:tabSetup,sim:tabSim,report:tabReport}[tab]||tabSetup)(p)}
+
+function tabBuild(p){const j=p.job;
+  if(!j||j.kind!=='create'){$('#tab').innerHTML=`<div class="card"><h2>Material</h2>${p.sources.length?`<p class="muted">Documents in this study:</p><div class="files">${p.sources.map(s=>`<span class="file">${esc(s)}</span>`).join('')}</div>`:'<p class="muted">This study was set up by hand (no documents).</p>'}
+    <h3 style="margin-top:18px">Question</h3><p>${esc(p.prompt)}</p><a class="btn primary" href="#/p/${p.id}/${p.has_graph?'graph':'setup'}">Continue</a></div>`;return}
+  const render=j=>{const run=j.state==='running';
+    $('#tab').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">${run?'Building your study…':j.state==='done'?'Study ready':j.state==='stopped'?'Stopped':'Build failed'}</h2><span class="spacer"></span>
+      ${run?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>${j.stopping?'Stopping…':'Stop'}</button>`:j.state==='done'?`<a class="btn" href="#/p/${p.id}/graph">See the graph</a><a class="btn primary" href="#/p/${p.id}/setup">Review the setup</a>`:''}</div>
+      <p class="muted small">Reading documents → knowledge graph → drafting who reacts, where they talk and what happens. On a laptop this can take a while; you can leave this page and come back.</p>
+      ${j.error?`<p class="pill bad">${esc(j.error)}</p>`:''}<div class="log" id="log">${esc(j.log.join('\n'))}</div></div>`;
+    const l=$('#log');l.scrollTop=l.scrollHeight;if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after the current step…'))};
+  render(j);if(j.state==='running')timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job)return;render(q.job);if(q.job.state!=='running'){clearInterval(timer);route()}},1500)}
+
+function tabGraph(p){if(!p.has_graph){$('#tab').innerHTML=`<div class="card empty"><h2>No knowledge graph</h2><p class="muted">This study was not built from documents.</p><a class="btn primary" href="#/p/${p.id}/setup">Go to setup</a></div>`;return}
+  const g=p.graph||{};$('#tab').innerHTML=`<div class="row" style="margin-bottom:10px"><span class="muted">${g.nodes??'?'} entities · ${g.edges??'?'} relations · ${g.documents??'?'} documents. Click any entity to see what the documents say about it.</span><span class="spacer"></span><a class="btn" href="/api/projects/${p.id}/graph" target="_blank" rel="noopener">Open full screen</a><a class="btn primary" href="#/p/${p.id}/setup">Next: setup</a></div>
+    <iframe src="/api/projects/${p.id}/graph" title="Knowledge graph"></iframe>`}
+
+async function tabSetup(p){const s=p.scenario;
+  if(!s){$('#tab').innerHTML=`<div class="card"><h2>${p.scenario_error?'The setup has a problem':'No setup yet'}</h2><p class="muted">${esc(p.scenario_error||'Build the study first.')}</p></div>`;if(p.scenario_error)editor(p,true);return}
+  const days=s.rounds*s.round_hours/24, locked=p.run.started;
+  const segs=s.segments.map((g,i)=>`<tr><td><b>${esc(g.name.replace(/_/g,' '))}</b><div class="muted small">${esc(g.persona)}</div></td><td>${Math.round(g.share*100)}%</td><td>${stance(g.stance)}</td><td>${g.platforms.map(pbadge).join('')}</td></tr>`).join('');
+  const t0=new Date(s.start),d0=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
+  const day=r=>{const t=new Date(t0.getTime()+r*s.round_hours*3600e3);return `Day ${Math.floor((t-d0)/864e5)+1}, ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`};
+  $('#tab').innerHTML=`<div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
+    <div class="card"><h2>Size and timing</h2><div class="kpis"><div class="kpi"><b>${s.llm_agents}</b><span>AI voices (think and write)</span></div><div class="kpi"><b>${s.crowd_agents.toLocaleString()}</b><span>crowd agents (react)</span></div><div class="kpi"><b>${days.toFixed(days%1?1:0)} days</b><span>${s.rounds} rounds of ${s.round_hours} h</span></div><div class="kpi"><b>${s.voices}</b><span>written personas</span></div></div>
+      <p class="muted small" style="margin-top:12px">Model: ${esc(s.llm.backend||'ollama')} ${esc(s.llm.model||'')}. Numbers for opinions and adoption are starting assumptions — check them before relying on results.</p>
+      <div class="row" style="margin-top:8px">${locked?`<a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a>`:`<label class="check"><input type="checkbox" id="mock"> quick test without a model</label><span class="spacer"></span><button class="btn primary" id="start">Start simulation</button>`}</div></div></div>
+  <div class="card" style="margin-top:16px"><h2>Who reacts</h2><table><thead><tr><th>Group</th><th>Share</th><th>Starting view</th><th>Apps</th></tr></thead><tbody>${segs}</tbody></table></div>
+  <div class="grid g2" style="margin-top:16px"><div class="card"><h2>Who speaks or decides</h2>${s.accounts.length?s.accounts.map(a=>`<p><b>${esc(a.name)}</b> <span class="muted small">@${esc(a.id)}</span><br><span class="muted small">${esc(a.persona)}</span><br>${a.platforms.map(pbadge).join('')}</p>`).join(''):'<p class="muted">None</p>'}</div>
+    <div class="card"><h2>Where people talk</h2>${s.spaces.length?`<table><tbody>${s.spaces.map(x=>`<tr><td>${pbadge(x.platform)}</td><td>${esc(x.name)}</td><td class="muted">${x.size} members</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Only public feeds.</p>'}
+      <h3 style="margin-top:16px">What we predict</h3>${s.conversions.map(c=>`<p style="margin:6px 0"><b>${esc(c.name.replace(/_/g,' '))}</b> — <span class="muted">${esc(c.label)}</span> <span class="small muted">(open ${day(c.open)} → ${day(c.close)})</span></p>`).join('')||'<p class="muted">Nothing yet</p>'}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Timeline</h2><div class="timeline">${s.events.map(e=>`<div class="tl"><span class="muted small">${day(e.round)}</span> · <b>${e.type==='poll'?'Decision':e.type==='news'?'News':'Post'}</b>${e.platform?' '+pbadge(e.platform):''}${e.conditional?' <span class="pill">only if approved</span>':''}<br>${esc(e.text)}</div>`).join('')}</div></div>
+  <div id="ed"></div>`;
+  if($('#start'))$('#start').onclick=()=>startRun(p,$('#mock').checked);
+  editor(p,false,locked)}
+
+async function editor(p,open,locked){const t=await api(`projects/${p.id}/scenario`);const host=$('#ed')||$('#tab');
+  const el=document.createElement('div');el.className='card';el.style.marginTop='16px';
+  el.innerHTML=`<details ${open?'open':''}><summary>Edit the setup (scenario.yaml)</summary><p class="muted small">${locked?'The simulation has started. Reset it on the Simulation page to edit.':'Change anything: people, groups, timeline, assumptions. Check validates without saving.'}</p>
+    <textarea class="code" id="yaml" spellcheck="false" ${locked?'readonly':''}>${esc(t.text)}</textarea>
+    <div class="row" style="margin-top:10px"><span id="ymsg" class="small"></span><span class="spacer"></span>${locked?'':'<button class="btn" id="ychk">Check</button><button class="btn primary" id="ysave">Save</button>'}</div></details>`;
+  host.appendChild(el);if(locked)return;
+  const send=async c=>{try{const r=await api(`projects/${p.id}/scenario`,{method:'PUT',body:{text:$('#yaml').value,check_only:c}});$('#ymsg').innerHTML=`<span class="pill ok">${esc(r.message)}</span>`;if(!c)setTimeout(route,400)}catch(e){$('#ymsg').innerHTML=`<span class="pill bad">${esc(e.message)}</span>`}};
+  $('#ychk').onclick=()=>send(true);$('#ysave').onclick=()=>send(false)}
+
+async function startRun(p,mock){try{await api(`projects/${p.id}/run`,{method:'POST',body:{mock}});location.hash=`#/p/${p.id}/sim`;route()}catch(e){toast(e.message)}}
+
+/* ------------------------------------------------------------ simulation */
+function lineChart(series,{ymin,ymax,xmax,ylab,fmt}){const W=640,H=230,L=44,R=10,T=10,B=26,w=W-L-R,h=H-T-B;
+  const X=x=>L+(xmax?x/xmax:0)*w, Y=y=>T+h-(y-ymin)/(ymax-ymin||1)*h;let g='';
+  const ticks=5;for(let i=0;i<=ticks;i++){const v=ymin+(ymax-ymin)*i/ticks,y=Y(v);g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${L-6}" y="${y+4}" font-size="11" text-anchor="end" fill="var(--muted)">${fmt?fmt(v):v.toFixed(1)}</text>`}
+  for(let i=0;i<=4;i++){const x=xmax*i/4;g+=`<text x="${X(x)}" y="${H-6}" font-size="11" text-anchor="middle" fill="var(--muted)">${Math.round(x)}</text>`}
+  series.forEach(s=>{if(!s.points.length)return;g+=`<polyline fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" points="${s.points.map(([x,y])=>`${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join(' ')}"/>`});
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ylab)}">${g}</svg><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`}
+
+function tabSim(p){if(!p.scenario){$('#tab').innerHTML='<div class="card">Set up the study first.</div>';return}
+  state.filter=state.filter||{platform:'',space:''};
+  $('#tab').innerHTML=`<div class="card" id="ctl"></div><div class="split" style="margin-top:16px"><div class="grid" id="left"></div><div class="card"><div class="row"><h2 style="margin:0">Live feed</h2><span class="spacer"></span><select id="sp" style="width:auto;max-width:220px"></select></div><div class="chips" id="pf" style="margin-top:10px"></div><div class="feed" id="feed"></div></div></div>`;
+  const tick=async()=>{const [q,l]=await Promise.all([api('projects/'+p.id),api(`projects/${p.id}/live?platform=${encodeURIComponent(state.filter.platform)}&space=${encodeURIComponent(state.filter.space)}`)]);drawSim(q,l);
+    if(!(q.job&&q.job.state==='running')&&timer){clearInterval(timer);timer=null}};
+  tick();timer=setInterval(tick,2500)}
+
+function drawSim(p,l){const r=l.run,j=p.job,running=j&&j.kind==='run'&&j.state==='running',pct=r.rounds_total?r.rounds_done/r.rounds_total*100:0,complete=r.rounds_done>=r.rounds_total;
+  const s=p.scenario;const simT=r.sim_time?new Date(r.sim_time):null;
+  $('#ctl').innerHTML=`<div class="row"><div><h2 style="margin:0">${running?(j.stopping?'Stopping after this round…':'Simulating…'):complete?'Simulation complete':r.started?'Paused':'Ready to start'}</h2>
+    <span class="muted small">Round ${r.rounds_done} of ${r.rounds_total}${simT?` · simulated time ${simT.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:''}${r.seconds?` · ${fmtDur(r.seconds)} so far · ${r.llm_calls} model calls`:''}</span></div><span class="spacer"></span>
+    ${running?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>Stop</button>`:`${complete?'':`<label class="check"><input type="checkbox" id="mock"> quick test without a model</label><button class="btn primary" id="go">${r.started?'Resume':'Start'}</button>`}${r.started?'<button class="btn danger" id="reset">Reset</button>':''}`}</div>
+    <div class="bar" style="margin-top:12px"><i style="width:${pct}%"></i></div>${j&&j.state==='error'&&j.kind==='run'?`<p class="pill bad" style="margin-top:10px">${esc(j.error)}</p>`:''}`;
+  if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after this round. Progress is saved.'));
+  if($('#go'))$('#go').onclick=()=>startRun(p,$('#mock').checked);
+  if($('#reset'))$('#reset').onclick=async()=>{if(!confirm('Delete this run and start again from round 1? The setup is kept.'))return;try{await api(`projects/${p.id}/reset`,{method:'POST'});route()}catch(e){toast(e.message)}};
+  // charts
+  const segs=[...new Set(l.trend.map(t=>t[1]))];const maxR=Math.max(1,r.rounds_total||1);
+  const op=segs.map((g,i)=>({name:g.replace(/_/g,' '),color:SCOL[i%SCOL.length],points:l.trend.filter(t=>t[1]===g).map(t=>[t[0]+1,t[2]])}));
+  const names=s.conversions.map(c=>c.name);const cum={};names.forEach(n=>cum[n]=[[0,0]]);const tot={};
+  l.conversions.forEach(([rd,n,c])=>{tot[n]=(tot[n]||0)+c;(cum[n]=cum[n]||[[0,0]]).push([rd+1,tot[n]])});
+  names.forEach(n=>{if(cum[n].length)cum[n].push([r.rounds_done,tot[n]||0])});
+  const cmax=Math.max(5,...Object.values(tot));const population=Object.values(l.conversion_base||{}).reduce((a,b)=>a+b,0);
+  const posts=Object.values(l.platforms).reduce((a,b)=>a+b,0);
+  $('#left').innerHTML=`<div class="card"><div class="kpis">${names.map(n=>`<div class="kpi"><b>${(tot[n]||0).toLocaleString()}</b><span>${esc(n.replace(/_/g,' '))}${population?` · ${((tot[n]||0)/population*100).toFixed(1)}%`:''}</span></div>`).join('')}<div class="kpi"><b>${posts.toLocaleString()}</b><span>posts and messages</span></div></div></div>
+    <div class="card chart"><h3>Opinion by group <span class="muted small">(−1 against … +1 for)</span></h3>${lineChart(op,{ymin:-1,ymax:1,xmax:maxR,ylab:'Opinion'})}</div>
+    <div class="card chart"><h3>Real-world actions over time</h3>${lineChart(names.map((n,i)=>({name:n.replace(/_/g,' '),color:SCOL[(i+3)%SCOL.length],points:cum[n]||[]})),{ymin:0,ymax:cmax,xmax:maxR,ylab:'Actions',fmt:v=>Math.round(v)})}</div>
+    <div class="card"><h3>Decisions and events</h3>${l.polls.map(x=>`<p style="margin:4px 0"><span class="pill ${x.passed?'ok':'bad'}">${x.passed?'Approved':'Rejected'}</span> ${esc(x.name.replace(/_/g,' '))} <span class="muted small">${x.yes} yes / ${x.no} no</span></p>`).join('')||'<p class="muted small">No decisions yet.</p>'}
+      <div class="timeline" style="margin-top:10px">${l.events.filter(e=>e.kind!=='poll').slice(-8).map(e=>`<div class="tl small"><span class="muted">Round ${e.round+1}</span> · ${e.kind==='news'?esc(e.detail.text):e.kind==='post'?`@${esc(e.detail.account)} posted on ${esc(plabel(e.detail.platform))}`:e.kind==='experience'?`${e.detail.agents} people tried it (${esc(e.detail.conversion.replace(/_/g,' '))})`:e.kind==='skipped'?'A planned step was skipped (its decision was not approved)':esc(e.kind)}</div>`).join('')}</div></div>`;
+  // feed filters
+  const plats=Object.keys(l.platforms);const f=state.filter;
+  $('#pf').innerHTML=[['','All']].concat(plats.map(k=>[k,plabel(k)])).map(([k,lab])=>`<span class="chip ${f.platform===k?'on':''}" data-k="${k}">${k?`<i style="background:${PCOL[k]||'#888'}"></i>`:''}${esc(lab)}${k?` <span class="muted">${l.platforms[k]}</span>`:''}</span>`).join('');
+  $('#pf').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{f.platform=c.dataset.k;f.space='';clearInterval(timer);tabSim(p)});
+  const spaces=(l.spaces||[]).filter(([pl])=>!f.platform||pl===f.platform);
+  $('#sp').innerHTML=`<option value="">All groups</option>`+spaces.map(([pl,sp])=>`<option value="${esc(sp)}" ${f.space===sp?'selected':''}>${esc(sp)} (${esc(plabel(pl))})</option>`).join('');
+  $('#sp').style.display=spaces.length?'':'none';$('#sp').onchange=e=>{f.space=e.target.value;clearInterval(timer);tabSim(p)};
+  const feed=$('#feed');const atTop=feed.scrollTop<40;
+  feed.innerHTML=l.posts.length?l.posts.map(x=>{const pk=(INFO.platforms.find(q=>q.key===x.platform)||{}).kind;
+    const counts=pk==='forum'?`<span>▲ ${x.ups-x.downs} points</span><span>${x.replies} comments</span>`:pk==='feed'?`<span>♥ ${x.likes}</span><span>↻ ${x.shares}</span><span>${x.replies} comments</span>`:`${x.likes?`<span>${x.likes} reactions</span>`:''}${x.shares?`<span>forwarded ${x.shares}×</span>`:''}`;
+    return `<div class="post ${x.kind==='reply'?'reply':''}"><div class="meta">${pbadge(x.platform)}${x.space?`<span>${esc(x.space)}</span>`:''}<span>· round ${x.round+1}</span>${x.agent_kind==='account'?'<span class="pill">official</span>':''}<span class="spacer"></span>${stance(x.stance)}</div>
+      <div><span class="who">${esc(x.author)}</span> <span class="muted small">@${esc(x.handle)} · ${esc(String(x.segment).replace(/_/g,' '))}</span></div>
+      ${x.kind==='forward'?`<div class="muted small">Forwarded from ${esc(x.forwarded_from)}</div>`:''}${x.kind==='reply'?'<div class="muted small">Reply</div>':''}
+      <div class="txt">${esc(x.text)}</div><div class="counts">${counts}</div></div>`}).join(''):`<p class="muted">${r.started?'Nothing posted here yet.':'Start the simulation to see people talk.'}</p>`;
+  if(atTop)feed.scrollTop=0}
+
+/* ------------------------------------------------------------ report */
+async function tabReport(p){const l=await api(`projects/${p.id}/live`);const s=p.scenario;
+  if(!s||!l.run.started){$('#tab').innerHTML=`<div class="card empty"><h2>No results yet</h2><p class="muted">Run the simulation first.</p><a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a></div>`;return}
+  const segs=[...new Set(l.trend.map(t=>t[1]))];const first={},last={};l.trend.forEach(([r,g,v])=>{if(!(g in first))first[g]=v;last[g]=v});
+  const tot={};l.conversions.forEach(([,n,c])=>tot[n]=(tot[n]||0)+c);const pop=Object.values(l.conversion_base||{}).reduce((a,b)=>a+b,0);
+  $('#tab').innerHTML=`<div class="card"><h2>Results so far</h2><p class="muted small">After ${l.run.rounds_done} of ${l.run.rounds_total} rounds. The written report, cited quotes and chatting with agents arrive in the next phase.</p>
+    <div class="kpis">${s.conversions.map(c=>`<div class="kpi"><b>${(tot[c.name]||0).toLocaleString()}</b><span>${esc(c.label)}${pop?` · ${((tot[c.name]||0)/pop*100).toFixed(1)}% of people`:''}</span></div>`).join('')}</div>
+    <h3 style="margin-top:20px">How opinion moved</h3><table><thead><tr><th>Group</th><th>Start</th><th>Now</th><th>Change</th></tr></thead><tbody>${segs.map(g=>`<tr><td>${esc(g.replace(/_/g,' '))}</td><td>${stance(first[g])} ${first[g].toFixed(2)}</td><td>${stance(last[g])} ${last[g].toFixed(2)}</td><td>${(last[g]-first[g]>=0?'+':'')+(last[g]-first[g]).toFixed(2)}</td></tr>`).join('')}</tbody></table>
+    <h3 style="margin-top:20px">Decisions</h3>${l.polls.map(x=>`<p><span class="pill ${x.passed?'ok':'bad'}">${x.passed?'Approved':'Rejected'}</span> ${esc(x.name.replace(/_/g,' '))} — ${x.yes} yes, ${x.no} no</p>`).join('')||'<p class="muted">None</p>'}
+    <p class="muted small" style="margin-top:20px">These numbers come from assumptions in the setup until they are calibrated with real data. Treat them as comparisons between options, not exact forecasts.</p></div>`}
+
+/* ------------------------------------------------------------ boot */
+(async()=>{INFO=await api('info');const h=INFO.hardware;$('#hw').textContent=`${h.tier} machine · ${h.ram_gb} GB · ${h.model}`;route()})();
+</script>
+</body>
+</html>
