@@ -1,0 +1,264 @@
+# Demo: free 7-day probiotic sampling in residential apartment communities.
+#
+# Question: will apartment committees approve it, how many flats register, what do
+# residents say in their WhatsApp groups, and how many go on to buy?
+#
+# Community names are fictional. All adoption numbers below are starting
+# assumptions; Phase 4 calibrates them against real campaign results.
+
+name: nutrivance-residential-sampling
+topic: the free 7-day Nutrivance probiotic sample offered to your apartment
+question: >
+  Will apartment committees approve a free 7-day probiotic sampling programme, how
+  many households register, how do residents talk about it, and how many buy afterwards?
+context: |
+  Nutrivance Precision Probiotics (NPP) is a new probiotic brand from Guntur, Andhra Pradesh.
+  It is a daily sachet: 20 billion CFU, 14 probiotic strains, 100 mg inulin (prebiotic),
+  taken once a day as per the label. MRP is Rs 69 per sachet (Rs 483 for seven).
+  NPP has proposed a free sampling programme to premium apartment communities:
+  every registered flat gets one free 7-day pack (7 sachets). No payment, no purchase
+  obligation, no sales stall. The apartment association must approve it first.
+  Registration is an online form asking only apartment name, area and flat number
+  (no name, phone or email), open for 2-3 days. One pack per flat.
+  The product website has formulation details and purchase information.
+  NPP makes no medical, disease-treatment or prevention claims.
+
+seed: 42
+start: "2026-11-16T08:00:00"
+rounds: 72            # 12 simulated days
+round_hours: 4
+feed_size: 8
+memory_size: 10
+avg_follows: 15
+homophily: 0.6
+
+population:
+  llm_agents: 40      # residents who think and write with the local model
+  crowd_agents: 1500  # residents driven by opinion maths (like, forward, register, buy)
+
+llm:
+  backend: ollama
+  model: llama3.2:3b
+  url: http://localhost:11434
+  parallel: 1
+
+segments:
+  - name: health_conscious_parents
+    share: 0.25
+    persona: Parent in a premium Guntur/Vijayawada apartment who reads labels and cares about family nutrition.
+    stance: {mean: 0.15, sd: 0.3}
+    stubbornness: 0.35
+    activity: 0.45
+    platforms: [whatsapp, x]
+    occupations: [software engineer, doctor, teacher, bank manager, business owner]
+    age: [28, 45]
+    names: [Priya, Sravani, Karthik, Divya, Harsha, Keerthi, Naveen, Bhavana, Vamsi, Swathi]
+  - name: senior_residents
+    share: 0.20
+    persona: Retired resident, cautious about new supplements, trusts the family doctor and long-time neighbours.
+    stance: {mean: -0.1, sd: 0.3}
+    stubbornness: 0.6
+    activity: 0.35
+    influence: 1.3
+    openness: 0.5
+    platforms: [whatsapp]
+    occupations: [retired government officer, retired teacher, retired engineer, landlord]
+    age: [60, 78]
+    names: [Venkata Rao, Lakshmi, Subba Rao, Padmavathi, Srinivas, Saraswathi, Ramesh, Kamala]
+  - name: young_professionals
+    share: 0.30
+    persona: Young working professional living in the apartment, busy, online a lot, curious about wellness trends but wary of marketing.
+    stance: {mean: 0.05, sd: 0.35}
+    stubbornness: 0.3
+    activity: 0.5
+    platforms: [whatsapp, x, reddit]
+    occupations: [IT analyst, chartered accountant, startup employee, pharmacist, MBA student]
+    age: [23, 34]
+    names: [Sai, Teja, Rohit, Anjali, Chaitanya, Varsha, Ajay, Nithya, Manoj, Haritha]
+  - name: budget_homemakers
+    share: 0.25
+    persona: Homemaker who manages the household budget, active in the apartment WhatsApp group, likes free trials but asks "what's the catch".
+    stance: {mean: 0.0, sd: 0.3}
+    stubbornness: 0.45
+    activity: 0.5
+    influence: 1.2
+    platforms: [whatsapp]
+    occupations: [homemaker, part-time tutor, home baker]
+    age: [30, 55]
+    names: [Madhavi, Sowjanya, Gayathri, Pooja, Meera, Kavya, Sneha, Deepika]
+
+accounts:
+  - id: nutrivance
+    name: Nutrivance Precision Probiotics
+    persona: Official NPP account. Polite and factual. Only states label facts (20B CFU, 14 strains, inulin, once daily, Rs 69/sachet) and campaign rules. Never makes medical or disease claims. Answers questions briefly.
+    segment: brand
+    stance: 0.9
+    stubbornness: 0.98
+    activity: 0.25
+    influence: 2.0
+    platforms: [x, reddit]
+  - id: lakeview_secretary
+    name: Lakeview Residency Association Secretary
+    persona: Volunteer secretary of the Lakeview Residency association (Guntur). Protective of residents' privacy and wary of salespeople, but open to genuinely free and harmless programmes.
+    segment: committee
+    stance: 0.0
+    stubbornness: 0.7
+    activity: 0.3
+    influence: 3.0
+    platforms: [whatsapp]
+    spaces: [Lakeview Residency Residents]
+  - id: lakeview_president
+    name: Lakeview Residency Association President
+    persona: Retired bank officer, president of the Lakeview association. Dislikes anything that looks like selling inside the complex.
+    segment: committee
+    stance: -0.2
+    stubbornness: 0.8
+    activity: 0.2
+    influence: 3.5
+    platforms: [whatsapp]
+    spaces: [Lakeview Residency Residents]
+  - id: lakeview_treasurer
+    name: Lakeview Residency Association Treasurer
+    persona: Practical treasurer, likes free benefits for residents as long as the association bears no cost or liability.
+    segment: committee
+    stance: 0.2
+    stubbornness: 0.7
+    activity: 0.2
+    influence: 2.5
+    platforms: [whatsapp]
+    spaces: [Lakeview Residency Residents]
+  - id: palmgrove_secretary
+    name: Palm Grove Towers Association Secretary
+    persona: Secretary of Palm Grove Towers (Vijayawada), a young committee member who likes wellness events for residents.
+    segment: committee
+    stance: 0.25
+    stubbornness: 0.7
+    activity: 0.3
+    influence: 3.0
+    platforms: [whatsapp]
+    spaces: [Palm Grove Towers Residents]
+  - id: palmgrove_president
+    name: Palm Grove Towers Association President
+    persona: Doctor and association president at Palm Grove Towers. Cautious about supplements and health claims; insists on label-only communication.
+    segment: committee
+    stance: -0.1
+    stubbornness: 0.85
+    activity: 0.2
+    influence: 3.5
+    platforms: [whatsapp]
+    spaces: [Palm Grove Towers Residents]
+  - id: palmgrove_treasurer
+    name: Palm Grove Towers Association Treasurer
+    persona: Treasurer at Palm Grove Towers, neutral, follows the majority if there is no cost to the association.
+    segment: committee
+    stance: 0.0
+    stubbornness: 0.7
+    activity: 0.2
+    influence: 2.5
+    platforms: [whatsapp]
+    spaces: [Palm Grove Towers Residents]
+
+spaces:
+  whatsapp:
+    - name: Lakeview Residency Residents
+      size: 260
+      exclusive: home
+      description: Official residents group of Lakeview Residency, Guntur
+    - name: Palm Grove Towers Residents
+      size: 340
+      exclusive: home
+      description: Official residents group of Palm Grove Towers, Vijayawada
+    - name: Lakeview Moms Circle
+      size: 90
+      segments: {health_conscious_parents: 3, budget_homemakers: 2, young_professionals: 0.3}
+    - name: Guntur Fitness and Wellness
+      size: 180
+      segments: {health_conscious_parents: 1, young_professionals: 2, senior_residents: 0.3}
+  reddit:
+    - name: r/guntur
+      size: 250
+      segments: {young_professionals: 3, health_conscious_parents: 0.5}
+    - name: r/vijayawada
+      size: 250
+      segments: {young_professionals: 3, health_conscious_parents: 0.5}
+
+events:
+  - at_round: 0
+    type: news
+    text: Nutrivance has sent a free 7-day probiotic sampling proposal to the Lakeview Residency and Palm Grove Towers associations.
+  - at_round: 2
+    type: poll
+    name: lakeview_approval
+    question: Should the Lakeview Residency association approve Nutrivance's free 7-day sample programme for residents (no cost, no sales stall, registration with only apartment, area and flat number)?
+    voters: [lakeview_secretary, lakeview_president, lakeview_treasurer]
+    threshold: 0.5
+  - at_round: 2
+    type: poll
+    name: palmgrove_approval
+    question: Should the Palm Grove Towers association approve Nutrivance's free 7-day sample programme for residents (no cost, no sales stall, registration with only apartment, area and flat number)?
+    voters: [palmgrove_secretary, palmgrove_president, palmgrove_treasurer]
+    threshold: 0.5
+  - at_round: 3
+    type: post
+    account: lakeview_secretary
+    platform: whatsapp
+    spaces: [Lakeview Residency Residents]
+    when: {poll: lakeview_approval, result: yes}
+    text: "Dear residents, the association has approved a FREE 7-day probiotic sample from Nutrivance (a Guntur brand). One pack per flat, no payment, no obligation. Register with only apartment name, area and flat number using the link/QR shared below. Registration closes in 2 days."
+  - at_round: 3
+    type: post
+    account: palmgrove_secretary
+    platform: whatsapp
+    spaces: [Palm Grove Towers Residents]
+    when: {poll: palmgrove_approval, result: yes}
+    text: "Hello all, Palm Grove Towers association has approved a free 7-day probiotic sample programme by Nutrivance. Completely free, one pack per flat, no sales stall. Register with apartment, area and flat number only. Link and QR below; open for 2 days."
+  - at_round: 3
+    type: post
+    account: nutrivance
+    platform: x
+    when: {any: [{poll: lakeview_approval, result: yes}, {poll: palmgrove_approval, result: yes}]}
+    text: "We're starting free 7-day sampling in a few Guntur and Vijayawada communities. 20B CFU, 14 strains + inulin, once daily. No payment, no obligation. Details on our website."
+  - at_round: 18
+    type: news
+    text: Free 7-day sample packs have been delivered to every registered flat in the participating communities.
+  - at_round: 60
+    type: news
+    text: Most households that registered have now finished their 7-day sample packs.
+
+conversions:
+  - name: register_lakeview
+    label: register your flat for the free 7-day sample (Lakeview Residency)
+    open_round: 3
+    close_round: 15
+    when: {poll: lakeview_approval, result: yes}
+    eligible_spaces: [Lakeview Residency Residents]
+    base: -3.6
+    stance_weight: 3.0
+    exposure_weight: 0.6
+    experience:
+      at_round: 48
+      note: You have been taking the free Nutrivance sample, one sachet a day, for about five days.
+      stance_mean: 0.05     # assumption: average effect of trying it (calibrate with real feedback)
+      stance_sd: 0.3
+  - name: register_palmgrove
+    label: register your flat for the free 7-day sample (Palm Grove Towers)
+    open_round: 3
+    close_round: 15
+    when: {poll: palmgrove_approval, result: yes}
+    eligible_spaces: [Palm Grove Towers Residents]
+    base: -3.6
+    stance_weight: 3.0
+    exposure_weight: 0.6
+    experience:
+      at_round: 48
+      note: You have been taking the free Nutrivance sample, one sachet a day, for about five days.
+      stance_mean: 0.05     # assumption: average effect of trying it (calibrate with real feedback)
+      stance_sd: 0.3
+  - name: buy
+    label: buy Nutrivance on the website at Rs 69 per sachet after trying the sample
+    open_round: 48
+    close_round: 72
+    requires: [register_lakeview, register_palmgrove]
+    base: -6.5
+    stance_weight: 3.5
+    exposure_weight: 0.4
