@@ -312,7 +312,8 @@ class App:
         opts = CreateOptions(fast=bool(o.get("fast")), personas=o.get("personas", True) is not False,
                              llm_agents=int(o["llm_agents"]) if o.get("llm_agents") else None,
                              crowd=int(o["crowd"]) if o.get("crowd") else None,
-                             hours=float(o.get("hours") or 12), llm=llm)
+                             hours=float(o.get("hours") or 12), llm=llm,
+                             entity_agents=int(o["entities"]) if o.get("entities") not in (None, "") else 20)
 
         def work(job: Job):
             create_project(d, paths, prompt, opts, say=job.say, should_stop=lambda: job.stopping)

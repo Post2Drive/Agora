@@ -69,7 +69,7 @@ def render_post(world: World, p: Post, me: Agent | None = None) -> str:
 
 def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetime,
                       conversions: list, facts: list[str] | None = None,
-                      trending: dict | None = None) -> list[dict]:
+                      trending: dict | None = None, recalled: list[str] | None = None) -> list[dict]:
     styles = "\n".join(f"- {label(p)}: {REGISTRY[p].style}" for p in a.platforms)
     system = (
         f"You are {a.name}, a real person. {a.persona}\n"
@@ -84,7 +84,11 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         lines.append("What has happened so far:\n" + "\n".join(f"- {n}" for n in world.news[-6:]))
     lines.append(f"It is {now:%A %d %B, %I:%M %p}.")
     if a.memory:
-        lines.append("Your recent memory:\n" + "\n".join(f"- {m}" for m in a.memory[-sc.memory_size:]))
+        mem = [m for m in a.memory if m.startswith("Looking back:")][:1] + \
+              [m for m in a.memory if not m.startswith("Looking back:")][-sc.memory_size:]
+        lines.append("Your memory:\n" + "\n".join(f"- {m}" for m in mem))
+    if recalled:
+        lines.append("You also remember hearing:\n" + "\n".join(f"- {m}" for m in recalled))
     lines.append(f"Your current feeling about {sc.topic}: {stance_words(a.stance)}.")
     if trending:
         lines.append("Trending: " + "; ".join(f"{label(k)}: {', '.join(v)}" for k, v in trending.items() if v))

@@ -164,7 +164,8 @@ def cmd_create(args) -> int:
         print(f"{proj} already has a scenario. Use --overwrite to redraft it.", file=sys.stderr)
         return 1
     opts = CreateOptions(fast=args.fast, personas=not args.no_personas, llm_agents=args.llm_agents,
-                         crowd=args.crowd, hours=args.hours, seed=args.seed, llm=_llm_override(args))
+                         crowd=args.crowd, hours=args.hours, seed=args.seed, llm=_llm_override(args),
+                         entity_agents=args.entities)
     try:
         create_project(proj, args.docs, args.prompt, opts, say=lambda m: print(m, flush=True))
     except RuntimeError as e:
@@ -337,6 +338,8 @@ def main(argv=None) -> int:
     p.add_argument("--llm-agents", type=int, help="LLM voices (default: fits --hours on this machine)")
     p.add_argument("--crowd", type=int, help="crowd agents (default: up to 3000)")
     p.add_argument("--hours", type=float, default=12, help="run-time budget used to size the population")
+    p.add_argument("--entities", type=int, default=20,
+                   help="named agents made from people/organisations in the documents (0 = none)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--overwrite", action="store_true")
     llm_flags(p)

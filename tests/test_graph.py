@@ -236,7 +236,7 @@ def test_draft_cleans_sloppy_answers(gs):
     assert segs["young_parents"].platforms == ["whatsapp", "x"]              # Twitter -> x
     assert segs["students"].stance_mean == 1.0                               # clamped
     assert segs["seniors"].age == (60, 70)                                   # swapped
-    ids = {a.id for a in parsed.accounts}
+    ids = {a.id for a in parsed.accounts if a.segment != "entities"}
     assert ids == {"npp_official", "association_committee"}
     poll = next(e for e in parsed.events if e.type == "poll")
     assert poll.voters == ["association_committee"]                          # name -> id
@@ -286,3 +286,16 @@ def test_create_then_run(tmp_path, capsys):
     assert main(["status", str(proj)]) == 0
     assert "rounds" in capsys.readouterr().out
     assert main(["create", str(proj), "--docs", str(doc), "--prompt", "x", "--mock"]) == 1
+
+
+def test_entity_agents_from_graph(gs):
+    llm = Scripted()
+    gbuild.build(gs, llm, "goal")
+    sc = gdraft.draft(gs, llm, "How many flats register?", llm_agents=6, crowd_agents=100, entity_limit=5)
+    parsed = scenario_mod.from_dict(json.loads(json.dumps(sc)))
+    ents = [a for a in parsed.accounts if a.segment == "entities"]
+    assert ents, "people/organisations in the graph should become agents"
+    names = {a.name for a in ents}
+    assert "Guntur" not in names                    # places are not agents
+    assert all(a.profile.get("source") for a in ents)
+    assert len({a.id for a in parsed.accounts}) == len(parsed.accounts)

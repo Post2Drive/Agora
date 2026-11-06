@@ -30,6 +30,7 @@ from ..store import Store
 from . import llm_agent, opinion, population
 from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
+from .memory import WorldMemory
 from .timing import Rhythm
 from .world import Agent, Post, World, dm_people, dm_space
 
@@ -67,6 +68,7 @@ class Simulation:
         self.store = Store(self.dir / DB_FILE)
         self.world: World | None = None
         self._rhythm = Rhythm(self.sc.time)
+        self._to_reflect: list[Agent] = []
         self.facts = None
         gpath = self.dir / "graph.db"
         if gpath.exists():
@@ -109,6 +111,7 @@ class Simulation:
                     "scenario.yaml changed since this run started. Start a fresh project "
                     "(or delete agora.db), or resume anyway with --force.")
             self.world = World.load(self.store)
+        self.memory = WorldMemory.load(self.sc, self.world, self.store)
         return self.world
 
     # ---------------------------------------------------------------- running
@@ -123,6 +126,7 @@ class Simulation:
             t_start = time.time()
             c0, h0 = self.llm.calls, getattr(self.llm, "hits", 0)
             out, active = self.step(r)
+            self.memory.add_round(w, r, out.posts, out.conversions, out.events)
             stats = {"active": active, "llm_calls": self.llm.calls - c0,
                      "cache_hits": getattr(self.llm, "hits", 0) - h0,
                      "seconds": round(time.time() - t_start, 2)}
@@ -200,6 +204,7 @@ class Simulation:
                     if rng.random() < opinion.sig(logit):
                         self._convert(a, c.name, out)
             a.last_seen = t0
+        self._reflect_all(r, now)
         return out, len(active)
 
     def _injected(self, r: int) -> list:
@@ -253,7 +258,13 @@ class Simulation:
                                  for p in feeds[a.id])
                 facts = self.facts.search(f"{sc.topic} {texts} {a.persona}", k=3)
             trending = {p: self._index.trends(p) for p in a.platforms if REGISTRY[p].kind == "feed"}
-            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending)
+            recalled = []
+            if sc.world_memory and getattr(self, "memory", None) is not None:
+                recalled = self.memory.recall(f"{sc.topic} {texts if self.facts else ''} " +
+                                              " ".join(p.text for p in feeds[a.id]), r,
+                                              {p.id for p in feeds[a.id]} | {p.root for p in feeds[a.id]})
+            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending,
+                                               recalled)
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             try:
                 raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,
@@ -573,7 +584,40 @@ class Simulation:
             a.memory.append(f"{stamp}: you thought: {thoughts[:120]}")
         keep = self.sc.memory_size * 2
         if len(a.memory) > keep:
-            del a.memory[: len(a.memory) - keep]
+            if self.sc.reflection:
+                self._to_reflect.append(a)       # summarised after this round's decisions
+            else:
+                del a.memory[: len(a.memory) - keep]
+
+    def _reflect_all(self, r: int, now) -> None:
+        """Compress older memories into a short 'looking back' note, in the agent's own words."""
+        todo = list({a.id: a for a in self._to_reflect}.values())
+        self._to_reflect = []
+        if not todo:
+            return
+        keep = self.sc.memory_size
+
+        def one(a: Agent):
+            old = a.memory[: len(a.memory) - keep]
+            prev = old[0] if old and old[0].startswith("Looking back:") else ""
+            items = [m for m in old if not m.startswith("Looking back:")]
+            msgs = [{"role": "system", "content": f"You are {a.name}. {a.persona}"},
+                    {"role": "user", "content": (f"{prev}\nThese are things you did and saw recently:\n"
+                     + "\n".join(f"- {m}" for m in items)
+                     + f"\n\nIn 2-3 sentences, in the first person, sum up what matters to you about "
+                       f"{self.sc.topic}: who you trust, what you decided, what you still doubt.")}]
+            default = (prev.replace("Looking back:", "").strip() + " " + " ".join(i.split(": ", 1)[-1] for i in items[-3:]))[:400]
+            try:
+                txt = self.llm.generate(msgs, max_tokens=160, temperature=0.4, seed=_seed(self.sc.seed, r, a.id, "reflect"),
+                                        meta={"default_text": default}).strip()
+            except LLMError:
+                txt = default
+            return a, "Looking back: " + " ".join(txt.split())[:500]
+
+        with ThreadPoolExecutor(max_workers=max(1, self.llm_cfg.parallel)) as ex:
+            results = list(ex.map(one, sorted(todo, key=lambda x: x.id)))
+        for a, note in results:
+            a.memory = [note] + a.memory[len(a.memory) - keep:]
 
     def close(self) -> None:
         self.store.close()

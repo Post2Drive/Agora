@@ -57,6 +57,9 @@ class Account:
     llm: bool = True                 # acts on its own each round
     spaces: list[str] = field(default_factory=list)   # groups/communities it joins
     active_hours: list[int] = field(default_factory=list)
+    # profile details (shown in prompts and the UI): age, gender, profession, mbti,
+    # country, interests, kind (individual | group), source (graph entity name)
+    profile: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -131,6 +134,8 @@ class Scenario:
     # value: {conversion: per person}, fixed_cost}
     economics: dict[str, Any] = field(default_factory=dict)
     persuasion: float = 0.35          # how far one round of exposure moves an open-minded person
+    reflection: bool = True           # LLM voices periodically summarise their older memories
+    world_memory: bool = True         # LLM voices recall related things that happened elsewhere
     # daily rhythm: {peak_hours: [19,20,21,22], peak: 1.0, off_peak_hours: [0..5], off_peak: 0.08,
     #                morning_hours: [6,7,8], morning: 0.7, other: 0.5}  (multipliers on activity)
     time: dict[str, Any] = field(default_factory=dict)

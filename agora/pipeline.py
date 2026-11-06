@@ -25,6 +25,7 @@ class CreateOptions:
     hours: float = 12.0
     seed: int = 42
     llm: dict | None = None            # backend/model/url/parallel overrides
+    entity_agents: int = 20            # named agents made from people/organisations in the documents
 
 
 def make_llm(project: Path, overrides: dict | None = None):
@@ -99,7 +100,8 @@ def create_project(project: str | Path, files: list[str | Path], goal: str,
             say(f"    {m}")
 
         sc = gdraft.draft(gs, llm, goal, llm_agents=voices, crowd_agents=crowd, llm_cfg=keep,
-                          rich_personas=opts.personas, seed=opts.seed, progress=dprog)
+                          rich_personas=opts.personas, seed=opts.seed, progress=dprog,
+                          entity_limit=opts.entity_agents)
         if sc["rounds"] != days_guess * 6 and opts.llm_agents is None:
             sc["population"]["llm_agents"], _ = size_population(sc["rounds"], opts.hours, None, crowd)
         n_docs = gs.rows("SELECT COUNT(*) FROM documents")[0][0]

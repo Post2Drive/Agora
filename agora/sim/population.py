@@ -59,11 +59,19 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
 
     # 1. named accounts first so they get low, stable ids
     for acc in sc.accounts:
+        persona = acc.persona
+        pr = acc.profile or {}
+        extra = [f"{k}: {pr[k]}" for k in ("age", "gender", "profession", "country", "mbti") if pr.get(k)]
+        if pr.get("interests"):
+            extra.append("interests: " + ", ".join(map(str, pr["interests"]))[:150])
+        if extra:
+            persona = f"{persona} ({'; '.join(extra)})"
         new_agent(handle=acc.id, kind="account", name=acc.name, segment=acc.segment,
-                  persona=acc.persona, platforms=list(acc.platforms),
+                  persona=persona, platforms=list(acc.platforms),
                   initial_stance=float(acc.stance), stubbornness=acc.stubbornness,
                   activity=acc.activity, influence=acc.influence, openness=0.3,
-                  attrs={"llm": acc.llm, "spaces": acc.spaces, "active_hours": acc.active_hours})
+                  attrs={"llm": acc.llm, "spaces": acc.spaces, "active_hours": acc.active_hours,
+                         "profile": acc.profile})
 
     # 2. LLM voices and crowd agents per segment
     llm_counts = _alloc(sc.llm_agents, [s.llm_share if s.llm_share is not None else s.share

@@ -137,6 +137,85 @@ Reply with JSON only:
             {{"day": 1, "type": "decision", "name": "approval", "question": "...", "voters": ["id"]}},
             {{"day": 1, "type": "post", "account": "id", "platform": "whatsapp", "text": "...", "if_decision": "approval"}}]}}"""
 
+ENTITY_PROFILE = """You are creating a social-media agent for a simulation, based on a real
+{kind} that appears in the documents.
+Prediction goal: {goal}
+Topic people react to: {topic}
+
+Entity: {name} ({etype})
+What the documents say about it:
+{context}
+
+{instruction}
+Reply with JSON only:
+{{"bio": "one-line public bio", "persona": "3-4 sentences: who they are, what they want, how they talk and react online",
+ "stance": <-1 (against) to 1 (for) on {topic}>, "influence": <1 (few followers) to 5 (very influential)>,
+ "activity": <0 (rarely posts) to 1 (posts a lot)>, "platforms": [apps from {platforms}],
+ "active_hours": [start hour, end hour], {fields}}}"""
+
+INDIVIDUAL = ("Write the profile of this person as they would behave online.",
+              '"age": 40, "gender": "female|male|other", "profession": "...", "mbti": "e.g. ISTJ", '
+              '"country": "...", "interests": ["...", "..."]')
+GROUP = ("This is an organisation or group: write how its official account behaves online (tone, "
+         "what it posts, how it responds to criticism).",
+         '"profession": "what kind of organisation", "country": "...", "interests": ["...", "..."]')
+INDIVIDUAL_TYPES = ("person", "people", "individual", "official", "expert", "journalist", "influencer",
+                    "leader", "candidate", "politician", "doctor", "resident", "customer", "student", "user")
+
+
+def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str, existing: list[dict],
+                  limit: int = 20, seed: int = 42, say=lambda m: None) -> list[dict]:
+    """Turn the most-mentioned people and organisations in the graph into named agents."""
+    taken = {slug(a["name"], 40) for a in existing} | {a["id"] for a in existing}
+    rows = gs.rows("SELECT id, name, type, description, mentions FROM nodes ORDER BY mentions DESC, id")
+    cands = []
+    for nid, name, etype, desc, mentions in rows:
+        t = (etype or "").lower()
+        if t in ("place", "product", "event", "policy", "concept"):
+            continue
+        if slug(name, 40) in taken:
+            continue
+        cands.append((nid, name, etype, desc, mentions))
+        if len(cands) >= limit:
+            break
+    out = []
+    for i, (nid, name, etype, desc, mentions) in enumerate(cands, 1):
+        say(f"profiling {name} ({i}/{len(cands)})")
+        facts = [f for (f,) in gs.rows(
+            "SELECT e.fact FROM edges e WHERE (e.src = ? OR e.dst = ?) AND e.fact != '' LIMIT 8", (nid, nid))]
+        context = "\n".join([desc or ""] + [f"- {f}" for f in facts]).strip() or "(little detail)"
+        individual = any(k in (etype or "").lower() for k in INDIVIDUAL_TYPES)
+        instr, fields = INDIVIDUAL if individual else GROUP
+        default = {"bio": (desc or name)[:120], "persona": desc or f"{name}.", "stance": 0.0,
+                   "influence": min(5, 1 + mentions / 2), "activity": 0.3,
+                   "platforms": ["x", "facebook"] if not individual else ["x", "instagram"]}
+        d = _ask(llm, ENTITY_PROFILE.format(kind="person" if individual else "organisation or group",
+                                            goal=goal, topic=topic, name=name, etype=etype, context=context,
+                                            instruction=instr, platforms=PLATFORM_LIST, fields=fields),
+                 default, seed * 7 + nid, max_tokens=500)
+        aid = slug(name, 24)
+        n = 2
+        while aid in taken:
+            aid, n = f"{slug(name, 21)}_{n}", n + 1
+        taken.add(aid)
+        ah = d.get("active_hours")
+        ah = [int(_num(ah[0], 0, 24, 8)), int(_num(ah[1], 0, 24, 23))] if isinstance(ah, list) and len(ah) == 2 else []
+        profile = {"kind": "individual" if individual else "group", "source": name,
+                   "bio": str(d.get("bio") or "")[:200]}
+        for k in ("age", "gender", "profession", "mbti", "country"):
+            if d.get(k) not in (None, ""):
+                profile[k] = d[k] if k == "age" and isinstance(d[k], int) else str(d[k])[:60]
+        if isinstance(d.get("interests"), list):
+            profile["interests"] = [str(x)[:40] for x in d["interests"][:6]]
+        plats = [p for p in _plats(d.get("platforms"), ("x", "facebook")) if not is_spaced(p)] or ["x"]
+        out.append({"id": aid, "name": str(name)[:80], "persona": str(d.get("persona") or default["persona"])[:600],
+                    "segment": "entities", "stance": round(_num(d.get("stance"), -1, 1, 0.0), 2),
+                    "stubbornness": 0.8, "activity": round(_num(d.get("activity"), 0.02, 1, 0.3), 2),
+                    "influence": round(_num(d.get("influence"), 0.5, 5, 2.0), 2), "platforms": plats,
+                    "active_hours": ah, "profile": profile})
+    return out
+
+
 PERSONA = """Create one realistic person for a social simulation.
 Situation: {context}
 Group: {segment} - {persona}
@@ -324,6 +403,7 @@ def clean_events(raw: dict, accounts: list[dict], days: int, rph: int) -> list[d
 # ------------------------------------------------------------------ main entry
 def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int = 40,
           crowd_agents: int = 2000, llm_cfg: dict | None = None, rich_personas: bool = True,
+          entity_limit: int = 20,
           seed: int = 42, start: datetime | None = None,
           progress: Callable[[str], None] | None = None) -> dict:
     say = progress or (lambda m: None)
@@ -344,6 +424,10 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
 
     say("picking the organisations and people who speak")
     accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3))
+
+    if entity_limit:
+        say("turning people and organisations in the documents into agents")
+        accounts += entity_agents(gs, llm, goal, topic, accounts, limit=entity_limit, seed=seed, say=say)
 
     say("finding where people talk and what they might do")
     spaces, acts = clean_places(_ask(llm, PLACES.format(**ctx), default_places(topic), seed + 4), segs)

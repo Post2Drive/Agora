@@ -29,25 +29,27 @@ def test_minutes_per_round_and_validation(tmp_path):
         scenario.from_dict(d)
 
 
-def _agree_share(p):
-    """How often LLM voices liked posts close to their own view."""
-    db = sqlite3.connect(p / "agora.db")
-    rows = db.execute("SELECT ABS(po.stance - s.stance) FROM engagements e JOIN posts po ON po.id = e.post "
-                      "JOIN agent_state s ON s.id = e.agent WHERE e.type='like' AND po.platform IN ('x','instagram','facebook')").fetchall()
-    return sum(d < 0.5 for (d,) in rows) / max(1, len(rows))
-
-
 def test_echo_chamber_setting_changes_what_people_see(tmp_path):
-    feeds = {k: {"echo_chamber": 0.0} for k in ("x", "instagram", "facebook", "youtube")}
-    strong = {k: {"echo_chamber": 1.0} for k in ("x", "instagram", "facebook", "youtube")}
-    a = make_project(tmp_path, "open", feeds=feeds, rounds=30)
-    b = make_project(tmp_path, "echo", feeds=strong, rounds=30)
-    for p in (a, b):
-        s = Simulation(p)
-        s.prepare()
-        s.run()
-        s.close()
-    assert _agree_share(b) > _agree_share(a)
+    import numpy as np
+    from agora.sim.platforms import FeedIndex
+    p = make_project(tmp_path, "w", rounds=30)
+    s = Simulation(p)
+    s.prepare()
+    s.run()
+    w = s.world
+
+    def closeness(echo):
+        idx = FeedIndex(w, 30 * 4.0, feeds={"x": {"echo_chamber": echo, "relevance": 0.0}})
+        vals = []
+        for a in w.agents:
+            if "x" not in a.platforms:
+                continue
+            for pid in idx._feed("x", a, 2, np.random.default_rng(a.id)):
+                vals.append(1 - abs(w.posts[w.posts[pid].root].stance - a.stance) / 2)
+        return sum(vals) / len(vals)
+
+    assert closeness(1.0) > closeness(0.0)
+    s.close()
 
 
 def test_active_hours_respected(tmp_path):
