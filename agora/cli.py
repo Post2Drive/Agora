@@ -148,6 +148,113 @@ def cmd_feed(args) -> int:
     return 0
 
 
+def _make_llm(args, project: Path):
+    from .llm import LLMConfig, make_backend
+    cfg = LLMConfig.from_dict({"backend": "ollama", "model": hardware.detect().model,
+                               **_llm_override(args)})
+    return cfg, make_backend(cfg, cache_path=project / "llm_cache.db")
+
+
+def _size_population(args, rounds: int) -> tuple[int, int]:
+    prof = hardware.detect()
+    voices = args.llm_agents
+    if voices is None:
+        voices = 10
+        while (voices < prof.llm_agents and
+               prof.estimate_hours(int((voices + 10) * rounds * 0.25)) <= args.hours):
+            voices += 10
+    crowd = args.crowd if args.crowd is not None else min(prof.crowd_agents, 3000)
+    return voices, crowd
+
+
+def cmd_create(args) -> int:
+    """MiroFish-style entry: upload documents + describe what to predict -> ready project."""
+    from .graph import GRAPH_FILE, GraphStore
+    from .graph import build as gbuild, draft as gdraft, ingest as gingest, view as gview
+    proj = Path(args.project)
+    if (proj / SCENARIO_FILE).exists() and not args.overwrite:
+        print(f"{proj} already has a scenario. Use --overwrite to redraft it.", file=sys.stderr)
+        return 1
+    proj.mkdir(parents=True, exist_ok=True)
+    goal = args.prompt.strip()
+    cfg, llm = _make_llm(args, proj)
+    ok, msg = llm.status()
+    if not ok:
+        print(msg + "\n(Use --mock to try the pipeline without a model.)", file=sys.stderr)
+        return 2
+    (proj / "prompt.txt").write_text(goal + "\n", encoding="utf-8")
+    gs = GraphStore(proj / GRAPH_FILE)
+    gs.set_meta("goal", goal)
+
+    print("1/4 Reading documents")
+    for r in gingest.ingest(gs, proj, args.docs):
+        print(f"    {r['file']}: " + ("already added" if r["skipped"] else f"{r['chunks']} chunks"))
+
+    print("2/4 Building the knowledge graph" + (" (fast, no model)" if args.fast else ""))
+    t0 = time.time()
+
+    def gprog(p):
+        el = time.time() - t0
+        eta = el / p["chunk"] * (p["of"] - p["chunk"])
+        print(f"    chunk {p['chunk']}/{p['of']}: {p['entities']} entities, "
+              f"{p['relations']} relations  (ETA {eta / 60:.0f} min)", flush=True)
+
+    st = gbuild.build(gs, None if args.fast else llm, goal, gprog)
+    gbuild.export(gs, proj)
+    gview.write(gs, proj / "graph.html", title=goal[:60])
+    print(f"    {st['nodes']} entities, {st['edges']} relations -> graph.html")
+
+    print("3/4 Drafting the simulation")
+    days_guess = 7
+    voices, crowd = _size_population(args, days_guess * 6)
+    keep = {k: v for k, v in cfg.__dict__.items() if k in ("backend", "model", "url", "parallel")}
+    sc = gdraft.draft(gs, llm, goal, llm_agents=voices, crowd_agents=crowd, llm_cfg=keep,
+                      rich_personas=not args.no_personas, seed=args.seed,
+                      progress=lambda m: print(f"    {m}", flush=True))
+    if sc["rounds"] != days_guess * 6 and args.llm_agents is None:
+        sc["population"]["llm_agents"], _ = _size_population(args, sc["rounds"])
+    n_docs = gs.rows("SELECT COUNT(*) FROM documents")[0][0]
+    (proj / SCENARIO_FILE).write_text(gdraft.to_yaml(sc, goal, n_docs), encoding="utf-8")
+    gs.close()
+    scenario_mod.load(proj / SCENARIO_FILE)
+
+    print("4/4 Ready")
+    print(f"    {len(sc['segments'])} groups of people, {len(sc['accounts'])} named accounts, "
+          f"{sum(len(v) for v in sc['spaces'].values())} groups/communities, "
+          f"{len(sc['events'])} events, {len(sc['conversions'])} actions to predict, "
+          f"{len(sc.get('voices', []))} written personas")
+    print(f"    Review {proj / SCENARIO_FILE} and {proj / 'graph.html'}, then:")
+    print(f"      agora check {proj}\n      agora run {proj}")
+    return 0
+
+
+def cmd_graph(args) -> int:
+    """Add documents and/or rebuild the graph and viewer for an existing project."""
+    from .graph import GRAPH_FILE, GraphStore
+    from .graph import build as gbuild, ingest as gingest, view as gview
+    proj = Path(args.project)
+    gs = GraphStore(proj / GRAPH_FILE)
+    goal = gs.get_meta("goal") or ""
+    if not goal and (proj / "prompt.txt").exists():
+        goal = (proj / "prompt.txt").read_text(encoding="utf-8").strip()
+    if args.add:
+        for r in gingest.ingest(gs, proj, args.add):
+            print(f"{r['file']}: " + ("already added" if r["skipped"] else f"{r['chunks']} chunks"))
+    llm = None
+    if not args.fast:
+        _, llm = _make_llm(args, proj)
+        ok, msg = llm.status()
+        if not ok:
+            print(msg, file=sys.stderr)
+            return 2
+    st = gbuild.build(gs, llm, goal, lambda p: print(f"  chunk {p['chunk']}/{p['of']}", flush=True))
+    gbuild.export(gs, proj)
+    path = gview.write(gs, proj / "graph.html", title=(goal or proj.name)[:60])
+    print(f"{st['nodes']} entities, {st['edges']} relations, types {st['node_types']} -> {path}")
+    gs.close()
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora", description="Agora: local multi-agent social simulation")
     ap.add_argument("--version", action="version", version=f"agora {__version__}")
@@ -166,6 +273,27 @@ def main(argv=None) -> int:
         p.add_argument("--model")
         p.add_argument("--url")
         p.add_argument("--parallel", type=int)
+
+    p = sub.add_parser("create", help="upload documents + describe what to predict -> ready project")
+    p.add_argument("project")
+    p.add_argument("--docs", nargs="+", required=True, help="PDF, DOCX, TXT, MD, CSV, JSON, HTML files")
+    p.add_argument("--prompt", required=True, help="what you want to predict, in plain words")
+    p.add_argument("--fast", action="store_true", help="build the graph without the model (rougher)")
+    p.add_argument("--no-personas", action="store_true", help="skip writing individual personas")
+    p.add_argument("--llm-agents", type=int, help="LLM voices (default: fits --hours on this machine)")
+    p.add_argument("--crowd", type=int, help="crowd agents (default: up to 3000)")
+    p.add_argument("--hours", type=float, default=12, help="run-time budget used to size the population")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--overwrite", action="store_true")
+    llm_flags(p)
+    p.set_defaults(f=cmd_create)
+
+    p = sub.add_parser("graph", help="add documents / rebuild the knowledge graph and graph.html")
+    p.add_argument("project")
+    p.add_argument("--add", nargs="+", help="more documents to add first")
+    p.add_argument("--fast", action="store_true")
+    llm_flags(p)
+    p.set_defaults(f=cmd_graph)
 
     p = sub.add_parser("check", help="validate scenario, model and estimate run time")
     p.add_argument("project")

@@ -71,9 +71,11 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
     used_handles: set[str] = set(w.by_handle)
     for seg, n_llm, n_crowd in zip(sc.segments, llm_counts, crowd_counts):
         names = seg.names or DEFAULT_NAMES
+        voices = [v for v in sc.voices if v.get("segment") == seg.name]
         for i in range(n_llm + n_crowd):
             kind = "llm" if i < n_llm else "crowd"
-            name = str(rng.choice(names))
+            voice = voices[i] if kind == "llm" and i < len(voices) else None
+            name = str(voice["name"]) if voice and voice.get("name") else str(rng.choice(names))
             base = _slug(name)
             handle = f"{base}{rng.integers(10, 9999)}"
             while handle in used_handles:
@@ -89,9 +91,16 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                 age = int(rng.integers(seg.age[0], seg.age[1] + 1))
                 occ = str(rng.choice(seg.occupations)) if seg.occupations else ""
                 trait = str(rng.choice(TRAITS))
-                attrs = {"age": age, "occupation": occ, "trait": trait}
-                bits = [f"{name}, {age}"] + ([occ] if occ else [])
-                persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
+                if voice:
+                    age = int(voice.get("age") or age)
+                    occ = str(voice.get("occupation") or occ)
+                    attrs = {"age": age, "occupation": occ, "voice": True}
+                    bits = [f"{name}, {age}"] + ([occ] if occ else [])
+                    persona = f"{', '.join(bits)}. {voice['persona']} ({seg.persona})"
+                else:
+                    attrs = {"age": age, "occupation": occ, "trait": trait}
+                    bits = [f"{name}, {age}"] + ([occ] if occ else [])
+                    persona = f"{', '.join(bits)}. {seg.persona} Personality: {trait}."
                 infl *= 1.5      # voices that write are a bit more visible
             new_agent(handle=handle, kind=kind, name=name, segment=seg.name, persona=persona,
                       platforms=list(seg.platforms), initial_stance=s0, stubbornness=stub,

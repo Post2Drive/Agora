@@ -74,6 +74,14 @@ class Simulation:
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
         self.store = Store(self.dir / DB_FILE)
         self.world: World | None = None
+        self.facts = None
+        gpath = self.dir / "graph.db"
+        if gpath.exists():
+            from ..graph import GraphStore
+            from ..graph.retrieve import FactIndex
+            gs = GraphStore(gpath)
+            self.facts = FactIndex.from_graph(gs) or None
+            gs.close()
         self._post_clock = 0
 
     # ---------------------------------------------------------------- setup
@@ -236,7 +244,12 @@ class Simulation:
         sc, w = self.sc, self.world
 
         def one(a: Agent):
-            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id])
+            facts = []
+            if self.facts:
+                texts = " ".join(w.posts[p.root if p.kind in ("repost", "forward") else p.id].text
+                                 for p in feeds[a.id])
+                facts = self.facts.search(f"{sc.topic} {texts} {a.persona}", k=3)
+            msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts)
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             try:
                 raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,

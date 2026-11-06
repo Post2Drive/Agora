@@ -46,7 +46,7 @@ def render_post(world: World, p: Post) -> str:
 
 
 def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetime,
-                      conversions: list) -> list[dict]:
+                      conversions: list, facts: list[str] | None = None) -> list[dict]:
     plats = ", ".join(PLATFORM_LABEL[p] for p in a.platforms)
     system = (
         f"You are {a.name}, a real person. {a.persona}\n"
@@ -55,6 +55,8 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         "hashtags spam, no marketing language. You are not an assistant and never mention AI. "
         "Most people scroll without posting; only act when you genuinely would.")
     lines = [f"Background you know:\n{sc.context.strip()}"]
+    if facts:
+        lines.append("Details you may have come across:\n" + "\n".join(f"- {f}" for f in facts))
     if world.news:
         lines.append("What has happened so far:\n" + "\n".join(f"- {n}" for n in world.news[-6:]))
     lines.append(f"It is {now:%A %d %B, %I:%M %p}.")
