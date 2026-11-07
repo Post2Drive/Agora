@@ -582,6 +582,31 @@ class App:
             (d / f).unlink(missing_ok=True)
         return {"ok": True}
 
+    def redraft(self, pid: str) -> dict:
+        """Redo step 02 (people and setup) from the existing graph; the run is cleared."""
+        from ..pipeline import CreateOptions, create_project
+        d = self.project_dir(pid)
+        if self.jobs.busy(pid):
+            raise ApiError(409, "Stop the running job first.")
+        prompt = (d / "prompt.txt").read_text(encoding="utf-8").strip() if (d / "prompt.txt").exists() else ""
+        if not prompt or not (d / "graph.db").exists():
+            raise ApiError(400, "This study has no graph to draft from.")
+        self.reset(pid)
+        llm = {}
+        try:
+            old = yaml.safe_load((d / "scenario.yaml").read_text(encoding="utf-8")) or {}
+            llm = {k: v for k, v in (old.get("llm") or {}).items() if k in ("backend", "model", "url")}
+            pop = old.get("population") or {}
+        except (OSError, yaml.YAMLError):
+            pop = {}
+        opts = CreateOptions(llm=llm or None, llm_agents=pop.get("llm_agents"), crowd=pop.get("crowd_agents"))
+
+        def work(job: Job):
+            create_project(d, [], prompt, opts, say=job.say, should_stop=lambda: job.stopping)
+
+        job = self.jobs.start("create", pid, work)
+        return {"id": pid, "job": job.as_dict()}
+
     def delete(self, pid: str) -> dict:
         d = self.project_dir(pid)
         if self.jobs.busy(pid):
@@ -699,6 +724,8 @@ class Handler(BaseHTTPRequestHandler):
                 return a.stop(pid)
             if rest == ["reset"] and method == "POST":
                 return a.reset(pid)
+            if rest == ["redraft"] and method == "POST":
+                return a.redraft(pid)
             if rest == ["report"] and method == "POST":
                 return a.start_report(pid, self._body())
             if rest == ["report"] and method == "GET":

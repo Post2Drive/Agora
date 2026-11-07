@@ -18,7 +18,6 @@ from ..llm import LLMBackend, LLMError
 from .store import GraphStore
 
 from ..platforms import REGISTRY, is_spaced, resolve
-from .realism import balance_segments, tame_persona, voice_stances
 from ..sim.llm_agent import stance_words
 
 PLATFORMS = tuple(REGISTRY)
@@ -68,12 +67,13 @@ def doc_excerpt(gs: GraphStore, limit: int = 2500) -> str:
     return text[:limit]
 
 
-def _ask(llm: LLMBackend | None, prompt: str, default: dict, seed: int, max_tokens=900) -> dict:
+def _ask(llm: LLMBackend | None, prompt: str, default: dict, seed: int, max_tokens=900,
+         temperature: float = 0.3) -> dict:
     if llm is None:
         return default
     try:
         d = llm.generate_json([{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                              temperature=0.3, seed=seed, meta={"task": "json", "default": default})
+                              temperature=temperature, seed=seed, meta={"task": "json", "default": default})
     except LLMError:
         return default
     return d if isinstance(d, dict) and d else default
@@ -225,12 +225,15 @@ def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str,
 PERSONA = """Create one realistic person for a social simulation.
 Situation: {context}
 Group: {segment} - {persona}
-Their honest view of {topic}: {view}. The persona must match this view (no hype).
+People in a group differ. Decide honestly how THIS person feels about {topic} - keen,
+indifferent, doubtful or against - from their own life, budget, health beliefs, trust in
+brands and habits. Do not make everyone positive; real audiences are mixed.
 Typical jobs: {occupations}. Age range: {age0}-{age1}.
-Make them specific and different from: {others}.
+Make them specific and different from these people already created: {others}.
 Reply with JSON only:
 {{"name": "first name", "age": 30, "occupation": "...",
- "persona": "2-3 sentences: background, habits, what they care about, how they would feel about {topic}"}}"""
+ "persona": "2-3 sentences: background, habits, what they care about, and their honest view of {topic}",
+ "stance": <their view of {topic}: -1 strongly against, 0 indifferent, 1 strongly for>}}"""
 
 
 # ------------------------------------------------------------------ defaults
@@ -440,9 +443,6 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
                             + "{" + ", ".join(f'"{o}": 0.0' for o in options) + "}") if options else "")
     say("describing who reacts")
     segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2))
-    segs, notes = balance_segments(segs)
-    for n in notes:
-        say(n)
 
     say("picking the organisations and people who speak")
     accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3))
@@ -544,11 +544,11 @@ def repair(sc: dict) -> dict:
 def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
     from ..sim.population import _alloc
     counts = _alloc(sc["population"]["llm_agents"], [s["share"] for s in sc["segments"]])
-    stances = voice_stances(sc["segments"], counts, seed)
     voices = []
     total, k = sum(counts), 0
-    for seg, n, seg_st in zip(sc["segments"], counts, stances):
+    for seg, n in zip(sc["segments"], counts):
         made: list[str] = []
+        views: list[float] = []
         for i in range(n):
             k += 1
             if k == 1 or k % 10 == 0 or k == total:
@@ -558,19 +558,25 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
                                          persona=seg["persona"],
                                          occupations=", ".join(seg.get("occupations") or ["any"]),
                                          age0=seg["age"][0], age1=seg["age"][1],
-                                         others="; ".join(made[-4:]) or "nobody yet",
-                                         topic=sc["topic"], view=stance_words(seg_st[i])),
-                     default, seed * 1000 + k, max_tokens=300)
+                                         others="; ".join(made[-6:]) or "nobody yet",
+                                         topic=sc["topic"]),
+                     default, seed * 1000 + k, max_tokens=300, temperature=0.8)   # varied people
             name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
             text = str(d.get("persona") or "").strip()
             if not name or len(text) < 20:
                 continue                       # population builder fills the gap with a template
             age = int(_num(d.get("age"), seg["age"][0], seg["age"][1], sum(seg["age"]) // 2))
-            v = {"segment": seg["name"], "name": name, "age": age, "stance": seg_st[i],
-                 "occupation": str(d.get("occupation") or "")[:60],
-                 "persona": tame_persona(text, seg_st[i])[:600]}
+            st = round(_num(d.get("stance"), -1, 1, seg["stance"]["mean"]), 2)
+            v = {"segment": seg["name"], "name": name, "age": age, "stance": st,
+                 "occupation": str(d.get("occupation") or "")[:60], "persona": text[:600]}
             voices.append(v)
-            made.append(f"{name}, {age}, {v['occupation']}")
+            views.append(st)
+            made.append(f"{name}, {age}, {v['occupation']} ({stance_words(st)})")
+        if len(views) >= 3:
+            # the group's crowd starts where the AI judged its individual members to be
+            m = sum(views) / len(views)
+            sd = (sum((x - m) ** 2 for x in views) / len(views)) ** 0.5
+            seg["stance"] = {"mean": round(m, 2), "sd": round(max(sd, 0.15), 2)}
     return voices
 
 

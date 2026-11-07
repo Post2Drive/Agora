@@ -214,7 +214,7 @@ async function tabSetup(p){const s=p.scenario;
   const segs=s.segments.map((g,i)=>`<tr><td><b>${esc(g.name.replace(/_/g,' '))}</b><div class="muted small">${esc(g.persona)}</div></td><td>${Math.round(g.share*100)}%</td><td>${stance(g.stance)}</td><td>${g.platforms.map(pbadge).join('')}</td></tr>`).join('');
   const t0=new Date(s.start),d0=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
   const day=r=>{const t=new Date(t0.getTime()+r*s.round_hours*3600e3);return `Day ${Math.floor((t-d0)/864e5)+1}, ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`};
-  $('#tab').innerHTML=`<div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
+  $('#tab').innerHTML=`<div class="card" style="margin-bottom:16px"><div class="row"><div><b>Redraft people</b><div class="muted small">Ask the model again to create the groups and every person, each with their own honest view. Uses the existing graph; clears any run.</div></div><span class="spacer"></span><button class="btn" id="redraft">Redraft</button></div></div><div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
     <div class="card"><h2>Size and timing</h2><div class="kpis"><div class="kpi"><b>${s.llm_agents}</b><span>AI voices (think and write)</span></div><div class="kpi"><b>${s.crowd_agents.toLocaleString()}</b><span>crowd agents (react)</span></div><div class="kpi"><b>${days.toFixed(days%1?1:0)} days</b><span>${s.rounds} rounds of ${s.round_hours} h</span></div><div class="kpi"><b>${s.voices}</b><span>written personas</span></div></div>
       <p class="muted small" style="margin-top:12px">Model: ${esc(s.llm.backend||'ollama')} ${esc(s.llm.model||'')}. Numbers for opinions and adoption are starting assumptions — check them before relying on results.</p>
       <div class="row" style="margin-top:8px">${locked?`<a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a>`:`<span class="spacer"></span><button class="btn primary" id="start">Start simulation</button>`}</div></div></div>
@@ -228,6 +228,7 @@ async function tabSetup(p){const s=p.scenario;
   <div class="card" style="margin-top:16px"><h2>Timeline</h2><div class="timeline">${s.events.map(e=>`<div class="tl"><span class="muted small">${day(e.round)}</span> · <b>${e.type==='poll'?'Decision':e.type==='news'?'News':'Post'}</b>${e.platform?' '+pbadge(e.platform):''}${e.conditional?' <span class="pill">only if approved</span>':''}<br>${esc(e.text)}</div>`).join('')}</div></div>
   <div id="ed"></div>`;
   if($('#start'))$('#start').onclick=()=>startRun(p,false);
+  $('#redraft').onclick=async()=>{if(!confirm('Redraft the groups and people from the graph? Any run is cleared.'))return;try{await api(`projects/${p.id}/redraft`,{method:'POST'});location.hash=`#/p/${p.id}/graph`;route()}catch(e){toast(e.message)}};
   editor(p,false,locked)}
 
 async function editor(p,open,locked){const t=await api(`projects/${p.id}/scenario`);const host=$('#ed')||$('#tab');
