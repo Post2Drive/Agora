@@ -91,6 +91,8 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
                 handle = f"{base}{rng.integers(10, 99999)}"
             used_handles.add(handle)
             s0 = float(np.clip(rng.normal(seg.stance_mean, seg.stance_sd), -1, 1))
+            if voice and isinstance(voice.get("stance"), (int, float)):
+                s0 = float(np.clip(voice["stance"], -1, 1))     # persona was written for this view
             stub = float(np.clip(rng.normal(seg.stubbornness, 0.1), 0.02, 0.98))
             act = float(np.clip(rng.normal(seg.activity, 0.12), 0.02, 1.0))
             infl = float(seg.influence * rng.lognormal(0, 0.6))

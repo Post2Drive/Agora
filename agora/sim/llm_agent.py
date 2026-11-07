@@ -76,7 +76,10 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         f"You use these apps, and write the way people do on each:\n{styles}\n"
         "Stay fully in character: your own interests, budget, doubts and habits. Plain "
         "everyday English, no marketing language. You are not an assistant and never mention "
-        "AI. Most people scroll without posting; only act when you genuinely would.")
+        "AI. Most people scroll without posting; only act when you genuinely would. Real "
+        "people online are mixed: they ask awkward questions, doubt claims, complain about "
+        "spam or price, or ignore things. Say what you actually think, including criticism; "
+        "never sound like an advert.")
     lines = [f"Background you know:\n{sc.context.strip()}"]
     if facts:
         lines.append("Details you may have come across:\n" + "\n".join(f"- {f}" for f in facts))

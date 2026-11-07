@@ -18,6 +18,8 @@ from ..llm import LLMBackend, LLMError
 from .store import GraphStore
 
 from ..platforms import REGISTRY, is_spaced, resolve
+from .realism import balance_segments, tame_persona, voice_stances
+from ..sim.llm_agent import stance_words
 
 PLATFORMS = tuple(REGISTRY)
 SPACED = tuple(k for k in REGISTRY if is_spaced(k))
@@ -99,6 +101,8 @@ Reply with JSON only:
 
 SEGMENTS = HEAD + """
 Who reacts? Describe 3-6 groups of ordinary people affected by this (not organizations).
+Be realistic, not promotional: real audiences are mixed. Include people who are indifferent,
+and people who are sceptical or against it (distrust, price, side effects, privacy, habit).
 - share: fraction of the population (all add up to 1)
 - stance: their likely starting opinion on {topic}, from -1 (against) to 1 (for)
 - stubbornness: 0 (easily persuaded) to 1 (never changes)
@@ -221,6 +225,7 @@ def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str,
 PERSONA = """Create one realistic person for a social simulation.
 Situation: {context}
 Group: {segment} - {persona}
+Their honest view of {topic}: {view}. The persona must match this view (no hype).
 Typical jobs: {occupations}. Age range: {age0}-{age1}.
 Make them specific and different from: {others}.
 Reply with JSON only:
@@ -435,6 +440,9 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
                             + "{" + ", ".join(f'"{o}": 0.0' for o in options) + "}") if options else "")
     say("describing who reacts")
     segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2))
+    segs, notes = balance_segments(segs)
+    for n in notes:
+        say(n)
 
     say("picking the organisations and people who speak")
     accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3))
@@ -536,9 +544,10 @@ def repair(sc: dict) -> dict:
 def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
     from ..sim.population import _alloc
     counts = _alloc(sc["population"]["llm_agents"], [s["share"] for s in sc["segments"]])
+    stances = voice_stances(sc["segments"], counts, seed)
     voices = []
     total, k = sum(counts), 0
-    for seg, n in zip(sc["segments"], counts):
+    for seg, n, seg_st in zip(sc["segments"], counts, stances):
         made: list[str] = []
         for i in range(n):
             k += 1
@@ -550,15 +559,16 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
                                          occupations=", ".join(seg.get("occupations") or ["any"]),
                                          age0=seg["age"][0], age1=seg["age"][1],
                                          others="; ".join(made[-4:]) or "nobody yet",
-                                         topic=sc["topic"]),
+                                         topic=sc["topic"], view=stance_words(seg_st[i])),
                      default, seed * 1000 + k, max_tokens=300)
             name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
             text = str(d.get("persona") or "").strip()
             if not name or len(text) < 20:
                 continue                       # population builder fills the gap with a template
             age = int(_num(d.get("age"), seg["age"][0], seg["age"][1], sum(seg["age"]) // 2))
-            v = {"segment": seg["name"], "name": name, "age": age,
-                 "occupation": str(d.get("occupation") or "")[:60], "persona": text[:600]}
+            v = {"segment": seg["name"], "name": name, "age": age, "stance": seg_st[i],
+                 "occupation": str(d.get("occupation") or "")[:60],
+                 "persona": tame_persona(text, seg_st[i])[:600]}
             voices.append(v)
             made.append(f"{name}, {age}, {v['occupation']}")
     return voices

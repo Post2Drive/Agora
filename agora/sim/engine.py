@@ -626,6 +626,8 @@ class Simulation:
             out.conversions.append((a.id, name))
 
     def _open_conversions(self, a: Agent, r: int) -> list:
+        if a.kind == "account":
+            return []                 # brands, officials and committees speak; they do not sign up
         res = []
         for c in self.sc.conversions:
             if not c.open_round <= r <= c.close_round or c.name in a.converted:

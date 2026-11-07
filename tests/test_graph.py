@@ -234,7 +234,8 @@ def test_draft_cleans_sloppy_answers(gs):
     assert set(segs) == {"young_parents", "seniors", "students"}           # duplicate dropped
     assert abs(sum(s.share for s in parsed.segments) - 1) < 0.01             # shares normalised
     assert segs["young_parents"].platforms == ["whatsapp", "x"]              # Twitter -> x
-    assert segs["students"].stance_mean == 1.0                               # clamped
+    assert segs["students"].stance_mean == max(x.stance_mean for x in segs.values())   # still keenest
+    assert all(x.stance_sd >= 0.45 for x in segs.values())                   # realistic spread
     assert segs["seniors"].age == (60, 70)                                   # swapped
     ids = {a.id for a in parsed.accounts if a.segment != "entities"}
     assert ids == {"npp_official", "association_committee"}
@@ -327,3 +328,20 @@ def test_draft_detects_a_choice(gs):
     assert seg["renters"].leaning["Okafor"] == -0.3
     assert "Ghost" not in seg["owners"].leaning
     assert parsed.choice.open_round < parsed.rounds
+
+
+def test_realism_pass_mixes_an_all_positive_draft():
+    from agora.graph.realism import balance_segments, rebalance_scenario, tame_persona
+    segs = [{"name": n, "share": sh, "stance": {"mean": m, "sd": 0.3}, "platforms": ["whatsapp"],
+             "age": [25, 60]} for n, sh, m in [("seniors", .3, .5), ("parents", .4, .7), ("fit", .3, .8)]]
+    segs, notes = balance_segments(segs)
+    names = [s["name"] for s in segs]
+    assert "sceptics" in names and notes
+    avg = sum(s["share"] * s["stance"]["mean"] for s in segs) / sum(s["share"] for s in segs)
+    assert -0.15 < avg < 0.2 and min(s["stance"]["mean"] for s in segs) < -0.2
+    assert abs(sum(s["share"] for s in segs) - 1) < 0.01
+    assert "thrilled" not in tame_persona("Ravi is a teacher. He would be thrilled to try it.", -0.3)
+    d = {"segments": [dict(s) for s in segs[:3]],
+         "voices": [{"segment": "parents", "name": "Asha", "persona": "Asha, 30. She is thrilled about it."}]}
+    rebalance_scenario(d, 1)
+    assert isinstance(d["voices"][0]["stance"], float)
