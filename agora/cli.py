@@ -221,7 +221,8 @@ def cmd_graph(args) -> int:
 def _project_llm(args, proj: Path):
     from .pipeline import make_llm
     sc = scenario_mod.load(proj / SCENARIO_FILE)
-    cfg = {k: v for k, v in settings.safe_study_llm(sc.llm).items() if k in ("backend", "model", "url", "parallel")}
+    from .pipeline import public_cfg
+    cfg = {k: v for k, v in settings.safe_study_llm(public_cfg(sc.llm_build or sc.llm)).items() if k in ("backend", "model", "url", "parallel")}
     cfg.update(_llm_override(args))
     _, llm = make_llm(proj, cfg)
     ok, msg = llm.status()
@@ -370,7 +371,9 @@ def cmd_forecast(args) -> int:
 
 
 def cmd_web(args) -> int:
+    from .web import jobs
     from .web.server import serve
+    jobs.ECHO = True
     serve(Path(args.dir), port=args.port, open_browser=not args.no_browser)
     return 0
 

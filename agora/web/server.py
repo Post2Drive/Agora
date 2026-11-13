@@ -165,12 +165,16 @@ class App:
 
     def llm_status(self, q: dict) -> dict:
         from ..llm import LLMError, make_backend
-        try:
-            cfg = self._form_llm({k: q.get(k) for k in ("backend", "model", "url")})
-        except ApiError as e:
-            return {"ok": False, "message": str(e)}
-        cfg.setdefault("model", self.profile.model)
-        cfg["cache"] = False
+        b = q.get("backend", "ollama")
+        if b in ("claude", "chatgpt"):
+            cfg = {"backend": b, "model": q.get("model") or "", "cache": False}
+        else:
+            try:
+                cfg = self._form_llm({k: q.get(k) for k in ("backend", "model", "url")})
+            except ApiError as e:
+                return {"ok": False, "message": str(e)}
+            cfg.setdefault("model", self.profile.model)
+            cfg["cache"] = False
         try:
             ok, msg = make_backend(cfg).status()
         except LLMError as e:
@@ -417,10 +421,13 @@ class App:
         except ApiError:
             shutil.rmtree(d, ignore_errors=True)
             raise
+        bkeys = ("backend", "model", "url")
+        build = {} if o.get("mock") or not any(o.get("build_" + k) for k in bkeys) else self._form_llm(
+            {k: o.get("build_" + k) for k in bkeys})
         opts = CreateOptions(fast=bool(o.get("fast")), personas=o.get("personas", True) is not False,
                              llm_agents=int(o["llm_agents"]) if o.get("llm_agents") else None,
                              crowd=int(o["crowd"]) if o.get("crowd") else None,
-                             hours=float(o.get("hours") or 12), llm=llm,
+                             hours=float(o.get("hours") or 12), llm=llm, llm_build=build or None,
                              entity_agents=int(o["entities"]) if o.get("entities") not in (None, "") else 20)
 
         def work(job: Job):
@@ -501,13 +508,14 @@ class App:
         if mock:
             return make_llm(d, {"backend": "mock"})[1]
         sc = scenario_mod.load(d / "scenario.yaml")
-        cfg = {k: v for k, v in settings.safe_study_llm(sc.llm).items()
+        cfg = {k: v for k, v in settings.safe_study_llm(sc.llm_build or sc.llm).items()
                if k in ("backend", "model", "url", "parallel")}
-        cfg.update(self._profile_llm())
+        if cfg.get("backend") not in ("claude", "chatgpt"):
+            cfg.update(self._profile_llm())
         _, llm = make_llm(d, cfg)
         ok, msg = llm.status()
         if not ok:
-            raise ApiError(503, msg + " (Tick 'without a model' to try it with placeholder answers.)")
+            raise ApiError(503, msg)
         return llm
 
     def _need_run(self, d: Path):
@@ -679,6 +687,32 @@ class App:
             (d / f).unlink(missing_ok=True)
         return {"ok": True}
 
+    def redraft(self, pid: str) -> dict:
+        """Redo step 02 (people and setup) from the existing graph; the run is cleared."""
+        from ..pipeline import CreateOptions, create_project
+        d = self.project_dir(pid)
+        if self.jobs.busy(pid):
+            raise ApiError(409, "Stop the running job first.")
+        prompt = (d / "prompt.txt").read_text(encoding="utf-8").strip() if (d / "prompt.txt").exists() else ""
+        if not prompt or not (d / "graph.db").exists():
+            raise ApiError(400, "This study has no graph to draft from.")
+        self.reset(pid)
+        from ..pipeline import public_cfg
+        try:
+            old = yaml.safe_load((d / "scenario.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            old = {}
+        pop = old.get("population") or {}
+        opts = CreateOptions(llm=public_cfg(old.get("llm")) or None,
+                             llm_build=public_cfg(old.get("llm_build")) or None,
+                             llm_agents=pop.get("llm_agents"), crowd=pop.get("crowd_agents"))
+
+        def work(job: Job):
+            create_project(d, [], prompt, opts, say=job.say, should_stop=lambda: job.stopping)
+
+        job = self.jobs.start("create", pid, work)
+        return {"id": pid, "job": job.as_dict()}
+
     def delete(self, pid: str) -> dict:
         d = self.project_dir(pid)
         if self.jobs.busy(pid):
@@ -769,6 +803,14 @@ class Handler(BaseHTTPRequestHandler):
                 return settings.public()
             if method == "POST":
                 return a.save_settings(self._body())
+        if p == ["settings", "keys"]:
+            from ..llm.providers import PROVIDERS, key_status, set_key
+            if method == "PUT":
+                b = self._body()
+                if b.get("provider") not in PROVIDERS:
+                    raise ApiError(400, "Unknown provider")
+                set_key(b["provider"], str(b.get("key") or ""))
+            return key_status()
         if p == ["projects"]:
             if method == "GET":
                 return a.list_projects()
@@ -803,6 +845,8 @@ class Handler(BaseHTTPRequestHandler):
                 return a.stop(pid)
             if rest == ["reset"] and method == "POST":
                 return a.reset(pid)
+            if rest == ["redraft"] and method == "POST":
+                return a.redraft(pid)
             if rest == ["report"] and method == "POST":
                 return a.start_report(pid, self._body())
             if rest == ["report"] and method == "GET":

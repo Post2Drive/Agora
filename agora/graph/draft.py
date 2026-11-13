@@ -19,6 +19,7 @@ from ..llm.base import StepFailed, ask_json
 from .store import GraphStore
 
 from ..platforms import REGISTRY, is_spaced, resolve
+from ..sim.llm_agent import stance_words
 
 PLATFORMS = tuple(REGISTRY)
 SPACED = tuple(k for k in REGISTRY if is_spaced(k))
@@ -129,6 +130,8 @@ Reply with JSON only:
 
 SEGMENTS = HEAD + """
 Who reacts? Describe 3-6 groups of ordinary people affected by this (not organizations).
+Be realistic, not promotional: real audiences are mixed. Include people who are indifferent,
+and people who are sceptical or against it (distrust, price, side effects, privacy, habit).
 - share: fraction of the population (all add up to 1)
 - stance: their likely starting opinion on {topic}, from -1 (against) to 1 (for)
 - stubbornness: 0 (easily persuaded) to 1 (never changes)
@@ -255,11 +258,15 @@ def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str,
 PERSONA = """Create one realistic person for a social simulation.
 Situation: {context}
 Group: {segment} - {persona}
+People in a group differ. Decide honestly how THIS person feels about {topic} - keen,
+indifferent, doubtful or against - from their own life, budget, health beliefs, trust in
+brands and habits. Do not make everyone positive; real audiences are mixed.
 Typical jobs: {occupations}. Age range: {age0}-{age1}.
-Make them specific and different from: {others}.
+Make them specific and different from these people already created: {others}.
 Reply with JSON only:
 {{"name": "first name", "age": 30, "occupation": "...",
- "persona": "2-3 sentences: background, habits, what they care about, how they would feel about {topic}"}}"""
+ "persona": "2-3 sentences: background, habits, what they care about, and their honest view of {topic}",
+ "stance": <their view of {topic}: -1 strongly against, 0 indifferent, 1 strongly for>}}"""
 
 
 # ------------------------------------------------------------------ defaults
@@ -330,7 +337,7 @@ def clean_segments(raw: dict) -> list[dict]:
             "occupations": [str(o)[:40] for o in (s.get("occupations") or [])][:6],
             "age": [min(a0, a1), max(a0, a1)]})
     if len(segs) < 2:
-        return clean_segments({"segments": DEFAULT_SEGMENTS})
+        raise ValueError("fewer than two usable groups")
     total = sum(s["share"] for s in segs)
     for s in segs:
         s["share"] = round(s["share"] / total, 3)
@@ -585,6 +592,7 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
     total, k = sum(counts), 0
     for seg, n in zip(sc["segments"], counts):
         made: list[str] = []
+        views: list[float] = []
         for i in range(n):
             k += 1
             if k == 1 or k % 10 == 0 or k == total:
@@ -592,22 +600,29 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
             # only the test (mock) backend reads this canned answer; real models ignore it
             default = ({"name": f"Mock{k}", "age": sum(seg["age"]) // 2, "occupation": "",
                         "persona": f"A made-up person from the {seg['name']} group, for tests only."}
-                       if llm.cfg.backend == "mock" else {})
+                       if getattr(getattr(llm, "cfg", None), "backend", "") == "mock" else {})
             d = _ask(llm, PERSONA.format(context=sc["context"][:600], segment=seg["name"],
                                          persona=seg["persona"],
                                          occupations=", ".join(seg.get("occupations") or ["any"]),
                                          age0=seg["age"][0], age1=seg["age"][1],
-                                         others="; ".join(made[-4:]) or "nobody yet",
+                                         others="; ".join(made[-6:]) or "nobody yet",
                                          topic=sc["topic"]),
                      default, seed * 1000 + k, max_tokens=300, step=f"persona {k} of {total}",
                      check=_ok_persona, tries=5)
             name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
             text = str(d.get("persona") or "").strip()
             age = int(_num(d.get("age"), seg["age"][0], seg["age"][1], sum(seg["age"]) // 2))
-            v = {"segment": seg["name"], "name": name, "age": age,
+            st = round(_num(d.get("stance"), -1, 1, seg["stance"]["mean"]), 2)
+            v = {"segment": seg["name"], "name": name, "age": age, "stance": st,
                  "occupation": str(d.get("occupation") or "")[:60], "persona": text[:600]}
             voices.append(v)
-            made.append(f"{name}, {age}, {v['occupation']}")
+            views.append(st)
+            made.append(f"{name}, {age}, {v['occupation']} ({stance_words(st)})")
+        if len(views) >= 3:
+            # the group's crowd starts where the AI judged its individual members to be
+            m = sum(views) / len(views)
+            sd = (sum((x - m) ** 2 for x in views) / len(views)) ** 0.5
+            seg["stance"] = {"mean": round(m, 2), "sd": round(max(sd, 0.15), 2)}
     return voices
 
 

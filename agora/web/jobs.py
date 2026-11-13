@@ -13,6 +13,7 @@ import traceback
 from typing import Callable
 
 _ids = itertools.count(1)
+ECHO = False                 # the web command turns this on so progress also shows in the window
 
 
 class Job:
@@ -31,6 +32,11 @@ class Job:
 
     def say(self, msg: str) -> None:
         self.log.append(msg)
+        if ECHO:
+            try:
+                print(f"{time.strftime('%H:%M:%S')}  [{self.project}] {msg}", flush=True)
+            except Exception:  # noqa: BLE001 - a console that cannot print must not break the job
+                pass
         if len(self.log) > 400:
             del self.log[:100]
 
@@ -69,6 +75,7 @@ class Jobs:
 
         def runner():
             try:
+                job.say({"create": "Building the study", "run": "Simulation", "report": "Writing the report"}.get(kind, kind.capitalize()) + "…")
                 fn(job)
                 job.state = "stopped" if job.stopping else "done"
             except Exception as e:  # noqa: BLE001 - shown to the user

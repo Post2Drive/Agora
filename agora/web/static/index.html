@@ -139,21 +139,18 @@ async function home(){const ps=await api('projects');
     else if(!p.has_scenario)st='<span class="pill">Not set up</span>';
     return `<a class="card" style="text-decoration:none;display:block" href="#/p/${p.id}/"><div class="row"><h3 style="margin:0">${esc(p.title)}</h3><span class="spacer"></span>${st}</div>
       <p class="muted small" style="margin:8px 0 0">${esc(p.prompt||'')}</p></a>`};
-  $('#view').innerHTML=`<div class="row" style="margin-bottom:18px"><div><h1>Studies</h1><p class="muted" style="margin:0">Upload documents, ask what will happen, and watch a simulated public react.</p></div><span class="spacer"></span>
-    ${ps.filter(p=>p.run.started).length>1?'<a class="btn" href="#/compare">Compare studies</a>':''}<button class="btn" id="demo">Demo: sampling</button><button class="btn" id="demoE">Demo: election</button><a class="btn primary" href="#/new">New study</a></div>
-    ${ps.length?`<div class="grid g3">${ps.map(card).join('')}</div>`:`<div class="card empty"><h2>No studies yet</h2><p class="muted">Start with your own documents, or open a demo: a free probiotic sampling campaign in apartment communities, or a city mayoral election.</p><div class="row" style="justify-content:center"><button class="btn" id="demo2">Demo: sampling</button><button class="btn" id="demoE2">Demo: election</button><a class="btn primary" href="#/new">New study</a></div></div>`}`;
-  const d=which=>async()=>{const r=await api('projects/demo?which='+which,{method:'POST'});location.hash=`#/p/${r.id}/setup`};
-  $('#demo').onclick=d('sampling');$('#demoE').onclick=d('election');if($('#demo2')){$('#demo2').onclick=d('sampling');$('#demoE2').onclick=d('election')}
-  if(ps.some(p=>p.job&&p.job.state==='running'))timer=setInterval(()=>{if(location.hash===''||location.hash==='#/')home()},4000)}
+  await newStudy(true);
+  if(ps.length)$('#view').insertAdjacentHTML('beforeend',`<div class="row" style="margin:34px 0 12px"><h2 style="margin:0">Your studies</h2><span class="spacer"></span>${ps.filter(p=>p.run.started).length>1?'<a class="btn" href="#/compare">Compare studies</a>':''}</div><div class="grid g3">${ps.map(card).join('')}</div>`);
+  if(ps.some(p=>p.job&&p.job.state==='running'))timer=setInterval(()=>{if((location.hash===''||location.hash==='#/')&&!document.activeElement?.matches('input,textarea'))home()},4000)}
 
 /* ------------------------------------------------------------ new study */
 const ACCEPT='.pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm';
-async function newStudy(){const files=[];const d=INFO.llm_default;
-  $('#view').innerHTML=`<h1>New study</h1><p class="muted">Step 1 of 5 — give Agora your material and your question.</p>
+async function newStudy(isHome){const files=[];const d=INFO.llm_default;
+  $('#view').innerHTML=`<div style="text-align:center;margin:10px 0 6px"><h1 style="font-size:2rem;margin-bottom:6px">Predict how people will react</h1><p class="muted" style="margin:0">Upload your documents, describe what you want to predict, and Agora builds a world of AI people who read, talk and act on it.</p></div>
   <div class="grid g2" style="margin-top:18px"><div class="card">
-    <label for="name">Name</label><input type="text" id="name" placeholder="e.g. Apartment sampling, Guntur">
+    <label for="name">Name</label><input type="text" id="name" placeholder="e.g. Product launch in Hyderabad">
     <label for="prompt">What do you want to predict?</label>
-    <textarea id="prompt" placeholder="How will residents of premium apartments react to a free 7-day probiotic sample, how many flats will register, and how many will buy afterwards?"></textarea>
+    <textarea id="prompt" placeholder="e.g. How will people react to this launch, what will they say online, and how many will buy in the first month?"></textarea>
     <label>Documents</label><div class="drop" id="drop"><b>Drop files here</b> or click to choose<br><span class="muted small">PDF, Word, text, Markdown, CSV, JSON, web pages</span></div>
     <input type="file" id="fi" multiple accept="${ACCEPT}" hidden><div class="files" id="fl"></div></div>
   <div class="card"><h2>Model</h2><p class="muted small" style="margin-top:-6px">${whereText()}</p>
@@ -167,7 +164,7 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
       <label for="hours">Time budget for the simulation (hours on this machine)</label><input type="number" id="hours" value="12" min="1" max="200">
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label for="voices">AI voices</label><input type="number" id="voices" placeholder="auto"></div><div><label for="crowd">Extra crowd agents (optional)</label><input type="number" id="crowd" placeholder="none"></div></div>
     </details></div></div>
-  <div class="row" style="margin-top:18px"><span class="spacer"></span><a class="btn" href="#/">Cancel</a><button class="btn primary" id="go">Build the study</button></div>`;
+  <div class="row" style="margin-top:18px"><span class="spacer"></span><button class="btn primary" id="go">Start: build the graph</button></div>`;
   const fl=()=>{$('#fl').innerHTML=files.map((f,i)=>`<span class="file">${esc(f.name)} <span class="muted">${(f.size/1024).toFixed(0)} KB</span><button data-i="${i}" title="Remove">✕</button></span>`).join('');
     $('#fl').querySelectorAll('button').forEach(b=>b.onclick=()=>{files.splice(+b.dataset.i,1);fl()})};
   const add=list=>{for(const f of list)files.push(f);fl()};
@@ -175,15 +172,43 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
   ['dragenter','dragover'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over')}));
   ['dragleave','drop'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.remove('over')}));
   $('#drop').addEventListener('drop',e=>add(e.dataTransfer.files));
-  const bk=()=>{$('#mrow').style.display=$('#backend').value==='mock'?'none':'';if($('#backend').value==='openai'&&$('#url').value.includes('11434'))$('#url').value='http://localhost:8080'};$('#backend').onchange=bk;
-  $('#chk').onclick=async()=>{$('#mst').textContent='Checking…';const r=await api(`llm/status?backend=${encodeURIComponent($('#backend').value)}&model=${encodeURIComponent($('#model').value)}&url=${encodeURIComponent($('#url').value)}`);$('#mst').innerHTML=`<span class="pill ${r.ok?'ok':'bad'}">${esc(r.message)}</span>`};
+  wirePicker('b',d);wirePicker('s',d);
   $('#go').onclick=async()=>{const prompt=$('#prompt').value.trim();if(!prompt)return toast('Describe what you want to predict.');if(!files.length)return toast('Add at least one document.');
     $('#go').disabled=true;$('#go').textContent='Uploading…';
     try{const enc=await Promise.all(files.map(f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res({name:f.name,data:String(r.result).split(',')[1]||''});r.onerror=rej;r.readAsDataURL(f)})));
-      const b=$('#backend').value;
-      const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:b==='mock',backend:b==='mock'?'':b,model:$('#model').value,url:$('#url').value,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
+      const sv=pick('s'),bv=pick('b');
+      const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:false,backend:sv.backend,model:sv.model,url:sv.url,build_backend:bv.backend,build_model:bv.model,build_url:bv.url,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
       const r=await api('projects',{method:'POST',body});location.hash=`#/p/${r.id}/build`}
-    catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Build the study'}}}
+    catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Start: build the graph'}}}
+
+
+/* model picker: local Ollama, another local server, Claude or ChatGPT */
+const PROV={ollama:'Local — Ollama (this laptop)',openai:'Local — other server (llama.cpp, LM Studio, vLLM)',claude:'Claude (Anthropic API)',chatgpt:'ChatGPT (OpenAI API)'};
+function picker(k,title,desc){return `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><b>${title}</b><div class="muted small">${desc}</div>
+  <select id="${k}be">${Object.entries(PROV).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+  <label for="${k}mo">Model</label><input type="text" id="${k}mo" list="${k}ml"><datalist id="${k}ml"></datalist>
+  <div id="${k}urow"><label for="${k}ur">Server address</label><input type="url" id="${k}ur"></div>
+  <div class="row" style="margin-top:8px"><button class="btn" id="${k}ck">Check</button><span id="${k}st" class="small muted"></span></div></div>`}
+async function wirePicker(k,d){let keys={};try{keys=await api('settings/keys')}catch(e){}
+  const be=$('#'+k+'be'),mo=$('#'+k+'mo'),ur=$('#'+k+'ur');
+  const set=()=>{const v=be.value,cloud=v==='claude'||v==='chatgpt';$('#'+k+'urow').style.display=cloud?'none':'';
+    $('#'+k+'ml').innerHTML=cloud?(keys[v]?.models||[]).map(m=>`<option value="${m}">`).join(''):'';
+    mo.value=cloud?(keys[v]?.model||''):d.model;ur.value=v==='openai'?'http://localhost:8080':d.url;
+    $('#'+k+'st').innerHTML=cloud&&!keys[v]?.set?`<span class="pill bad">No API key yet</span> <a href="#/settings">Add in Settings</a>`:''};
+  be.onchange=set;set();
+  $('#'+k+'ck').onclick=async()=>{$('#'+k+'st').textContent='Checking…';const r=await api(`llm/status?backend=${encodeURIComponent(be.value)}&model=${encodeURIComponent(mo.value)}&url=${encodeURIComponent(ur.value)}`);$('#'+k+'st').innerHTML=`<span class="pill ${r.ok?'ok':'bad'}">${esc(r.message)}</span>`}}
+function pick(k){const v=$('#'+k+'be').value;return {backend:v,model:$('#'+k+'mo').value.trim(),url:(v==='claude'||v==='chatgpt')?'':$('#'+k+'ur').value}}
+
+/* settings: API keys stay on this computer */
+async function settings(){const k=await api('settings/keys');
+  $('#view').innerHTML=`<h1>Settings</h1><p class="muted">Optional cloud models. Keys are saved only on this computer (in your user folder), never in study files. Using a cloud model sends that step's text to the provider and is billed by them.</p>
+  <div class="grid g2">${Object.entries(k).map(([p,x])=>`<div class="card"><h2>${esc(x.label)}</h2>
+    <p class="small">${x.set?`<span class="pill ok">Key saved</span> <span class="muted">${esc(x.hint)}${x.from_env?' (from environment)':''}</span>`:'<span class="pill">No key</span>'}</p>
+    <label for="k_${p}">API key</label><input type="password" id="k_${p}" placeholder="Paste your key" autocomplete="off">
+    <p class="muted small">Get one at <a href="${x.keys_url}" target="_blank" rel="noopener">${x.keys_url.replace('https://','')}</a>. Default model: ${esc(x.model)}.</p>
+    <div class="row"><button class="btn primary" data-save="${p}">Save</button>${x.set?`<button class="btn danger" data-del="${p}">Remove</button>`:''}</div></div>`).join('')}</div>`;
+  $('#view').querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const p=b.dataset.save,v=$('#k_'+p).value.trim();if(!v)return toast('Paste a key first.');await api('settings/keys',{method:'PUT',body:{provider:p,key:v}});toast('Saved');settings()});
+  $('#view').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await api('settings/keys',{method:'PUT',body:{provider:b.dataset.del,key:''}});settings()})}
 
 /* ------------------------------------------------------------ where it runs (settings) and the plan */
 const whereText=()=>{const s=INFO.settings||{};const a=(s.profiles||{})[s.active];
@@ -232,29 +257,29 @@ async function planCard(p){const el=$('#plan');if(!el)return;
   ['#pa','#pr','#ps'].forEach(i=>$(i).oninput=()=>{clearTimeout(state.plt);state.plt=setTimeout(()=>go(false),300)});go(true)}
 
 /* ------------------------------------------------------------ project */
-const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['data','Calibrate'],['sim','Simulation'],['report','Report'],['people','Interact']];
+const TABS=[['graph','Graph Build'],['setup','Environment Setup'],['sim','Simulation'],['report','Report'],['people','Deep Interaction']];
 async function project(id,tab){const p=await api('projects/'+encodeURIComponent(id));state.p=p;
-  if(!tab){tab=p.job&&p.job.state==='running'&&p.job.kind==='create'?'build':p.run.started?'sim':p.has_scenario?'setup':'build';history.replaceState(null,'',`#/p/${id}/${tab}`)}
-  const done={build:p.has_scenario||p.has_graph,graph:p.has_graph,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false,data:false};
-  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span>${p.has_scenario?'<button class="btn" id="fork" title="Copy this setup into a new study to try a variation">Fork</button>':''}<button class="btn danger" id="del">Delete</button></div>
-    <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':i+1}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
+  if(tab==='build')tab='graph';if(!tab){tab=p.has_report?'report':p.run.started?'sim':p.has_scenario&&!(p.job&&p.job.kind==='create'&&p.job.state==='running')?'setup':'graph';history.replaceState(null,'',`#/p/${id}/${tab}`)}
+  const building=p.job&&p.job.kind==='create'&&p.job.state==='running';const done={graph:p.has_graph&&!building,setup:p.has_scenario,sim:p.run.started&&p.run.rounds_done>=p.run.rounds_total,report:p.has_report,people:false,data:false};
+  $('#view').innerHTML=`<div class="row"><div style="min-width:0"><a href="#/" class="muted small" style="text-decoration:none">← Home</a><h1 style="margin-top:4px">${esc(p.title)}</h1><p class="muted" style="margin:0;max-width:820px">${esc(p.prompt)}</p></div><span class="spacer"></span><button class="btn danger" id="del">Delete</button></div>
+    <div class="steps">${TABS.map(([k,l],i)=>`<a class="step ${k===tab?'on':''} ${done[k]?'done':''}" href="#/p/${id}/${k}"><b>${done[k]?'✓':String(i+1).padStart(2,'0')}</b>${l}</a>`).join('')}</div><div id="tab"></div>`;
   $('#del').onclick=async()=>{if(!confirm('Delete this study and all its files?'))return;try{await api('projects/'+id,{method:'DELETE'});location.hash='#/'}catch(e){toast(e.message)}};
-  if($('#fork'))$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
-  ({build:tabBuild,graph:tabGraph,setup:tabSetup,data:tabData,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
+  if(0)$('#fork').onclick=async()=>{const t=prompt('Name for the new variant:',p.title+' (variant)');if(t===null)return;try{const r=await api(`projects/${p.id}/fork`,{method:'POST',body:{title:t}});toast('Forked. Edit the setup, then run it.');location.hash=`#/p/${r.id}/setup`}catch(e){toast(e.message)}};
+  ({graph:tabGraph,setup:tabSetup,data:tabData,sim:tabSim,report:tabReport,people:tabPeople}[tab]||tabSetup)(p)}
 
 function tabBuild(p){const j=p.job;
   if(!j||j.kind!=='create'){$('#tab').innerHTML=`<div class="card"><h2>Material</h2>${p.sources.length?`<p class="muted">Documents in this study:</p><div class="files">${p.sources.map(s=>`<span class="file">${esc(s)}</span>`).join('')}</div>`:'<p class="muted">This study was set up by hand (no documents).</p>'}
     <h3 style="margin-top:18px">Question</h3><p>${esc(p.prompt)}</p><a class="btn primary" href="#/p/${p.id}/${p.has_graph?'graph':'setup'}">Continue</a></div>`;return}
   const render=j=>{const run=j.state==='running';
-    $('#tab').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">${run?'Building your study…':j.state==='done'?'Study ready':j.state==='stopped'?'Stopped':'Build failed'}</h2><span class="spacer"></span>
-      ${run?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>${j.stopping?'Stopping…':'Stop'}</button>`:j.state==='done'?`<a class="btn" href="#/p/${p.id}/graph">See the graph</a><a class="btn primary" href="#/p/${p.id}/setup">Review the setup</a>`:''}</div>
-      <p class="muted small">Reading documents → knowledge graph → drafting who reacts, where they talk and what happens. On a laptop this can take a while; you can leave this page and come back.</p>
+    $('#tab').innerHTML=`<div class="card"><div class="row"><h2 style="margin:0">${run?'Building the knowledge graph…':j.state==='done'?'Graph and environment ready':j.state==='stopped'?'Stopped':'Build failed'}</h2><span class="spacer"></span>
+      ${run?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>${j.stopping?'Stopping…':'Stop'}</button>`:j.state==='done'?`<a class="btn primary" href="#/p/${p.id}/graph">See the graph</a>`:''}</div>
+      <p class="muted small">Reading documents → extracting entities and relations → building the graph → generating agents and the simulation config. On a laptop this takes a while; you can leave this page and come back.</p>
       ${j.error?`<p class="pill bad">${esc(j.error)}</p>`:''}<div class="log" id="log">${esc(j.log.join('\n'))}</div></div>`;
     const l=$('#log');l.scrollTop=l.scrollHeight;if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after the current step…'))};
   render(j);if(j.state==='running')timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job)return;render(q.job);if(q.job.state!=='running'){clearInterval(timer);route()}},1500)}
 
-function tabGraph(p){if(!p.has_graph){$('#tab').innerHTML=`<div class="card empty"><h2>No knowledge graph</h2><p class="muted">This study was not built from documents.</p><a class="btn primary" href="#/p/${p.id}/setup">Go to setup</a></div>`;return}
-  const g=p.graph||{};$('#tab').innerHTML=`<div class="row" style="margin-bottom:10px"><span class="muted">${g.nodes??'?'} entities · ${g.edges??'?'} relations · ${g.documents??'?'} documents. Click any entity to see what the documents say about it.</span><span class="spacer"></span><a class="btn" href="/api/projects/${p.id}/graph" target="_blank" rel="noopener">Open full screen</a><a class="btn primary" href="#/p/${p.id}/setup">Next: setup</a></div>
+function tabGraph(p){if(p.job&&p.job.kind==='create'&&(p.job.state!=='done'||!p.has_scenario))return tabBuild(p);if(!p.has_graph){$('#tab').innerHTML=`<div class="card empty"><h2>No knowledge graph</h2><p class="muted">This study was not built from documents.</p><a class="btn primary" href="#/p/${p.id}/setup">Next: environment setup →</a></div>`;return}
+  const g=p.graph||{};$('#tab').innerHTML=`<div class="row" style="margin-bottom:10px"><span class="muted">${g.nodes??'?'} entities · ${g.edges??'?'} relations · ${g.documents??'?'} documents. Click any entity to see what the documents say about it.</span><span class="spacer"></span><a class="btn" href="/api/projects/${p.id}/graph" target="_blank" rel="noopener">Open full screen</a><a class="btn primary" href="#/p/${p.id}/setup">Next: environment setup →</a></div>
     <iframe src="/api/projects/${p.id}/graph" title="Knowledge graph"></iframe>`}
 
 async function tabSetup(p){const s=p.scenario;
@@ -263,10 +288,10 @@ async function tabSetup(p){const s=p.scenario;
   const segs=s.segments.map((g,i)=>`<tr><td><b>${esc(g.name.replace(/_/g,' '))}</b><div class="muted small">${esc(g.persona)}</div></td><td>${Math.round(g.share*100)}%</td><td>${stance(g.stance)}</td><td>${g.platforms.map(pbadge).join('')}</td></tr>`).join('');
   const t0=new Date(s.start),d0=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
   const day=r=>{const t=new Date(t0.getTime()+r*s.round_hours*3600e3);return `Day ${Math.floor((t-d0)/864e5)+1}, ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`};
-  $('#tab').innerHTML=`<div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
+  $('#tab').innerHTML=`<div class="card" style="margin-bottom:16px"><div class="row"><div><b>Redraft people</b><div class="muted small">Ask the model again to create the groups and every person, each with their own honest view. Uses the existing graph; clears any run.</div></div><span class="spacer"></span><button class="btn" id="redraft">Redraft</button></div></div><div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
     <div class="card"><h2>Size and timing</h2><div class="kpis"><div class="kpi"><b>${s.llm_agents}</b><span>AI people (each decides for themselves)</span></div>${s.crowd_agents?`<div class="kpi"><b>${s.crowd_agents.toLocaleString()}</b><span>crowd agents (react)</span></div>`:''}<div class="kpi"><b>${days.toFixed(days%1?1:0)} days</b><span>${s.rounds} rounds of ${s.round_hours} h</span></div><div class="kpi"><b>${s.voices}</b><span>written personas</span></div></div>
       <p class="muted small" style="margin-top:12px">Model: ${esc(s.llm.backend||'ollama')} ${esc(s.llm.model||'')}. Numbers for opinions and adoption are starting assumptions — check them before relying on results.</p>
-      <div class="row" style="margin-top:8px">${locked?`<a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a>`:`<label class="check"><input type="checkbox" id="mock"> quick test without a model</label><span class="spacer"></span><button class="btn primary" id="start">Start simulation</button>`}</div></div></div>
+      <div class="row" style="margin-top:8px">${locked?`<a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a>`:`<span class="spacer"></span><button class="btn primary" id="start">Start simulation</button>`}</div></div></div>
   ${s.choice?`<div class="card" style="margin-top:16px"><h2>The choice</h2><p>${esc(s.choice.question)} <span class="muted small">Voting ${day(s.choice.open)} → ${day(s.choice.close)}</span></p>
     <table><thead><tr><th>Group</th>${s.choice.options.map(o=>`<th>${esc(o)}</th>`).join('')}<th>Share of real electorate</th></tr></thead><tbody>
     ${s.segments.map(g=>`<tr><td>${esc(g.name.replace(/_/g,' '))}</td>${s.choice.options.map(o=>`<td>${stance((s.choice.leanings[g.name]||{})[o]||0)}</td>`).join('')}<td>${s.choice.weights[g.name]!==undefined?Math.round(s.choice.weights[g.name]*100)+'%':'<span class="muted">as simulated</span>'}</td></tr>`).join('')}</tbody></table></div>`:''}
@@ -278,6 +303,7 @@ async function tabSetup(p){const s=p.scenario;
   <div class="card" id="plan" style="margin-top:16px"></div>
   <div id="ed"></div>`;
   if($('#start'))$('#start').onclick=()=>startRun(p,$('#mock').checked);
+  $('#redraft').onclick=async()=>{if(!confirm('Redraft the groups and people from the graph? Any run is cleared.'))return;try{await api(`projects/${p.id}/redraft`,{method:'POST'});location.hash=`#/p/${p.id}/graph`;route()}catch(e){toast(e.message)}};
   planCard(p);
   editor(p,false,locked)}
 
@@ -327,10 +353,10 @@ function drawSim(p,l){if(!$('#ctl'))return;const r=l.run,j=p.job,running=j&&j.ki
   const s=p.scenario;const simT=r.sim_time?new Date(r.sim_time):null;
   $('#ctl').innerHTML=`<div class="row"><div><h2 style="margin:0">${running?(j.stopping?'Stopping after this round…':'Simulating…'):complete?'Simulation complete':r.started?'Paused':'Ready to start'}</h2>
     <span class="muted small">Round ${r.rounds_done} of ${r.rounds_total}${simT?` · simulated time ${simT.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:''}${r.seconds?` · ${fmtDur(r.seconds)} so far · ${r.llm_calls} model calls`:''}</span></div><span class="spacer"></span>
-    ${running?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>Stop</button>`:`${complete?'':`<label class="check"><input type="checkbox" id="mock"> quick test without a model</label><button class="btn primary" id="go">${r.started?'Resume':'Start'}</button>`}${r.started?'<button class="btn danger" id="reset">Reset</button>':''}`}</div>
+    ${running?`<button class="btn" id="stop" ${j.stopping?'disabled':''}>Stop</button>`:`${complete?`<a class="btn primary" href="#/p/${p.id}/report">Next: report →</a>`:`<button class="btn primary" id="go">${r.started?'Resume':'Start'}</button>`}${r.started?'<button class="btn danger" id="reset">Reset</button>':''}`}</div>
     <div class="bar" style="margin-top:12px"><i style="width:${pct}%"></i></div>${j&&j.state==='error'&&j.kind==='run'?`<p class="pill bad" style="margin-top:10px">${esc(j.error)}</p>`:''}`;
   if($('#stop'))$('#stop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'}).then(()=>toast('Stopping after this round. Progress is saved.'));
-  if($('#go'))$('#go').onclick=()=>startRun(p,$('#mock').checked);
+  if($('#go'))$('#go').onclick=()=>startRun(p,false);
   if($('#reset'))$('#reset').onclick=async()=>{if(!confirm('Delete this run and start again from round 1? The setup is kept.'))return;try{await api(`projects/${p.id}/reset`,{method:'POST'});route()}catch(e){toast(e.message)}};
   // charts
   const segs=[...new Set(l.trend.map(t=>t[1]))];const maxR=Math.max(1,r.rounds_total||1);
@@ -372,20 +398,21 @@ async function tabReport(p){
   const j=p.job&&p.job.kind==='report'?p.job:null,running=j&&j.state==='running';
   $('#tab').innerHTML=`<div class="card"><div class="row"><div><h2 style="margin:0">${running?'Writing the report…':p.has_report?'Report':'Write the report'}</h2>
     <span class="muted small">The report agent reads every number from the simulation, searches what people said, and writes each section. Numbers it was not given are removed.</span></div><span class="spacer"></span>
-    ${running?`<button class="btn" id="rstop">Stop</button>`:`<label class="check"><input type="checkbox" id="rmock"> without a model</label><button class="btn ${p.has_report?'':'primary'}" id="rgo">${p.has_report?'Rewrite':'Write the report'}</button>`}
-    ${p.has_report&&!running?`<a class="btn" href="/api/projects/${p.id}/report.md" download="report.md">Markdown</a><a class="btn" href="/api/projects/${p.id}/report" target="_blank" rel="noopener">Open full page</a>`:''}</div>
+    ${running?`<button class="btn" id="rstop">Stop</button>`:`<button class="btn ${p.has_report?'':'primary'}" id="rgo">${p.has_report?'Rewrite':'Write the report'}</button>`}
+    ${p.has_report&&!running?`<a class="btn" href="/api/projects/${p.id}/report.md" download="report.md">Markdown</a><a class="btn" href="/api/projects/${p.id}/report" target="_blank" rel="noopener">Open full page</a><a class="btn primary" href="#/p/${p.id}/people">Next: deep interaction →</a>`:''}</div>
     ${j&&(running||j.state==='error')?`<div class="log" style="margin-top:12px">${esc(j.log.join('\n'))}</div>`:''}</div>
     ${p.has_report&&!running?`<iframe style="margin-top:16px" src="/api/projects/${p.id}/report?t=${Date.now()}" title="Report"></iframe>`:''}
+    <div class="card" style="margin-top:16px"><div class="row"><div><h2 style="margin:0">Probability ranges and calibration</h2><span class="muted small">Optional: add real data to calibrate, then get 10/50/90% ranges and win chances.</span></div><span class="spacer"></span><a class="btn" href="#/p/${p.id}/data">Open</a></div></div>
     <div class="card" style="margin-top:16px"><h2>Ask about the results</h2><p class="muted small" style="margin-top:-6px">Answers use only the simulation's numbers and real posts, with citations like [p123].</p>
       <div id="qa" class="grid" style="gap:10px"></div>
-      <div class="row" style="margin-top:12px"><input type="text" id="qq" placeholder="Why did senior residents hold back?" style="flex:1"><label class="check"><input type="checkbox" id="qmock"> without a model</label><button class="btn primary" id="qgo">Ask</button></div></div>`;
-  if($('#rgo'))$('#rgo').onclick=async()=>{try{await api(`projects/${p.id}/report`,{method:'POST',body:{mock:$('#rmock').checked}});route()}catch(e){toast(e.message)}};
+      <div class="row" style="margin-top:12px"><input type="text" id="qq" placeholder="e.g. Which group pushed back most, and why?" style="flex:1"><button class="btn primary" id="qgo">Ask</button></div></div>`;
+  if($('#rgo'))$('#rgo').onclick=async()=>{try{await api(`projects/${p.id}/report`,{method:'POST',body:{mock:false}});route()}catch(e){toast(e.message)}};
   if($('#rstop'))$('#rstop').onclick=()=>api(`projects/${p.id}/stop`,{method:'POST'});
   if(running)timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(!q.job||q.job.state!=='running'){clearInterval(timer);route()}else $('.log')&&($('.log').textContent=q.job.log.join('\n'))},2000);
   const bubble=(role,text)=>`<div class="post" style="${role==='user'?'background:var(--sunk)':''}"><div class="meta">${role==='user'?'You':'Report agent'}</div><div class="txt">${esc(text).replace(/\[p(\d+)\]/g,'<b>[p$1]</b>')}</div></div>`;
   const hist=await api(`projects/${p.id}/history?thread=report`);$('#qa').innerHTML=hist.map(h=>bubble(h.role,h.text)).join('');
   const go=async()=>{const q=$('#qq').value.trim();if(!q)return;$('#qa').insertAdjacentHTML('beforeend',bubble('user',q)+'<p class="muted small" id="thinking">Thinking… (a local model can take a minute)</p>');$('#qq').value='';$('#qgo').disabled=true;
-    try{const r=await api(`projects/${p.id}/ask`,{method:'POST',body:{question:q,mock:$('#qmock').checked}});$('#thinking').remove();
+    try{const r=await api(`projects/${p.id}/ask`,{method:'POST',body:{question:q,mock:false}});$('#thinking').remove();
       $('#qa').insertAdjacentHTML('beforeend',bubble('agent',r.answer)+Object.values(r.quotes).map(x=>`<div class="small muted" style="margin-left:14px">${esc(x)}</div>`).join(''))}
     catch(e){$('#thinking').remove();toast(e.message)}finally{$('#qgo').disabled=false}};
   $('#qgo').onclick=go;$('#qq').onkeydown=e=>{if(e.key==='Enter')go()}}
@@ -443,7 +470,7 @@ async function tabPeople(p){
   const s=p.scenario;state.person=state.person||'';
   $('#tab').innerHTML=`<div class="card"><h2>Interview a group</h2><div class="row"><input type="text" id="iq" style="flex:1;min-width:240px" placeholder="Would you pay Rs 69 a sachet after the free week? Why?">
       <select id="iseg" style="width:auto"><option value="">Everyone</option>${s.segments.map(g=>`<option value="${esc(g.name)}">${esc(g.name.replace(/_/g,' '))}</option>`).join('')}</select>
-      <input type="number" id="in" value="8" min="1" max="40" style="width:80px" title="How many people"><label class="check"><input type="checkbox" id="imock"> without a model</label><button class="btn primary" id="igo2">Ask them</button></div><div id="ires"></div></div>
+      <input type="number" id="in" value="8" min="1" max="40" style="width:80px" title="How many people"><button class="btn primary" id="igo2">Ask them</button></div><div id="ires"></div></div>
     <div class="split" style="margin-top:16px;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)"><div class="card"><div class="row"><h2 style="margin:0">People</h2><span class="spacer"></span>
       <select id="pseg" style="width:auto"><option value="">All groups</option>${s.segments.map(g=>`<option value="${esc(g.name)}">${esc(g.name.replace(/_/g,' '))}</option>`).join('')}<option value="accounts">named accounts</option></select></div>
       <input type="text" id="pq" placeholder="Search by name" style="margin:10px 0"><div id="plist" class="feed" style="max-height:70vh"></div></div><div class="card" id="pdet"><p class="muted">Choose someone to see what they did and talk to them.</p></div></div>`;
@@ -457,7 +484,7 @@ async function tabPeople(p){
   const j=p.job;if(j&&j.kind==='interview'){if(j.state==='running'){$('#ires').innerHTML=`<p class="muted small" id="ilog">${esc(j.log.slice(-1)[0]||'Starting…')}</p>`;
       timer=setInterval(async()=>{const q=await api('projects/'+p.id);if(q.job.state!=='running'){clearInterval(timer);if(q.job.progress.result)showRes(q.job.progress.result);else $('#ires').innerHTML=`<p class="pill bad">${esc(q.job.error||'Stopped')}</p>`}else $('#ilog').textContent=q.job.log.slice(-1)[0]||''},1500)}
     else if(j.progress&&j.progress.result)showRes(j.progress.result)}
-  $('#igo2').onclick=async()=>{try{await api(`projects/${p.id}/interview`,{method:'POST',body:{question:$('#iq').value,segment:$('#iseg').value,n:+$('#in').value||8,mock:$('#imock').checked}});route()}catch(e){toast(e.message)}}}
+  $('#igo2').onclick=async()=>{try{await api(`projects/${p.id}/interview`,{method:'POST',body:{question:$('#iq').value,segment:$('#iseg').value,n:+$('#in').value||8,mock:false}});route()}catch(e){toast(e.message)}}}
 
 async function person(p,h){const x=await api(`projects/${p.id}/people/${encodeURIComponent(h)}`);
   const bubble=(role,t)=>`<div class="post" style="${role==='user'?'background:var(--sunk)':''}"><div class="meta">${role==='user'?'You':esc(x.name)}</div><div class="txt">${esc(t)}</div></div>`;
@@ -470,14 +497,14 @@ async function person(p,h){const x=await api(`projects/${p.id}/people/${encodeUR
       ${x.thoughts.slice(0,6).map(t=>`<p class="small muted">Round ${t.round+1}: <i>${esc(t.text)}</i></p>`).join('')}
       <div class="log" style="margin-top:8px">${esc(x.memory.join('\n'))||'(empty)'}</div></details>
     <h3 style="margin-top:18px">Talk to ${esc(x.name)}</h3><div id="chat" class="grid" style="gap:8px">${x.chat.map(c=>bubble(c.role,c.text)).join('')}</div>
-    <div class="row" style="margin-top:10px"><input type="text" id="cm" placeholder="Did you register? What would change your mind?" style="flex:1"><label class="check"><input type="checkbox" id="cmock"> without a model</label><button class="btn primary" id="cgo">Send</button></div>`;
+    <div class="row" style="margin-top:10px"><input type="text" id="cm" placeholder="e.g. What did you think? What would change your mind?" style="flex:1"><button class="btn primary" id="cgo">Send</button></div>`;
   const send=async()=>{const m=$('#cm').value.trim();if(!m)return;$('#chat').insertAdjacentHTML('beforeend',bubble('user',m)+'<p class="muted small" id="typing">…</p>');$('#cm').value='';
-    try{const r=await api(`projects/${p.id}/people/${encodeURIComponent(h)}/chat`,{method:'POST',body:{message:m,mock:$('#cmock').checked}});$('#typing').remove();$('#chat').insertAdjacentHTML('beforeend',bubble('agent',r.reply))}catch(e){$('#typing').remove();toast(e.message)}};
+    try{const r=await api(`projects/${p.id}/people/${encodeURIComponent(h)}/chat`,{method:'POST',body:{message:m,mock:false}});$('#typing').remove();$('#chat').insertAdjacentHTML('beforeend',bubble('agent',r.reply))}catch(e){$('#typing').remove();toast(e.message)}};
   $('#cgo').onclick=send;$('#cm').onkeydown=e=>{if(e.key==='Enter')send()}}
 
 /* ------------------------------------------------------------ compare */
 async function comparePage(ids){const ps=(await api('projects')).filter(p=>p.run.started);const sel=new Set(ids?ids.split(','):ps.slice(0,2).map(p=>p.id));
-  $('#view').innerHTML=`<a href="#/" class="muted small" style="text-decoration:none">← Studies</a><h1 style="margin-top:4px">Compare studies</h1><p class="muted">Pick two or more runs, for example a study and its fork with a different offer.</p>
+  $('#view').innerHTML=`<a href="#/" class="muted small" style="text-decoration:none">← Home</a><h1 style="margin-top:4px">Compare studies</h1><p class="muted">Pick two or more runs, for example a study and its fork with a different offer.</p>
     <div class="chips">${ps.map(p=>`<span class="chip ${sel.has(p.id)?'on':''}" data-id="${p.id}">${esc(p.title)}</span>`).join('')}</div><div id="cmp"></div>`;
   document.querySelectorAll('.chip[data-id]').forEach(c=>c.onclick=()=>{sel.has(c.dataset.id)?sel.delete(c.dataset.id):sel.add(c.dataset.id);location.hash='#/compare/'+[...sel].join(',')});
   if(sel.size<2){$('#cmp').innerHTML='<p class="muted">Choose at least two.</p>';return}

@@ -352,3 +352,21 @@ def test_draft_detects_a_choice(gs):
     assert seg["renters"].leaning["Okafor"] == -0.3
     assert "Ghost" not in seg["owners"].leaning
     assert parsed.choice.open_round < parsed.rounds
+
+
+
+def test_personas_carry_their_own_view_and_set_the_group():
+    from agora.graph import draft
+
+    class Fake:
+        i = 0
+        def generate_json(self, messages, **kw):
+            Fake.i += 1
+            v = [-0.6, 0.0, 0.7][Fake.i % 3]
+            return {"name": f"P{Fake.i}", "age": 40, "occupation": "x",
+                    "persona": "A person with views.", "stance": v}
+    sc = {"population": {"llm_agents": 6}, "context": "c", "topic": "the offer",
+          "segments": [{"name": "a", "share": 1.0, "persona": "p", "age": [30, 50], "stance": {"mean": 0.8, "sd": 0.3}}]}
+    vs = draft.personas(Fake(), sc, 1, lambda m: None)
+    assert {v["stance"] for v in vs} == {-0.6, 0.0, 0.7}
+    assert abs(sc["segments"][0]["stance"]["mean"] - 0.03) < 0.05       # from the people, not the draft

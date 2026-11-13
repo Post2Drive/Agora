@@ -172,6 +172,7 @@ class Scenario:
     # force decision outcomes that are already known (votes are still simulated)
     fixed_polls: dict[str, bool] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)
+    llm_build: dict[str, Any] = field(default_factory=dict)   # model for graph, people, report, chat
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------ helpers

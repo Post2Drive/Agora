@@ -11,10 +11,12 @@ def make_backend(cfg: LLMConfig | dict, cache_path=None) -> LLMBackend:
         from .ollama import OllamaBackend as B
     elif kind in ("openai", "llamacpp", "lmstudio", "vllm"):
         from .openai_compat import OpenAICompatBackend as B
+    elif kind == "anthropic":
+        from .anthropic import AnthropicBackend as B
     elif kind == "mock":
         from .mock import MockBackend as B
     else:
-        raise LLMError(f"Unknown backend '{cfg.backend}'. Use ollama, openai or mock.")
+        raise LLMError(f"Unknown backend '{cfg.backend}'. Use ollama, claude, chatgpt, openai or mock.")
     be = B(cfg)
     if cfg.cache and cache_path:
         be = CachedBackend(be, cache_path)

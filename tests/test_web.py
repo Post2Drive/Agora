@@ -207,3 +207,19 @@ def test_calibrate_and_forecast_endpoints(web, tmp_path):
     f = call(base, "GET", "/api/projects/small/calibration")[1]["forecast"]
     assert f["calibrated"] and f["monte_carlo"]["runs"] == 5
     assert "action:register_lakeview" in f["monte_carlo"]["summary"]
+
+
+def test_redraft_redoes_setup_from_the_graph(web):
+    base, _ = web
+    body = {"name": "Redo", "prompt": "Will residents register for the free sample?",
+            "files": [{"name": "plan.md", "data": base64.b64encode(DOC).decode()}],
+            "options": {"mock": True, "llm_agents": 4, "crowd": 60}}
+    pid = call(base, "POST", "/api/projects", body)[1]["id"]
+    assert wait_job(base, pid)["job"]["state"] == "done"
+    call(base, "POST", f"/api/projects/{pid}/run", {"mock": True, "rounds": 3})
+    wait_job(base, pid)
+    st, r = call(base, "POST", f"/api/projects/{pid}/redraft", {})
+    assert st == 200
+    p = wait_job(base, pid)
+    assert p["job"]["state"] == "done", p["job"]
+    assert p["has_scenario"] and not p["run"]["started"]
