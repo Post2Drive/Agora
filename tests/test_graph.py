@@ -111,6 +111,12 @@ class Scripted(LLMBackend):
                 return "sorry I cannot"          # some calls fail -> template fills the gap
             return json.dumps({"name": f"Person{n} Surname", "age": 33, "occupation": "teacher",
                                "persona": "Teaches at a local school and reads labels carefully before buying."})
+        if "You are creating a social-media agent" in p:
+            return json.dumps({"bio": "Public account.",
+                               "persona": "Speaks plainly and reacts to what neighbours say online.",
+                               "stance": 0.1, "influence": 2, "activity": 0.4, "platforms": ["x", "facebook"],
+                               "active_hours": [8, 22], "profession": "organisation", "country": "India",
+                               "interests": ["health"]})
         return "{}"
 
 
@@ -248,7 +254,8 @@ def test_draft_cleans_sloppy_answers(gs):
     assert convs["buy"].requires == ["register"] and convs["complain"].requires == []
     assert convs["register"].when == {"poll": "approval", "result": "yes"}
     assert {s.name for s in parsed.spaces} == {"Lakeview Residents", "r/guntur"}
-    assert 6 <= len(parsed.voices) <= 9                                      # some persona calls failed
+    assert len(parsed.voices) == 10                                          # failed calls were retried
+    assert sum("Create one realistic person" in q for q in llm.prompts) > 10
     assert all(v["name"].startswith("Person") and " " not in v["name"] for v in parsed.voices)
 
 
@@ -301,6 +308,24 @@ def test_entity_agents_from_graph(gs):
     assert len({a.id for a in parsed.accounts}) == len(parsed.accounts)
 
 
+class NoProfiles(Scripted):
+    def _complete(self, messages, **kw):
+        if "You are creating a social-media agent" in messages[-1]["content"]:
+            return "I cannot do that"
+        return super()._complete(messages, **kw)
+
+
+def test_unusable_entity_profile_is_skipped_not_invented(gs):
+    llm = NoProfiles()
+    gbuild.build(gs, llm, "goal")
+    msgs = []
+    sc = gdraft.draft(gs, llm, "How many flats register?", llm_agents=4, crowd_agents=50, entity_limit=5,
+                      rich_personas=False, progress=msgs.append)
+    parsed = scenario_mod.from_dict(json.loads(json.dumps(sc)))
+    assert not [a for a in parsed.accounts if a.segment == "entities"]
+    assert any(m.startswith("SKIPPED") for m in msgs)
+
+
 class ElectionScripted(Scripted):
     def _complete(self, messages, **kw):
         p = messages[-1]["content"]
@@ -327,3 +352,21 @@ def test_draft_detects_a_choice(gs):
     assert seg["renters"].leaning["Okafor"] == -0.3
     assert "Ghost" not in seg["owners"].leaning
     assert parsed.choice.open_round < parsed.rounds
+
+
+
+def test_personas_carry_their_own_view_and_set_the_group():
+    from agora.graph import draft
+
+    class Fake:
+        i = 0
+        def generate_json(self, messages, **kw):
+            Fake.i += 1
+            v = [-0.6, 0.0, 0.7][Fake.i % 3]
+            return {"name": f"P{Fake.i}", "age": 40, "occupation": "x",
+                    "persona": "A person with views.", "stance": v}
+    sc = {"population": {"llm_agents": 6}, "context": "c", "topic": "the offer",
+          "segments": [{"name": "a", "share": 1.0, "persona": "p", "age": [30, 50], "stance": {"mean": 0.8, "sd": 0.3}}]}
+    vs = draft.personas(Fake(), sc, 1, lambda m: None)
+    assert {v["stance"] for v in vs} == {-0.6, 0.0, 0.7}
+    assert abs(sc["segments"][0]["stance"]["mean"] - 0.03) < 0.05       # from the people, not the draft

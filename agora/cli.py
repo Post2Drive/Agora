@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, hardware, scenario as scenario_mod
+from . import __version__, hardware, scenario as scenario_mod, settings
 from .sim.engine import DB_FILE, SCENARIO_FILE, Simulation
 from .store import Store
 from .summary import summarise
@@ -18,6 +18,8 @@ def _llm_override(args) -> dict:
     o = {}
     if getattr(args, "mock", False):
         o["backend"] = "mock"
+    else:
+        o.update(settings.llm_overrides(getattr(args, "profile", None)))     # your own setup (agora setup)
     for k in ("backend", "model", "url", "parallel"):
         v = getattr(args, k, None)
         if v is not None:
@@ -100,7 +102,8 @@ def cmd_run(args) -> int:
         eta = (time.time() - t0) / n * left
         print(f"  round {p['round'] + 1:>3}/{p['of']}  active {p['active']:>5}  posts {p['posts']:>3}  "
               f"conversions {p['conversions']:>3}  model calls {p['llm_calls']:>3} "
-              f"(+{p['cache_hits']} cached)  {p['seconds']:.1f}s  ETA {eta / 60:.0f} min", flush=True)
+              f"(+{p['cache_hits']} cached)  {p['seconds']:.1f}s  retries {p['retried']} unusable "
+              f"{p['bad_replies']}  ETA {eta / 60:.0f} min", flush=True)
 
     try:
         sim.run(rounds=args.rounds, progress=progress, force=args.force)
@@ -109,6 +112,7 @@ def cmd_run(args) -> int:
         return 130
     finally:
         sim.close()
+    _learn_speed(args, proj, sim.llm_cfg)
     print("Done. Next: agora status", proj)
     return 0
 
@@ -217,7 +221,8 @@ def cmd_graph(args) -> int:
 def _project_llm(args, proj: Path):
     from .pipeline import make_llm
     sc = scenario_mod.load(proj / SCENARIO_FILE)
-    cfg = {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")}
+    from .pipeline import public_cfg
+    cfg = {k: v for k, v in settings.safe_study_llm(public_cfg(sc.llm_build or sc.llm)).items() if k in ("backend", "model", "url", "parallel")}
     cfg.update(_llm_override(args))
     _, llm = make_llm(proj, cfg)
     ok, msg = llm.status()
@@ -366,8 +371,118 @@ def cmd_forecast(args) -> int:
 
 
 def cmd_web(args) -> int:
+    from .web import jobs
     from .web.server import serve
+    jobs.ECHO = True
     serve(Path(args.dir), port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
+def _effective_cfg(args, sc=None):
+    from .llm import LLMConfig
+    base = {"backend": "ollama", "model": hardware.detect().model}
+    if sc is not None:
+        base.update(settings.safe_study_llm(sc.llm))
+    base.update({k: v for k, v in _llm_override(args).items() if v not in (None, "")})
+    return LLMConfig.from_dict(base)
+
+
+def _profile_label(args) -> str:
+    if getattr(args, "mock", False):
+        return "mock"
+    return getattr(args, "profile", None) or settings.active_name() or "default"
+
+
+def _learn_speed(args, proj, cfg) -> None:
+    """After a real run, remember how fast this setup really is (plans then use it)."""
+    from . import capacity
+    if cfg.backend == "mock":
+        return
+    try:
+        obs = capacity.observed(proj)
+        if obs:
+            capacity.learn(_profile_label(args), cfg.model, obs)
+            print(f"Learned this setup's real speed: {obs['throughput']:.3f} model calls per second.")
+    except Exception as e:  # noqa: BLE001 - learning is a bonus; never fail a finished run
+        print(f"(Could not update the speed estimate: {e})")
+
+
+def cmd_setup(args) -> int:
+    if args.show:
+        for line in settings.describe():
+            print(line)
+        return 0
+    if args.use:
+        settings.use(args.use)
+        print(f"Now using the '{args.use}' profile.")
+        return 0
+    settings.wizard()
+    return 0
+
+
+def cmd_benchmark(args) -> int:
+    from . import capacity
+    from .llm import LLMError, make_backend
+    try:
+        cfg = _effective_cfg(args)
+        llm = make_backend(cfg)                     # no cache: we want real speed
+        ok, msg = llm.status()
+        if not ok:
+            print(msg, file=sys.stderr)
+            return 2
+        print(f"Measuring {cfg.backend}:{cfg.model} ({_profile_label(args)}). This takes a few minutes.")
+        res = capacity.benchmark(llm, levels=(1, 2, 4, 8) if args.thorough else (1, 2, 4), say=print)
+    except LLMError as e:
+        print(f"The benchmark could not run: {e}", file=sys.stderr)
+        return 2
+    capacity.save_bench(_profile_label(args), cfg.model, res)
+    print(f"Best: {res['best_parallel']} requests at a time, {res['best_throughput']} model calls per second.")
+    print("Saved. Next: agora plan <study>")
+    return 0
+
+
+def cmd_plan(args) -> int:
+    from . import capacity
+    proj = Path(args.project)
+    sc = scenario_mod.load(proj / SCENARIO_FILE)
+    cfg = _effective_cfg(args, sc)
+    label = _profile_label(args)
+    bench = capacity.load_bench(label, cfg.model)
+    obs = None if getattr(args, "mock", False) else capacity.observed(proj)
+    if obs:
+        bench = capacity.learn(label, cfg.model, obs)
+    price = None if getattr(args, "mock", False) else settings.prices(getattr(args, "profile", None))
+    p = capacity.plan(sc, bench, agents=args.agents, rounds=args.rounds, scenarios=args.scenarios,
+                      awake=args.awake, price=price, observed=obs)
+    src = capacity.describe_source(p, bench, obs)
+    print(f"Plan for {sc.name} using {label} ({cfg.model})")
+    print(f"  Speed       : {p['throughput']:.3f} model calls per second ({src})")
+    print(f"  Size        : {p['people']} people x {p['rounds']} rounds x {p['scenarios']} scenario(s), "
+          f"about {p['awake'] * 100:.0f} model calls per 100 people per round")
+    print(f"  Model calls : about {p['calls']:,}")
+    print(f"  Time        : {capacity.fmt_time(p['seconds'])}")
+    if p["cost"] is not None:
+        print(f"  Cost        : about {p['cost']:,.2f} (at the prices you entered)")
+    elif cfg.allow_remote:
+        print("  Cost        : run `agora setup` again and enter your prices to see a cost estimate")
+    print("Sizes that fit this setup, for the same number of rounds:")
+    for name, v in p["presets"].items():
+        print(f"  {name:<10} ({v['hours']:>2} h): {v['people']:,} people")
+    print("To use a size, set population: llm_agents in scenario.yaml before the first run.")
+    return 0
+
+
+def cmd_share(args) -> int:
+    from .share import make_share
+    try:
+        r = make_share(Path(args.project), Path(args.out), report_only=args.report_only,
+                       with_sources=args.with_sources)
+    except (FileExistsError, ValueError) as e:
+        print(e, file=sys.stderr)
+        return 1
+    print(f"Shared copy: {args.out}")
+    print("  included : " + ", ".join(r["copied"]))
+    print("  left out : " + "; ".join(r["left_out"]))
     return 0
 
 
@@ -396,6 +511,7 @@ def main(argv=None) -> int:
         p.add_argument("--model")
         p.add_argument("--url")
         p.add_argument("--parallel", type=int)
+        p.add_argument("--profile", help="where to run the model: a profile made by `agora setup`")
 
     p = sub.add_parser("create", help="upload documents + describe what to predict -> ready project")
     p.add_argument("project")
@@ -404,7 +520,7 @@ def main(argv=None) -> int:
     p.add_argument("--fast", action="store_true", help="build the graph without the model (rougher)")
     p.add_argument("--no-personas", action="store_true", help="skip writing individual personas")
     p.add_argument("--llm-agents", type=int, help="LLM voices (default: fits --hours on this machine)")
-    p.add_argument("--crowd", type=int, help="crowd agents (default: up to 3000)")
+    p.add_argument("--crowd", type=int, help="extra rule-based crowd agents (default: 0, every person is an AI agent)")
     p.add_argument("--hours", type=float, default=12, help="run-time budget used to size the population")
     p.add_argument("--entities", type=int, default=20,
                    help="named agents made from people/organisations in the documents (0 = none)")
@@ -511,8 +627,38 @@ def main(argv=None) -> int:
     p.add_argument("--last", type=int, default=30)
     p.set_defaults(f=cmd_feed)
 
+    p = sub.add_parser("setup", help="choose where the AI model runs: this computer, your own server, or a cloud API")
+    p.add_argument("--show", action="store_true", help="show the saved profiles")
+    p.add_argument("--use", metavar="PROFILE", help="switch to a saved profile (local, server or cloud)")
+    p.set_defaults(f=cmd_setup)
+
+    p = sub.add_parser("benchmark", help="measure model speed on this setup (used by `agora plan`)")
+    p.add_argument("--thorough", action="store_true", help="also test 8 requests at once")
+    llm_flags(p)
+    p.set_defaults(f=cmd_benchmark)
+
+    p = sub.add_parser("plan", help="estimate time and cost, and suggest sizes that fit this setup")
+    p.add_argument("project")
+    p.add_argument("--agents", type=int, help="people to simulate (default: from the study)")
+    p.add_argument("--rounds", type=int, help="rounds (default: from the study)")
+    p.add_argument("--scenarios", type=int, default=1, help="how many variations you will run")
+    p.add_argument("--awake", type=float, help="share of people awake per round, 0-1 (default: from the study)")
+    llm_flags(p)
+    p.set_defaults(f=cmd_plan)
+
+    p = sub.add_parser("share", help="make a clean copy to share (no reply cache, keys or documents)")
+    p.add_argument("project")
+    p.add_argument("--out", required=True, help="new folder to create")
+    p.add_argument("--report-only", action="store_true", help="only the report (html and markdown)")
+    p.add_argument("--with-sources", action="store_true", help="also include your documents' text")
+    p.set_defaults(f=cmd_share)
+
     args = ap.parse_args(argv)
-    return args.f(args)
+    try:
+        return args.f(args)
+    except settings.SettingsError as e:
+        print(e, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

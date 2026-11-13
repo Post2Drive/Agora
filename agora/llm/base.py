@@ -70,7 +70,8 @@ class LLMConfig:
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "LLMConfig":
-        d = dict(d or {})
+        from .providers import resolve          # "claude" / "chatgpt" -> concrete settings
+        d = resolve(dict(d or {}))
         known = {k: d.pop(k) for k in list(d) if k in cls.__dataclass_fields__ and k != "extra"}
         return cls(**known, extra=d)
 
@@ -147,3 +148,36 @@ def parse_json(raw: str) -> dict:
             except json.JSONDecodeError:
                 continue
     return {}
+
+
+class StepFailed(LLMError):
+    """A step needs the model and it still could not do it after retries. Nothing is made up."""
+
+
+RETRY_NOTE = ("\n\nYour last reply could not be used. Reply again with ONLY valid JSON in exactly the "
+              "format requested, with no other text.")
+
+
+def ask_json(llm, messages: list[dict], check, *, step: str, tries: int = 3, **kw) -> dict:
+    """Ask for JSON and check it. A bad reply is retried (different seed plus a short reminder).
+    After `tries` bad replies, or if the model cannot be reached, raise StepFailed with a clear message.
+    `check(d)` must return True when the reply is usable."""
+    seed = kw.pop("seed", None)
+    for attempt in range(tries):
+        msgs = [dict(m) for m in messages]
+        if attempt:
+            msgs[-1]["content"] += RETRY_NOTE
+        try:
+            d = llm.generate_json(msgs, seed=None if seed is None else seed + attempt * 7919, **kw)
+        except StepFailed:
+            raise
+        except LLMError as e:                      # the model could not be reached: retrying will not help
+            raise StepFailed(f"Step '{step}' could not run: {e}") from e
+        try:
+            ok = bool(check(d))
+        except Exception:                          # noqa: BLE001 - a check that crashes means unusable
+            ok = False
+        if ok:
+            return d
+    raise StepFailed(f"Step '{step}' failed: the model gave an unusable reply {tries} times in a row. "
+                     "Nothing was made up. Try a larger model (see `agora hardware`) and run again.")

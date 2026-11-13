@@ -14,7 +14,8 @@ DOC = b"Nutrivance Precision Probiotics (NPP) offers a free sample to residents 
 
 
 @pytest.fixture
-def web(tmp_path):
+def web(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGORA_HOME", str(tmp_path / "home"))      # never read your real settings
     srv, app = make_server(tmp_path / "ws", port=0)
     th = threading.Thread(target=srv.serve_forever, daemon=True)
     th.start()
@@ -137,7 +138,7 @@ def test_upload_validation(web):
 
 
 def test_report_and_interaction_endpoints(web):
-    base, _ = web
+    base, app = web
     pid = call(base, "POST", "/api/projects/demo")[1]["id"]
     assert call(base, "POST", f"/api/projects/{pid}/report", {"mock": True})[0] == 400   # not run yet
     call(base, "POST", f"/api/projects/{pid}/run", {"mock": True, "rounds": 20})
@@ -166,6 +167,11 @@ def test_report_and_interaction_endpoints(web):
     c = call(base, "GET", f"/api/compare?ids={pid},{new}")[1]
     assert len(c["columns"]) == 2
     # a real model that is not running gives a clear 503, not a crash
+    import yaml
+    sc_path = app.ws / pid / "scenario.yaml"
+    d = yaml.safe_load(sc_path.read_text(encoding="utf-8"))
+    d.setdefault("llm", {})["url"] = "http://127.0.0.1:9"      # nothing listens here, so it fails fast
+    sc_path.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True), encoding="utf-8")
     st, r = call(base, "POST", f"/api/projects/{pid}/ask", {"question": "x"})
     assert st == 503 and "Ollama" in r["error"]
 
@@ -178,9 +184,9 @@ def test_calibrate_and_forecast_endpoints(web, tmp_path):
     base, app = web
     src = make_project(tmp_path, "small", rounds=24)
     import yaml
-    d = yaml.safe_load((src / "scenario.yaml").read_text())
+    d = yaml.safe_load((src / "scenario.yaml").read_text(encoding="utf-8"))
     d["population"] = {"llm_agents": 4, "crowd_agents": 120}
-    (src / "scenario.yaml").write_text(yaml.safe_dump(d))
+    (src / "scenario.yaml").write_text(yaml.safe_dump(d), encoding="utf-8")
     shutil.copytree(src, app.ws / "small")
     st, r = call(base, "POST", "/api/projects/small/data", {"kind": "observations", "text": "day,nonsense\n1,3"})
     assert st == 400 and "Unknown metric" in r["error"]
@@ -201,3 +207,19 @@ def test_calibrate_and_forecast_endpoints(web, tmp_path):
     f = call(base, "GET", "/api/projects/small/calibration")[1]["forecast"]
     assert f["calibrated"] and f["monte_carlo"]["runs"] == 5
     assert "action:register_lakeview" in f["monte_carlo"]["summary"]
+
+
+def test_redraft_redoes_setup_from_the_graph(web):
+    base, _ = web
+    body = {"name": "Redo", "prompt": "Will residents register for the free sample?",
+            "files": [{"name": "plan.md", "data": base64.b64encode(DOC).decode()}],
+            "options": {"mock": True, "llm_agents": 4, "crowd": 60}}
+    pid = call(base, "POST", "/api/projects", body)[1]["id"]
+    assert wait_job(base, pid)["job"]["state"] == "done"
+    call(base, "POST", f"/api/projects/{pid}/run", {"mock": True, "rounds": 3})
+    wait_job(base, pid)
+    st, r = call(base, "POST", f"/api/projects/{pid}/redraft", {})
+    assert st == 200
+    p = wait_job(base, pid)
+    assert p["job"]["state"] == "done", p["job"]
+    assert p["has_scenario"] and not p["run"]["started"]
