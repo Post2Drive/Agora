@@ -33,7 +33,7 @@ class CreateOptions:
 def public_cfg(d: dict | None) -> dict:
     """The model choice as stored in scenario.yaml: never a key, no cloud URLs."""
     d = {k: v for k, v in (d or {}).items() if v not in (None, "")}
-    out = {k: d[k] for k in ("backend", "model", "parallel") if k in d}
+    out = {k: d[k] for k in ("backend", "model", "parallel", "timeout") if k in d}
     if d.get("url") and d.get("backend", "ollama") not in ("claude", "chatgpt"):
         out["url"] = d["url"]
     return out

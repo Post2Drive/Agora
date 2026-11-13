@@ -222,7 +222,7 @@ def _project_llm(args, proj: Path):
     from .pipeline import make_llm
     sc = scenario_mod.load(proj / SCENARIO_FILE)
     from .pipeline import public_cfg
-    cfg = {k: v for k, v in settings.safe_study_llm(public_cfg(sc.llm_build or sc.llm)).items() if k in ("backend", "model", "url", "parallel")}
+    cfg = {k: v for k, v in settings.safe_study_llm(public_cfg(sc.llm_build or sc.llm)).items() if k in ("backend", "model", "url", "parallel", "timeout")}
     cfg.update(_llm_override(args))
     _, llm = make_llm(proj, cfg)
     ok, msg = llm.status()
