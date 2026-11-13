@@ -81,6 +81,8 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
     for seg, n_llm, n_crowd in zip(sc.segments, llm_counts, crowd_counts):
         names = seg.names or DEFAULT_NAMES
         voices = [v for v in sc.voices if v.get("segment") == seg.name]
+        if sc.voices:
+            n_llm = min(n_llm, len(voices))    # only people the model actually created, no templates
         for i in range(n_llm + n_crowd):
             kind = "llm" if i < n_llm else "crowd"
             voice = voices[i] if kind == "llm" and i < len(voices) else None

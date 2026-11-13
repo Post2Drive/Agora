@@ -248,7 +248,7 @@ def test_draft_cleans_sloppy_answers(gs):
     assert convs["buy"].requires == ["register"] and convs["complain"].requires == []
     assert convs["register"].when == {"poll": "approval", "result": "yes"}
     assert {s.name for s in parsed.spaces} == {"Lakeview Residents", "r/guntur"}
-    assert 6 <= len(parsed.voices) <= 9                                      # some persona calls failed
+    assert len(parsed.voices) == 10                                          # failed persona calls are retried
     assert all(v["name"].startswith("Person") and " " not in v["name"] for v in parsed.voices)
 
 

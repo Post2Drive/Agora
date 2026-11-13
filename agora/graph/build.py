@@ -115,24 +115,28 @@ def make_ontology(gs: GraphStore, llm: LLMBackend | None, goal: str) -> dict:
     return onto
 
 
-def extract_chunk(llm: LLMBackend | None, text: str, goal: str, onto: dict, seed: int) -> dict:
-    fallback = heuristic.extract(text)
+def extract_chunk(llm: LLMBackend | None, text: str, goal: str, onto: dict, seed: int) -> dict | None:
+    """Entities and relations in one chunk. Without a model (the user's explicit choice) a
+    rule-based reader is used; with a model, failures are retried and then left for later
+    (None), never replaced by rule-based guesses."""
     if llm is None:
-        return fallback
+        return heuristic.extract(text)
     et = [x["name"] for x in onto["entity_types"]]
     rt = [x["name"] for x in onto["relation_types"]]
     prompt = EXTRACT_PROMPT.format(goal=goal, etypes=", ".join(et), rtypes=", ".join(rt), text=text)
-    try:
-        d = llm.generate_json([{"role": "user", "content": prompt}], max_tokens=1200,
-                              temperature=0.1, seed=seed, meta={"task": "json", "default": fallback})
-    except LLMError:
-        return fallback
-    ents = [e for e in d.get("entities", []) if isinstance(e, dict) and str(e.get("name", "")).strip()]
-    rels = [r for r in d.get("relations", []) if isinstance(r, dict)
-            and str(r.get("source", "")).strip() and str(r.get("target", "")).strip()]
-    if not ents:
-        return fallback
-    return {"entities": ents, "relations": rels}
+    for t in range(3):
+        try:
+            d = llm.generate_json([{"role": "user", "content": prompt}], max_tokens=1200,
+                                  temperature=0.1 + 0.2 * t, seed=seed + 7919 * t,
+                                  meta={"task": "json", "default": heuristic.extract(text)})
+        except LLMError:
+            continue
+        ents = [e for e in d.get("entities", []) if isinstance(e, dict) and str(e.get("name", "")).strip()]
+        rels = [r for r in d.get("relations", []) if isinstance(r, dict)
+                and str(r.get("source", "")).strip() and str(r.get("target", "")).strip()]
+        if ents:
+            return {"entities": ents, "relations": rels}
+    return None
 
 
 def build(gs: GraphStore, llm: LLMBackend | None, goal: str,
@@ -141,14 +145,25 @@ def build(gs: GraphStore, llm: LLMBackend | None, goal: str,
     onto = make_ontology(gs, llm, goal)
     pending = gs.rows("SELECT id, text FROM chunks WHERE status != 'done' ORDER BY id")
     total = gs.rows("SELECT COUNT(*) FROM chunks")[0][0]
+    failed = 0
     for i, (cid, text) in enumerate(pending):
         res = extract_chunk(llm, text, goal, onto, seed=cid)
-        with gs.db:
-            gs.db.execute("UPDATE chunks SET status='done', raw=? WHERE id=?", (json.dumps(res), cid))
+        if res is None:                       # stays pending: retried on the next build
+            failed += 1
+            res = {"entities": [], "relations": []}
+        else:
+            with gs.db:
+                gs.db.execute("UPDATE chunks SET status='done', raw=? WHERE id=?", (json.dumps(res), cid))
         if progress:
-            progress({"chunk": total - len(pending) + i + 1, "of": total,
+            progress({"chunk": total - len(pending) + i + 1, "of": total, "failed": res is None,
                       "entities": len(res["entities"]), "relations": len(res["relations"])})
-    return merge(gs, onto)
+    done = gs.rows("SELECT COUNT(*) FROM chunks WHERE status='done'")[0][0]
+    if total and not done:
+        raise LLMError("The model could not read any part of the documents. Check the model, or "
+                       "choose a stronger one for 'Graph, people and report'.")
+    st = merge(gs, onto)
+    st["failed_chunks"] = failed
+    return st
 
 
 def merge(gs: GraphStore, onto: dict) -> dict:

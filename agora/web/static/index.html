@@ -104,7 +104,7 @@ details>summary{cursor:pointer;font-weight:600}
 <body>
 <header>
   <a class="brand" href="#/"><i></i>Agora</a>
-  <nav><a href="#/" data-nav="home">Home</a></nav>
+  <nav><a href="#/" data-nav="home">Home</a><a href="#/settings" data-nav="settings">Settings</a></nav>
   <span class="pill" id="hw" title="This machine"></span>
 </header>
 <main id="view"></main>
@@ -121,11 +121,12 @@ const plabel=k=>(INFO?.platforms.find(p=>p.key===k)||{label:k}).label;
 const pbadge=k=>`<span class="badge"><i style="background:${PCOL[k]||'#888'}"></i>${esc(plabel(k))}</span>`;
 const stance=x=>`<span class="stance" style="--x:${((+x+1)/2*100).toFixed(0)}%" title="${(+x).toFixed(2)}"></span>`;
 const fmtDur=s=>s<90?`${Math.round(s)} s`:s<5400?`${Math.round(s/60)} min`:`${(s/3600).toFixed(1)} h`;
-function nav(){document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('on',location.hash.startsWith('#/new')?a.dataset.nav==='new':a.dataset.nav==='home'&&!location.hash.startsWith('#/new')))}
+function nav(){const st=location.hash.startsWith('#/settings');document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('on',st?a.dataset.nav==='settings':a.dataset.nav==='home'))}
 
 /* ------------------------------------------------------------ router */
 async function route(){clearInterval(timer);timer=null;nav();const h=location.hash.slice(2).split('/');
-  try{if(h[0]==='new'){location.hash='#/';return}if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
+  try{if(h[0]==='new'){location.hash='#/';return}
+  if(h[0]==='settings')return settings();if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
   catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Home</a></div>`}}
 window.addEventListener('hashchange',route);
 
@@ -146,18 +147,16 @@ async function home(){const ps=await api('projects');
 /* ------------------------------------------------------------ new study */
 const ACCEPT='.pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm';
 async function newStudy(isHome){const files=[];const d=INFO.llm_default;
-  $('#view').innerHTML=`<div style="text-align:center;margin:10px 0 6px"><h1 style="font-size:2rem;margin-bottom:6px">Predict anything, locally</h1><p class="muted" style="margin:0">Upload your documents, describe what you want to predict, and Agora builds a world of AI people who read, talk and act on it.</p></div>
+  $('#view').innerHTML=`<div style="text-align:center;margin:10px 0 6px"><h1 style="font-size:2rem;margin-bottom:6px">Predict how people will react</h1><p class="muted" style="margin:0">Upload your documents, describe what you want to predict, and Agora builds a world of AI people who read, talk and act on it.</p></div>
   <div class="grid g2" style="margin-top:18px"><div class="card">
     <label for="name">Name</label><input type="text" id="name" placeholder="e.g. Product launch in Hyderabad">
     <label for="prompt">What do you want to predict?</label>
     <textarea id="prompt" placeholder="e.g. How will people react to this launch, what will they say online, and how many will buy in the first month?"></textarea>
     <label>Documents</label><div class="drop" id="drop"><b>Drop files here</b> or click to choose<br><span class="muted small">PDF, Word, text, Markdown, CSV, JSON, web pages</span></div>
     <input type="file" id="fi" multiple accept="${ACCEPT}" hidden><div class="files" id="fl"></div></div>
-  <div class="card"><h2>Model</h2><p class="muted small" style="margin-top:-6px">Runs on your machine. Nothing is sent online.</p>
-    <label for="backend">Model server</label><select id="backend"><option value="ollama">Ollama</option><option value="openai">llama.cpp / LM Studio / vLLM (OpenAI-compatible)</option></select>
-    <div id="mrow"><label for="model">Model</label><input type="text" id="model" value="${esc(d.model)}">
-    <label for="url">Server address</label><input type="url" id="url" value="${esc(d.url)}">
-    <div class="row" style="margin-top:10px"><button class="btn" id="chk">Check model</button><span id="mst" class="small muted"></span></div></div>
+  <div class="card"><h2>Models</h2><p class="muted small" style="margin-top:-6px">Local runs on this laptop and nothing leaves it. Claude or ChatGPT send that step's text to the provider and need an API key (<a href="#/settings">Settings</a>).</p>
+    ${picker('b','Graph, people and report','Builds the knowledge graph, creates every person and writes the report.')}
+    ${picker('s','Simulation','Every AI person\'s thinking, round by round. The most calls by far.')}
     <details style="margin-top:18px"><summary>More options</summary>
       <label class="check"><input type="checkbox" id="fast"> Build the graph without the model (faster, rougher)</label>
       <label class="check"><input type="checkbox" id="personas" checked> Write an individual background for every AI resident</label>
@@ -172,15 +171,43 @@ async function newStudy(isHome){const files=[];const d=INFO.llm_default;
   ['dragenter','dragover'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over')}));
   ['dragleave','drop'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.remove('over')}));
   $('#drop').addEventListener('drop',e=>add(e.dataTransfer.files));
-  const bk=()=>{if($('#backend').value==='openai'&&$('#url').value.includes('11434'))$('#url').value='http://localhost:8080'};$('#backend').onchange=bk;
-  $('#chk').onclick=async()=>{$('#mst').textContent='Checking…';const r=await api(`llm/status?backend=${encodeURIComponent($('#backend').value)}&model=${encodeURIComponent($('#model').value)}&url=${encodeURIComponent($('#url').value)}`);$('#mst').innerHTML=`<span class="pill ${r.ok?'ok':'bad'}">${esc(r.message)}</span>`};
+  wirePicker('b',d);wirePicker('s',d);
   $('#go').onclick=async()=>{const prompt=$('#prompt').value.trim();if(!prompt)return toast('Describe what you want to predict.');if(!files.length)return toast('Add at least one document.');
     $('#go').disabled=true;$('#go').textContent='Uploading…';
     try{const enc=await Promise.all(files.map(f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res({name:f.name,data:String(r.result).split(',')[1]||''});r.onerror=rej;r.readAsDataURL(f)})));
-      const b=$('#backend').value;
-      const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:false,backend:b,model:$('#model').value,url:$('#url').value,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
+      const sv=pick('s'),bv=pick('b');
+      const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:false,backend:sv.backend,model:sv.model,url:sv.url,build_backend:bv.backend,build_model:bv.model,build_url:bv.url,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
       const r=await api('projects',{method:'POST',body});location.hash=`#/p/${r.id}/build`}
     catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Start: build the graph'}}}
+
+
+/* model picker: local Ollama, another local server, Claude or ChatGPT */
+const PROV={ollama:'Local — Ollama (this laptop)',openai:'Local — other server (llama.cpp, LM Studio, vLLM)',claude:'Claude (Anthropic API)',chatgpt:'ChatGPT (OpenAI API)'};
+function picker(k,title,desc){return `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px"><b>${title}</b><div class="muted small">${desc}</div>
+  <select id="${k}be">${Object.entries(PROV).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+  <label for="${k}mo">Model</label><input type="text" id="${k}mo" list="${k}ml"><datalist id="${k}ml"></datalist>
+  <div id="${k}urow"><label for="${k}ur">Server address</label><input type="url" id="${k}ur"></div>
+  <div class="row" style="margin-top:8px"><button class="btn" id="${k}ck">Check</button><span id="${k}st" class="small muted"></span></div></div>`}
+async function wirePicker(k,d){let keys={};try{keys=await api('settings/keys')}catch(e){}
+  const be=$('#'+k+'be'),mo=$('#'+k+'mo'),ur=$('#'+k+'ur');
+  const set=()=>{const v=be.value,cloud=v==='claude'||v==='chatgpt';$('#'+k+'urow').style.display=cloud?'none':'';
+    $('#'+k+'ml').innerHTML=cloud?(keys[v]?.models||[]).map(m=>`<option value="${m}">`).join(''):'';
+    mo.value=cloud?(keys[v]?.model||''):d.model;ur.value=v==='openai'?'http://localhost:8080':d.url;
+    $('#'+k+'st').innerHTML=cloud&&!keys[v]?.set?`<span class="pill bad">No API key yet</span> <a href="#/settings">Add in Settings</a>`:''};
+  be.onchange=set;set();
+  $('#'+k+'ck').onclick=async()=>{$('#'+k+'st').textContent='Checking…';const r=await api(`llm/status?backend=${encodeURIComponent(be.value)}&model=${encodeURIComponent(mo.value)}&url=${encodeURIComponent(ur.value)}`);$('#'+k+'st').innerHTML=`<span class="pill ${r.ok?'ok':'bad'}">${esc(r.message)}</span>`}}
+function pick(k){const v=$('#'+k+'be').value;return {backend:v,model:$('#'+k+'mo').value.trim(),url:(v==='claude'||v==='chatgpt')?'':$('#'+k+'ur').value}}
+
+/* settings: API keys stay on this computer */
+async function settings(){const k=await api('settings/keys');
+  $('#view').innerHTML=`<h1>Settings</h1><p class="muted">Optional cloud models. Keys are saved only on this computer (in your user folder), never in study files. Using a cloud model sends that step's text to the provider and is billed by them.</p>
+  <div class="grid g2">${Object.entries(k).map(([p,x])=>`<div class="card"><h2>${esc(x.label)}</h2>
+    <p class="small">${x.set?`<span class="pill ok">Key saved</span> <span class="muted">${esc(x.hint)}${x.from_env?' (from environment)':''}</span>`:'<span class="pill">No key</span>'}</p>
+    <label for="k_${p}">API key</label><input type="password" id="k_${p}" placeholder="Paste your key" autocomplete="off">
+    <p class="muted small">Get one at <a href="${x.keys_url}" target="_blank" rel="noopener">${x.keys_url.replace('https://','')}</a>. Default model: ${esc(x.model)}.</p>
+    <div class="row"><button class="btn primary" data-save="${p}">Save</button>${x.set?`<button class="btn danger" data-del="${p}">Remove</button>`:''}</div></div>`).join('')}</div>`;
+  $('#view').querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const p=b.dataset.save,v=$('#k_'+p).value.trim();if(!v)return toast('Paste a key first.');await api('settings/keys',{method:'PUT',body:{provider:p,key:v}});toast('Saved');settings()});
+  $('#view').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await api('settings/keys',{method:'PUT',body:{provider:b.dataset.del,key:''}});settings()})}
 
 /* ------------------------------------------------------------ project */
 const TABS=[['graph','Graph Build'],['setup','Environment Setup'],['sim','Simulation'],['report','Report'],['people','Deep Interaction']];

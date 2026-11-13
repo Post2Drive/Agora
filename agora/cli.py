@@ -217,7 +217,8 @@ def cmd_graph(args) -> int:
 def _project_llm(args, proj: Path):
     from .pipeline import make_llm
     sc = scenario_mod.load(proj / SCENARIO_FILE)
-    cfg = {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")}
+    from .pipeline import public_cfg
+    cfg = public_cfg(sc.llm_build or sc.llm)
     cfg.update(_llm_override(args))
     _, llm = make_llm(proj, cfg)
     ok, msg = llm.status()

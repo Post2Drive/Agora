@@ -21,10 +21,18 @@ class OpenAICompatBackend(LLMBackend):
     def __init__(self, cfg):
         super().__init__(cfg)
         self._json_supported = True
+        self._temperature_ok = True
+        self.cloud = "api.openai.com" in cfg.url
 
     def _complete(self, messages, *, max_tokens, temperature, json_mode, seed, meta) -> str:
-        body = {"model": self.cfg.model, "messages": messages,
-                "max_tokens": max_tokens, "temperature": temperature}
+        if self.cloud and not self.cfg.api_key:
+            raise LLMError("No ChatGPT API key. Add one in Settings (platform.openai.com).")
+        body = {"model": self.cfg.model, "messages": messages}
+        # OpenAI's own API counts reasoning in completion tokens; give it room
+        body["max_completion_tokens" if self.cloud else "max_tokens"] = \
+            max_tokens * 4 if self.cloud else max_tokens
+        if self._temperature_ok:
+            body["temperature"] = temperature
         if seed is not None:
             body["seed"] = int(seed)
         if json_mode and self._json_supported:
@@ -33,7 +41,12 @@ class OpenAICompatBackend(LLMBackend):
             out = post_json(f"{self.base}/chat/completions", body,
                             timeout=self.cfg.timeout, headers=self.headers)
         except LLMError as e:
-            if json_mode and self._json_supported and "HTTP 400" in str(e):
+            if "HTTP 400" in str(e) and "temperature" in str(e) and self._temperature_ok:
+                self._temperature_ok = False          # some models only allow their default
+                body.pop("temperature", None)
+                out = post_json(f"{self.base}/chat/completions", body,
+                                timeout=self.cfg.timeout, headers=self.headers)
+            elif json_mode and self._json_supported and "HTTP 400" in str(e):
                 self._json_supported = False      # server lacks JSON mode; rely on prompt
                 body.pop("response_format", None)
                 out = post_json(f"{self.base}/chat/completions", body,
@@ -46,6 +59,8 @@ class OpenAICompatBackend(LLMBackend):
             raise LLMError(f"Unexpected reply: {str(out)[:200]}") from e
 
     def status(self) -> tuple[bool, str]:
+        if self.cloud and not self.cfg.api_key:
+            return False, "No ChatGPT API key. Add one in Settings."
         try:
             models = get_json(f"{self.base}/models", headers=self.headers)
         except LLMError:

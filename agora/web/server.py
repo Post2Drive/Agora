@@ -86,8 +86,11 @@ class App:
 
     def llm_status(self, q: dict) -> dict:
         from ..llm import LLMError, make_backend
-        cfg = {"backend": q.get("backend", "ollama"), "model": q.get("model") or self.profile.model,
-               "url": q.get("url") or "http://localhost:11434", "cache": False}
+        b = q.get("backend", "ollama")
+        cfg = {"backend": b, "model": q.get("model") or ("" if b in ("claude", "chatgpt") else self.profile.model),
+               "cache": False}
+        if b not in ("claude", "chatgpt"):
+            cfg["url"] = q.get("url") or "http://localhost:11434"
         try:
             ok, msg = make_backend(cfg).status()
         except LLMError as e:
@@ -323,10 +326,12 @@ class App:
         o = body.get("options") or {}
         llm = {"backend": "mock"} if o.get("mock") else {
             k: o.get(k) for k in ("backend", "model", "url") if o.get(k)}
+        build = {} if o.get("mock") else {
+            k: o.get("build_" + k) for k in ("backend", "model", "url") if o.get("build_" + k)}
         opts = CreateOptions(fast=bool(o.get("fast")), personas=o.get("personas", True) is not False,
                              llm_agents=int(o["llm_agents"]) if o.get("llm_agents") else None,
                              crowd=int(o["crowd"]) if o.get("crowd") else None,
-                             hours=float(o.get("hours") or 12), llm=llm,
+                             hours=float(o.get("hours") or 12), llm=llm, llm_build=build or None,
                              entity_agents=int(o["entities"]) if o.get("entities") not in (None, "") else 20)
 
         def work(job: Job):
@@ -403,14 +408,13 @@ class App:
 
     # ---------------------------------------------------------------- report + interaction
     def _llm(self, d: Path, mock: bool):
-        from ..pipeline import make_llm
+        from ..pipeline import build_llm
+        llm = build_llm(d, mock=mock)
         if mock:
-            return make_llm(d, {"backend": "mock"})[1]
-        sc = scenario_mod.load(d / "scenario.yaml")
-        _, llm = make_llm(d, {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")})
+            return llm
         ok, msg = llm.status()
         if not ok:
-            raise ApiError(503, msg + " (Tick 'without a model' to try it with placeholder answers.)")
+            raise ApiError(503, msg)
         return llm
 
     def _need_run(self, d: Path):
@@ -592,14 +596,15 @@ class App:
         if not prompt or not (d / "graph.db").exists():
             raise ApiError(400, "This study has no graph to draft from.")
         self.reset(pid)
-        llm = {}
+        from ..pipeline import public_cfg
         try:
             old = yaml.safe_load((d / "scenario.yaml").read_text(encoding="utf-8")) or {}
-            llm = {k: v for k, v in (old.get("llm") or {}).items() if k in ("backend", "model", "url")}
-            pop = old.get("population") or {}
         except (OSError, yaml.YAMLError):
-            pop = {}
-        opts = CreateOptions(llm=llm or None, llm_agents=pop.get("llm_agents"), crowd=pop.get("crowd_agents"))
+            old = {}
+        pop = old.get("population") or {}
+        opts = CreateOptions(llm=public_cfg(old.get("llm")) or None,
+                             llm_build=public_cfg(old.get("llm_build")) or None,
+                             llm_agents=pop.get("llm_agents"), crowd=pop.get("crowd_agents"))
 
         def work(job: Job):
             create_project(d, [], prompt, opts, say=job.say, should_stop=lambda: job.stopping)
@@ -692,6 +697,14 @@ class Handler(BaseHTTPRequestHandler):
             return a.info()
         if method == "GET" and p == ["llm", "status"]:
             return a.llm_status(q)
+        if p == ["settings", "keys"]:
+            from ..llm.providers import PROVIDERS, key_status, set_key
+            if method == "PUT":
+                b = self._body()
+                if b.get("provider") not in PROVIDERS:
+                    raise ApiError(400, "Unknown provider")
+                set_key(b["provider"], str(b.get("key") or ""))
+            return key_status()
         if p == ["projects"]:
             if method == "GET":
                 return a.list_projects()

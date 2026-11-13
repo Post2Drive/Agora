@@ -70,7 +70,8 @@ class LLMConfig:
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "LLMConfig":
-        d = dict(d or {})
+        from .providers import resolve          # "claude" / "chatgpt" -> concrete settings
+        d = resolve(dict(d or {}))
         known = {k: d.pop(k) for k in list(d) if k in cls.__dataclass_fields__ and k != "extra"}
         return cls(**known, extra=d)
 

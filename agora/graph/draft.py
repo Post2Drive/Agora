@@ -67,6 +67,29 @@ def doc_excerpt(gs: GraphStore, limit: int = 2500) -> str:
     return text[:limit]
 
 
+class DraftError(RuntimeError):
+    """The model could not produce a usable part of the setup (nothing is made up instead)."""
+
+
+def _draft(llm, prompt: str, default: dict, seed: int, clean, need: str, ok=bool, max_tokens=900):
+    """Ask until the model gives a usable answer. Built-in defaults are only used when the user
+    chose to build without a model; with a model, failures are retried and then reported."""
+    if llm is None:
+        return clean(default)
+    for t in range(3):
+        d = _ask(llm, prompt, default, seed + 7919 * t, max_tokens, temperature=0.3 + 0.25 * t)
+        if d is default:                      # no usable reply at all
+            continue
+        try:
+            out = clean(d)
+        except ValueError:
+            continue
+        if ok(out):
+            return out
+    raise DraftError(f"The model could not {need} after 3 tries. Run it again, or choose a "
+                     "stronger model for 'Graph, people and report' (for example Claude or ChatGPT).")
+
+
 def _ask(llm: LLMBackend | None, prompt: str, default: dict, seed: int, max_tokens=900,
          temperature: float = 0.3) -> dict:
     if llm is None:
@@ -304,7 +327,7 @@ def clean_segments(raw: dict) -> list[dict]:
             "occupations": [str(o)[:40] for o in (s.get("occupations") or [])][:6],
             "age": [min(a0, a1), max(a0, a1)]})
     if len(segs) < 2:
-        return clean_segments({"segments": DEFAULT_SEGMENTS})
+        raise ValueError("fewer than two usable groups")
     total = sum(s["share"] for s in segs)
     for s in segs:
         s["share"] = round(s["share"] / total, 3)
@@ -429,7 +452,8 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
 
     say("framing the question")
     fr_def = default_frame(goal, gs)
-    fr = _ask(llm, FRAME.format(**ctx), fr_def, seed + 1)
+    fr = _draft(llm, FRAME.format(**ctx), fr_def, seed + 1, lambda d: d, "frame the question",
+                ok=lambda d: bool(str(d.get("topic") or "").strip() and str(d.get("context") or "").strip()))
     topic = str(fr.get("topic") or fr_def["topic"])[:120]
     days = int(_num(fr.get("days"), 3, 30, 7))
     ctx["topic"] = topic
@@ -442,28 +466,29 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
     ctx["options_note"] = (("\n- leaning: how much they like each option, -1..1, as "
                             + "{" + ", ".join(f'"{o}": 0.0' for o in options) + "}") if options else "")
     say("describing who reacts")
-    segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2))
+    segs = _draft(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2, clean_segments,
+                  "describe who reacts")
 
     say("picking the organisations and people who speak")
-    accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3))
+    accounts = _draft(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3, clean_accounts,
+                      "pick who speaks", ok=lambda a: True)
 
     if entity_limit:
         say("turning people and organisations in the documents into agents")
         accounts += entity_agents(gs, llm, goal, topic, accounts, limit=entity_limit, seed=seed, say=say)
 
     say("finding where people talk and what they might do")
-    spaces, acts = clean_places(_ask(llm, PLACES.format(**ctx), default_places(topic), seed + 4), segs)
-    if not acts:
-        acts = default_places(topic)["actions"]
+    spaces, acts = _draft(llm, PLACES.format(**ctx), default_places(topic), seed + 4,
+                          lambda d: clean_places(d, segs), "find where people talk and what they might do",
+                          ok=lambda r: bool(r[1]))
 
     say("building the timeline")
     ctx["days"] = days
     ctx["accounts"] = ", ".join(a["id"] for a in accounts) or "(none)"
     rph = int(24 / ROUND_HOURS)
     ev_def = {"events": [{"day": 0, "type": "news", "text": fr_def["context"][:200]}]}
-    events = clean_events(_ask(llm, EVENTS.format(**ctx), ev_def, seed + 5, 1200), accounts, days, rph)
-    if not events:
-        events = clean_events(ev_def, accounts, days, rph)
+    events = _draft(llm, EVENTS.format(**ctx), ev_def, seed + 5,
+                    lambda d: clean_events(d, accounts, days, rph), "build the timeline", max_tokens=1200)
 
     rounds = days * rph
     polls = [e["name"] for e in events if e["type"] == "poll"]
@@ -554,17 +579,22 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
             if k == 1 or k % 10 == 0 or k == total:
                 say(f"writing persona {k}/{total}")
             default = {"name": "", "age": 0, "occupation": "", "persona": ""}
-            d = _ask(llm, PERSONA.format(context=sc["context"][:600], segment=seg["name"],
+            for attempt in range(3):
+              d = _ask(llm, PERSONA.format(context=sc["context"][:600], segment=seg["name"],
                                          persona=seg["persona"],
                                          occupations=", ".join(seg.get("occupations") or ["any"]),
                                          age0=seg["age"][0], age1=seg["age"][1],
                                          others="; ".join(made[-6:]) or "nobody yet",
                                          topic=sc["topic"]),
-                     default, seed * 1000 + k, max_tokens=300, temperature=0.8)   # varied people
-            name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
-            text = str(d.get("persona") or "").strip()
+                     default, seed * 1000 + k + 104729 * attempt, max_tokens=300,
+                     temperature=0.8 + 0.1 * attempt)   # varied people
+              name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
+              text = str(d.get("persona") or "").strip()
+              if name and len(text) >= 20:
+                  break
             if not name or len(text) < 20:
-                continue                       # population builder fills the gap with a template
+                say(f"could not write person {k} after 3 tries; this group gets one AI person fewer")
+                continue
             age = int(_num(d.get("age"), seg["age"][0], seg["age"][1], sum(seg["age"]) // 2))
             st = round(_num(d.get("stance"), -1, 1, seg["stance"]["mean"]), 2)
             v = {"segment": seg["name"], "name": name, "age": age, "stance": st,
