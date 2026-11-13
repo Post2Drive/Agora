@@ -28,6 +28,10 @@ def add(project: str | Path, text: str, *, source: str = "manual", url: str = ""
     text = (text or "").strip()
     if not text:
         raise ValueError("Write what happened.")
+    from .cutoff import check
+    reason = check(project, published)
+    if reason:
+        raise ValueError(f"Not used: {reason}.")
     ev = {"id": _id(text, source), "text": text[:1500], "type": kind, "source": source,
           "url": url, "published": published}
     if at_round is not None:
@@ -70,8 +74,13 @@ def sync(project: str | Path) -> dict:
     project = Path(project)
     done = _synced(project)
     added, skipped = [], []
+    from .cutoff import check
     for ev in read(project):
         if ev["id"] in done:
+            continue
+        reason = check(project, ev.get("published", ""))
+        if reason:
+            skipped.append({"id": ev["id"], "reason": reason})
             continue
         try:
             r = inject(project, {"type": ev.get("type", "news"), "text": ev["text"]}, ev.get("round"))

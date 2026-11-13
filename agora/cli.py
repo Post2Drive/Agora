@@ -486,8 +486,48 @@ def cmd_share(args) -> int:
     return 0
 
 
+def cmd_shock(args) -> int:
+    from .shock import shock_pair
+    shift = {}
+    for item in args.shift:
+        k, _, v = item.rpartition("=")
+        if not k:
+            raise SystemExit(f"Write --shift as name=value, got '{item}'.")
+        shift[k.strip()] = float(v)
+    r = shock_pair(Path(args.project), Path(args.out), text=args.text, at_round=args.round, shift=shift or None)
+    print(f"Control: {r['control']}\nShock:   {r['shock']} (news at round {r['round'] + 1})")
+    print("Run both with `agora run`, then `agora compare` them.")
+    return 0
+
+
 def cmd_events(args) -> int:
+    from . import cutoff as cut_mod
     from . import events as ev_mod
+    from . import news_rss
+    if args.action == "cutoff":
+        r = cut_mod.set_cutoff(Path(args.project), args.text)
+        print(f"Information cutoff set to {r['cutoff']}. Later news will be refused.")
+        return 0
+    if args.action == "pull":
+        since = cut_mod.parse_day(args.since) if args.since else None
+        until = cut_mod.parse_day(args.until) if args.until else None
+        r = news_rss.pull(Path(args.project), args.feed, args.keyword, since=since, until=until)
+        for a in r["added"]:
+            print(f"candidate {a['id']}  {a['published']}  {a['text']}")
+        for e in r["errors"]:
+            print(f"feed failed {e['feed']}: {e['reason']}")
+        print(f"{len(r['added'])} new candidates. Approve the ones to use with `agora events approve`.")
+        return 0
+    if args.action == "candidates":
+        queued = {e["id"] for e in ev_mod.read(Path(args.project))}
+        for c in news_rss.read_candidates(Path(args.project)):
+            state = "queued" if c["id"] in queued else "pending"
+            print(f"{c['id']}  {c['published']}  {state:7}  {c['text'][:90]}")
+        return 0
+    if args.action == "approve":
+        r = news_rss.approve(Path(args.project), args.text)
+        print("Already in the queue." if r["duplicate"] else f"Queued ({r['id']}). Run `agora events sync`.")
+        return 0
     if args.action == "add":
         r = ev_mod.add(Path(args.project), args.text, source=args.source or "manual", url=args.url or "",
                        kind=args.kind, at_round=args.round, published=args.published or "")
@@ -626,15 +666,29 @@ def main(argv=None) -> int:
     p.set_defaults(f=cmd_inject)
 
     p = sub.add_parser("events", help="real-world events queued for a running study")
-    p.add_argument("action", choices=["add", "sync", "list"])
+    p.add_argument("action", choices=["add", "sync", "list", "cutoff", "pull", "candidates", "approve"])
     p.add_argument("project")
-    p.add_argument("text", nargs="?", default="")
+    p.add_argument("text", nargs="?", default="",
+                   help="the news (add), the date YYYY-MM-DD (cutoff), or the candidate id (approve)")
     p.add_argument("--source")
     p.add_argument("--url")
     p.add_argument("--kind", default="news", choices=["news"])
     p.add_argument("--round", type=int, help="0-based round to apply it (default: next)")
     p.add_argument("--published")
+    p.add_argument("--feed", action="append", default=[], help="RSS or Atom feed URL (pull; repeat for more)")
+    p.add_argument("--keyword", action="append", default=[], help="word to watch for (pull; repeat for more)")
+    p.add_argument("--since", help="earliest publish date YYYY-MM-DD (pull)")
+    p.add_argument("--until", help="latest publish date YYYY-MM-DD (pull)")
     p.set_defaults(f=cmd_events)
+
+    p = sub.add_parser("shock", help="make two copies of a study: one with a news event, one without")
+    p.add_argument("project")
+    p.add_argument("out", help="folder to create; gets control/ and shock/ inside")
+    p.add_argument("text", help="the news that breaks")
+    p.add_argument("--round", type=int, required=True, help="0-based round the news arrives")
+    p.add_argument("--shift", action="append", default=[],
+                   help="opinion shift as name=value, e.g. stance=-0.1 or 'Candidate A=-0.15'")
+    p.set_defaults(f=cmd_shock)
 
     p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")
     p.add_argument("project")
