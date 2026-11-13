@@ -9,6 +9,33 @@ from .platforms import actions_for, where_options
 from .world import Agent, Post, World
 
 MAX_ACTIONS = 3
+SCALE = "strongly against / against / unsure / for / strongly for"
+
+# The agent answers in words; these are only units for the number the engine stores.
+STANCE_WORDS = {
+    "strongly against": -0.8, "strongly against it": -0.8, "very negative": -0.8,
+    "against": -0.4, "negative": -0.4, "doubtful leaning against": -0.4, "leaning against": -0.3,
+    "unsure": 0.0, "undecided": 0.0, "neutral": 0.0, "mixed": 0.0, "not sure": 0.0,
+    "for": 0.4, "positive": 0.4, "fairly positive": 0.4, "in favour": 0.4, "in favor": 0.4, "leaning for": 0.3,
+    "strongly for": 0.8, "very positive": 0.8, "very positive keen": 0.8, "keen": 0.8,
+}
+
+
+def score(v):
+    """An opinion as a number from -1 to 1: accepts the words above or a number. None if it cannot be understood."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return max(-1.0, min(1.0, float(v)))
+    if isinstance(v, str):
+        s = " ".join(v.lower().replace("_", " ").replace(",", " ").split()).strip(" .\"'")
+        if s in STANCE_WORDS:
+            return STANCE_WORDS[s]
+        try:
+            return max(-1.0, min(1.0, float(s)))
+        except ValueError:
+            return None
+    return None
 
 
 def label(platform: str) -> str:
@@ -121,13 +148,15 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
         lines.append(f"Voting is open now. If you would vote today: {{\"type\": \"vote\", \"option\": \"<one of: "
                      f"{', '.join(sc.choice.options)}>\"}}. Not voting is also possible.")
     if conversions:
-        lines.append("Real-life actions open to you right now (only if you truly would):\n" +
+        lines.append("Real-life actions open to you right now (only if you truly would; to do one, write "
+                     '{"type": "convert", "name": "<exact name from this list>"}):\n' +
                      "\n".join(f"- {c.name}: {c.label}" for c in conversions))
     lines.append(
-        f"Reply with JSON only, at most {MAX_ACTIONS} actions (an empty list is normal):\n"
+        f"Reply with JSON only, at most {MAX_ACTIONS} actions (an empty list is normal). Say how you feel about "
+        f"{sc.topic} with exactly one of: {SCALE}. Unsure is a fine answer; say strongly only when you are certain:\n"
         + '{"thoughts": "one short sentence of what you privately think", '
-        + (('"prefs": {' + ", ".join(f'"{o}": <-1..1>' for o in sc.choice.options) + '}, ')
-           if sc.choice else ('"stance": <number from -1 (strongly against) to 1 (strongly for) on ' + sc.topic + '>, '))
+        + (('"prefs": {' + ", ".join(f'"{o}": "<{SCALE}>"' for o in sc.choice.options) + '}, ')
+           if sc.choice else ('"stance": "<' + SCALE + '>", '))
         + '"actions": [{"type": "post", "where": "<a place from the list>", "text": "..."}, '
         + '{"type": "reply", "target": "p12", "text": "..."}, {"type": "like", "target": "p7"}, '
         + '{"type": "convert", "name": "..."}]}')
@@ -151,11 +180,10 @@ def decision_meta(world: World, sc, a: Agent, feed: list[Post], conversions: lis
 
 def parse_decision(raw: str, a: Agent) -> dict:
     d = parse_json(raw)
-    try:
-        stance = float(d.get("stance", a.stance))
-    except (TypeError, ValueError):
+    stance = score(d.get("stance", a.stance))
+    unreadable = stance is None            # e.g. a word that is not on the scale: ask again
+    if unreadable:
         stance = a.stance
-    stance = max(-1.0, min(1.0, stance))
     acts = d.get("actions") or []
     if not isinstance(acts, list):
         acts = []
@@ -167,11 +195,10 @@ def parse_decision(raw: str, a: Agent) -> dict:
     prefs = {}
     if isinstance(d.get("prefs"), dict):
         for o, v in d["prefs"].items():
-            try:
-                prefs[str(o)] = max(-1.0, min(1.0, float(v)))
-            except (TypeError, ValueError):
-                pass
-    return {"stance": stance, "actions": clean, "thoughts": thoughts, "ok": bool(d), "prefs": prefs}
+            s = score(v)
+            if s is not None:
+                prefs[str(o)] = s
+    return {"stance": stance, "actions": clean, "thoughts": thoughts, "ok": bool(d) and not unreadable, "prefs": prefs}
 
 
 def poll_messages(world: World, sc, a: Agent, question: str, now: datetime) -> list[dict]:

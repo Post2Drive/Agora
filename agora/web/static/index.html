@@ -104,7 +104,7 @@ details>summary{cursor:pointer;font-weight:600}
 <body>
 <header>
   <a class="brand" href="#/"><i></i>Agora</a>
-  <nav><a href="#/" data-nav="home">Studies</a><a href="#/new" data-nav="new">New study</a></nav>
+  <nav><a href="#/" data-nav="home">Studies</a><a href="#/new" data-nav="new">New study</a><a href="#/settings" data-nav="settings">Settings</a></nav>
   <span class="pill" id="hw" title="This machine"></span>
 </header>
 <main id="view"></main>
@@ -121,11 +121,11 @@ const plabel=k=>(INFO?.platforms.find(p=>p.key===k)||{label:k}).label;
 const pbadge=k=>`<span class="badge"><i style="background:${PCOL[k]||'#888'}"></i>${esc(plabel(k))}</span>`;
 const stance=x=>`<span class="stance" style="--x:${((+x+1)/2*100).toFixed(0)}%" title="${(+x).toFixed(2)}"></span>`;
 const fmtDur=s=>s<90?`${Math.round(s)} s`:s<5400?`${Math.round(s/60)} min`:`${(s/3600).toFixed(1)} h`;
-function nav(){document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('on',location.hash.startsWith('#/new')?a.dataset.nav==='new':a.dataset.nav==='home'&&!location.hash.startsWith('#/new')))}
+function nav(){const h=location.hash;const cur=h.startsWith('#/new')?'new':h.startsWith('#/settings')?'settings':'home';document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('on',a.dataset.nav===cur))}
 
 /* ------------------------------------------------------------ router */
 async function route(){clearInterval(timer);timer=null;nav();const h=location.hash.slice(2).split('/');
-  try{if(h[0]==='new')return newStudy();if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
+  try{if(h[0]==='new')return newStudy();if(h[0]==='settings')return settingsPage();if(h[0]==='compare')return comparePage(h[1]||'');if(h[0]==='p'&&h[1])return project(decodeURIComponent(h[1]),h[2]||'');return home()}
   catch(e){$('#view').innerHTML=`<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to studies</a></div>`}}
 window.addEventListener('hashchange',route);
 
@@ -156,7 +156,7 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
     <textarea id="prompt" placeholder="How will residents of premium apartments react to a free 7-day probiotic sample, how many flats will register, and how many will buy afterwards?"></textarea>
     <label>Documents</label><div class="drop" id="drop"><b>Drop files here</b> or click to choose<br><span class="muted small">PDF, Word, text, Markdown, CSV, JSON, web pages</span></div>
     <input type="file" id="fi" multiple accept="${ACCEPT}" hidden><div class="files" id="fl"></div></div>
-  <div class="card"><h2>Model</h2><p class="muted small" style="margin-top:-6px">Runs on your machine. Nothing is sent online.</p>
+  <div class="card"><h2>Model</h2><p class="muted small" style="margin-top:-6px">${whereText()}</p>
     <label for="backend">Model server</label><select id="backend"><option value="ollama">Ollama</option><option value="openai">llama.cpp / LM Studio / vLLM (OpenAI-compatible)</option><option value="mock">No model — quick test with placeholder agents</option></select>
     <div id="mrow"><label for="model">Model</label><input type="text" id="model" value="${esc(d.model)}">
     <label for="url">Server address</label><input type="url" id="url" value="${esc(d.url)}">
@@ -165,7 +165,7 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
       <label class="check"><input type="checkbox" id="fast"> Build the graph without the model (faster, rougher)</label>
       <label class="check"><input type="checkbox" id="personas" checked> Write an individual background for every AI resident</label>
       <label for="hours">Time budget for the simulation (hours on this machine)</label><input type="number" id="hours" value="12" min="1" max="200">
-      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label for="voices">AI voices</label><input type="number" id="voices" placeholder="auto"></div><div><label for="crowd">Crowd agents</label><input type="number" id="crowd" placeholder="auto"></div></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label for="voices">AI voices</label><input type="number" id="voices" placeholder="auto"></div><div><label for="crowd">Extra crowd agents (optional)</label><input type="number" id="crowd" placeholder="none"></div></div>
     </details></div></div>
   <div class="row" style="margin-top:18px"><span class="spacer"></span><a class="btn" href="#/">Cancel</a><button class="btn primary" id="go">Build the study</button></div>`;
   const fl=()=>{$('#fl').innerHTML=files.map((f,i)=>`<span class="file">${esc(f.name)} <span class="muted">${(f.size/1024).toFixed(0)} KB</span><button data-i="${i}" title="Remove">✕</button></span>`).join('');
@@ -184,6 +184,52 @@ async function newStudy(){const files=[];const d=INFO.llm_default;
       const body={name:$('#name').value.trim()||prompt.slice(0,40),prompt,files:enc,options:{mock:b==='mock',backend:b==='mock'?'':b,model:$('#model').value,url:$('#url').value,fast:$('#fast').checked,personas:$('#personas').checked,hours:+$('#hours').value||12,llm_agents:+$('#voices').value||null,crowd:+$('#crowd').value||null}};
       const r=await api('projects',{method:'POST',body});location.hash=`#/p/${r.id}/build`}
     catch(e){toast(e.message);$('#go').disabled=false;$('#go').textContent='Build the study'}}}
+
+/* ------------------------------------------------------------ where it runs (settings) and the plan */
+const whereText=()=>{const s=INFO.settings||{};const a=(s.profiles||{})[s.active];
+  if(!a)return 'Runs on this computer (Ollama). Nothing is sent online. <a href="#/settings">Change where it runs</a>';
+  if(a.kind==='cloud')return `Runs on a cloud service (${esc(a.url)}). The text of your documents and the prompts are sent there. <a href="#/settings">Change</a>`;
+  if(a.kind==='server')return `Runs on your own server (${esc(a.url)}). <a href="#/settings">Change</a>`;
+  return 'Runs on this computer. Nothing is sent online. <a href="#/settings">Change where it runs</a>'};
+async function refreshInfo(){INFO=await api('info');const h=INFO.hardware;$('#hw').textContent=`${h.tier} machine · ${h.ram_gb} GB · ${h.model} · runs on ${(INFO.settings&&INFO.settings.active)||'this computer'}`}
+
+async function settingsPage(){const s=await api('settings');const cur=s.profiles[s.active];const hw=INFO.hardware;
+  $('#view').innerHTML=`<h1>Where should this run?</h1><p class="muted" style="max-width:760px">Your choice is saved on this computer only, in your own settings file. It is never stored inside a study, so sharing a study never shares your key or your server address.</p>
+  ${s.error?`<p class="pill bad">${esc(s.error)}</p>`:''}
+  <div class="card" style="margin-top:14px"><b>In use now:</b> ${cur?`${esc(cur.kind)} · ${esc(cur.backend)} · ${esc(cur.model)} · ${esc(cur.url)}${cur.has_key?' · key saved':''}${cur.cache===false?' · reply cache off':''}`:'this computer (Ollama), the default'}
+   ${Object.keys(s.profiles).length>1?`<div class="chips" style="margin:10px 0 0">${Object.keys(s.profiles).map(n=>`<span class="chip ${n===s.active?'on':''}" data-use="${esc(n)}">Use ${esc(n)}</span>`).join('')}</div>`:''}</div>
+  <div class="card" style="margin-top:16px"><label for="kind" style="margin-top:0">Run the AI model on</label>
+   <select id="kind"><option value="local">This computer (Ollama): free, private, slowest</option><option value="server">My own server on my network: private, faster</option><option value="cloud">A cloud API: fast, paid, your prompts leave your network</option></select>
+   <div id="f-model"><label for="smodel">Model</label><input type="text" id="smodel"></div>
+   <div id="f-url"><label for="surl">Server address</label><input type="url" id="surl"></div>
+   <div id="f-key"><label for="skey">API key <span class="muted small">(typing is hidden; leave empty to keep a saved key)</span></label><input type="password" id="skey" autocomplete="off"></div>
+   <div id="f-par"><label for="spar">Requests at once</label><input type="number" id="spar" min="1" max="256"></div>
+   <div id="f-price" class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label for="spin">Price per million input tokens (optional)</label><input type="number" id="spin" step="any" min="0"></div><div><label for="spout">Price per million output tokens (optional)</label><input type="number" id="spout" step="any" min="0"></div></div>
+   <label class="check"><input type="checkbox" id="scache" checked> Keep a cache of model replies inside each study (makes resume exact; turn off for more privacy)</label>
+   <div id="f-consent"><label class="check"><input type="checkbox" id="sok"> I understand the text of my documents, the personas and the prompts will be sent to this service.</label></div>
+   <div class="row" style="margin-top:14px"><span class="muted small">Speed estimates come from <code>agora benchmark</code>, which you run in a terminal.</span><span class="spacer"></span><button class="btn primary" id="ssave">Save</button></div></div>`;
+  const D={local:{url:'http://localhost:11434',model:hw.model,par:''},server:{url:'http://192.168.1.50:8000',model:'',par:8},cloud:{url:'https://',model:'',par:16}};
+  const fill=()=>{const k=$('#kind').value,c=s.profiles[k]||{},d=D[k];
+    $('#smodel').value=c.model||d.model;$('#surl').value=c.url||d.url;$('#spar').value=c.parallel||d.par;$('#spin').value=c.price_in??'';$('#spout').value=c.price_out??'';$('#scache').checked=c.cache!==false;$('#sok').checked=false;$('#skey').value='';
+    $('#f-url').style.display=k==='local'?'none':'';$('#f-key').style.display=k==='cloud'?'':'none';$('#f-par').style.display=k==='local'?'none':'';$('#f-price').style.display=k==='cloud'?'':'none';$('#f-consent').style.display=k==='cloud'?'':'none'};
+  $('#kind').value=cur?cur.kind:'local';$('#kind').onchange=fill;fill();
+  document.querySelectorAll('[data-use]').forEach(c=>c.onclick=async()=>{try{await api('settings',{method:'POST',body:{use:c.dataset.use}});toast('Switched.');await refreshInfo();settingsPage()}catch(e){toast(e.message)}});
+  $('#ssave').onclick=async()=>{const body={kind:$('#kind').value,model:$('#smodel').value,url:$('#surl').value,api_key:$('#skey').value,parallel:+$('#spar').value||null,price_in:$('#spin').value===''?null:+$('#spin').value,price_out:$('#spout').value===''?null:+$('#spout').value,cache:$('#scache').checked,consent:$('#sok').checked};
+    try{await api('settings',{method:'POST',body});toast('Saved.');await refreshInfo();settingsPage()}catch(e){toast(e.message)}}}
+
+async function planCard(p){const el=$('#plan');if(!el)return;
+  el.innerHTML=`<h2>How long will it take?</h2><p class="muted small" style="margin-top:-6px">An estimate for the place you chose to run it. Change the numbers to try other sizes.</p>
+   <div class="row"><label class="row" style="font-weight:400;gap:6px;margin:0">People <input type="number" id="pa" min="1" style="width:100px"></label>
+   <label class="row" style="font-weight:400;gap:6px;margin:0">Rounds <input type="number" id="pr" min="1" style="width:90px"></label>
+   <label class="row" style="font-weight:400;gap:6px;margin:0">Scenarios <input type="number" id="ps" value="1" min="1" style="width:80px"></label></div><div id="pres" style="margin-top:12px"></div>`;
+  const go=async first=>{try{const q=first?'':`agents=${+$('#pa').value||''}&rounds=${+$('#pr').value||''}&scenarios=${+$('#ps').value||1}`;
+    const r=await api(`projects/${p.id}/plan?${q}`);if(first){$('#pa').value=r.people;$('#pr').value=r.rounds}
+    $('#pres').innerHTML=`<div class="kpis"><div class="kpi"><b>${esc(r.time_text.replace('about ',''))}</b><span>estimated time</span></div><div class="kpi"><b>${r.calls.toLocaleString()}</b><span>model calls</span></div>${r.cost!=null?`<div class="kpi"><b>${r.cost.toLocaleString(undefined,{maximumFractionDigits:2})}</b><span>estimated cost (your prices)</span></div>`:''}</div>
+     <p class="muted small" style="margin:10px 0">Speed: ${r.throughput.toFixed(3)} model calls per second (${esc(r.source_text)}). ${r.source==='rough'?'Run <code>agora benchmark</code> in a terminal, then one real run, for a trustworthy number.':''}</p>
+     <table><thead><tr><th>Time budget</th><th>People that fit (same rounds)</th></tr></thead><tbody>${Object.entries(r.presets).map(([n,v])=>`<tr><td>${esc(n)} · ${v.hours} h</td><td>${v.people.toLocaleString()}</td></tr>`).join('')}</tbody></table>
+     <p class="muted small" style="margin-top:8px">Using ${esc(r.profile)} · ${esc(r.model)}${r.cloud?' · your prompts are sent to the cloud service':''}. To use a size, edit <code>population: llm_agents</code> in the setup below.</p>`}
+    catch(e){$('#pres').innerHTML=`<span class="pill bad">${esc(e.message)}</span>`}};
+  ['#pa','#pr','#ps'].forEach(i=>$(i).oninput=()=>{clearTimeout(state.plt);state.plt=setTimeout(()=>go(false),300)});go(true)}
 
 /* ------------------------------------------------------------ project */
 const TABS=[['build','Upload'],['graph','Graph'],['setup','Setup'],['data','Calibrate'],['sim','Simulation'],['report','Report'],['people','Interact']];
@@ -218,7 +264,7 @@ async function tabSetup(p){const s=p.scenario;
   const t0=new Date(s.start),d0=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
   const day=r=>{const t=new Date(t0.getTime()+r*s.round_hours*3600e3);return `Day ${Math.floor((t-d0)/864e5)+1}, ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`};
   $('#tab').innerHTML=`<div class="grid g2"><div class="card"><h2>The question</h2><p>${esc(s.question)}</p><h3>People react to</h3><p class="muted">${esc(s.topic)}</p><h3>Everyone in the simulation knows</h3><p class="muted small">${esc(s.context)}</p></div>
-    <div class="card"><h2>Size and timing</h2><div class="kpis"><div class="kpi"><b>${s.llm_agents}</b><span>AI voices (think and write)</span></div><div class="kpi"><b>${s.crowd_agents.toLocaleString()}</b><span>crowd agents (react)</span></div><div class="kpi"><b>${days.toFixed(days%1?1:0)} days</b><span>${s.rounds} rounds of ${s.round_hours} h</span></div><div class="kpi"><b>${s.voices}</b><span>written personas</span></div></div>
+    <div class="card"><h2>Size and timing</h2><div class="kpis"><div class="kpi"><b>${s.llm_agents}</b><span>AI people (each decides for themselves)</span></div>${s.crowd_agents?`<div class="kpi"><b>${s.crowd_agents.toLocaleString()}</b><span>crowd agents (react)</span></div>`:''}<div class="kpi"><b>${days.toFixed(days%1?1:0)} days</b><span>${s.rounds} rounds of ${s.round_hours} h</span></div><div class="kpi"><b>${s.voices}</b><span>written personas</span></div></div>
       <p class="muted small" style="margin-top:12px">Model: ${esc(s.llm.backend||'ollama')} ${esc(s.llm.model||'')}. Numbers for opinions and adoption are starting assumptions — check them before relying on results.</p>
       <div class="row" style="margin-top:8px">${locked?`<a class="btn primary" href="#/p/${p.id}/sim">Go to the simulation</a>`:`<label class="check"><input type="checkbox" id="mock"> quick test without a model</label><span class="spacer"></span><button class="btn primary" id="start">Start simulation</button>`}</div></div></div>
   ${s.choice?`<div class="card" style="margin-top:16px"><h2>The choice</h2><p>${esc(s.choice.question)} <span class="muted small">Voting ${day(s.choice.open)} → ${day(s.choice.close)}</span></p>
@@ -229,8 +275,10 @@ async function tabSetup(p){const s=p.scenario;
     <div class="card"><h2>Where people talk</h2>${s.spaces.length?`<table><tbody>${s.spaces.map(x=>`<tr><td>${pbadge(x.platform)}</td><td>${esc(x.name)}</td><td class="muted">${x.size} members</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Only public feeds.</p>'}
       <h3 style="margin-top:16px">What we predict</h3>${s.conversions.map(c=>`<p style="margin:6px 0"><b>${esc(c.name.replace(/_/g,' '))}</b> — <span class="muted">${esc(c.label)}</span> <span class="small muted">(open ${day(c.open)} → ${day(c.close)})</span></p>`).join('')||'<p class="muted">Nothing yet</p>'}</div></div>
   <div class="card" style="margin-top:16px"><h2>Timeline</h2><div class="timeline">${s.events.map(e=>`<div class="tl"><span class="muted small">${day(e.round)}</span> · <b>${e.type==='poll'?'Decision':e.type==='news'?'News':'Post'}</b>${e.platform?' '+pbadge(e.platform):''}${e.conditional?' <span class="pill">only if approved</span>':''}<br>${esc(e.text)}</div>`).join('')}</div></div>
+  <div class="card" id="plan" style="margin-top:16px"></div>
   <div id="ed"></div>`;
   if($('#start'))$('#start').onclick=()=>startRun(p,$('#mock').checked);
+  planCard(p);
   editor(p,false,locked)}
 
 async function editor(p,open,locked){const t=await api(`projects/${p.id}/scenario`);const host=$('#ed')||$('#tab');
@@ -446,7 +494,7 @@ async function comparePage(ids){const ps=(await api('projects')).filter(p=>p.run
     ${row('Posts',x=>x.posts.toLocaleString())}</tbody></table></div>`}
 
 /* ------------------------------------------------------------ boot */
-(async()=>{INFO=await api('info');const h=INFO.hardware;$('#hw').textContent=`${h.tier} machine · ${h.ram_gb} GB · ${h.model}`;route()})();
+(async()=>{INFO=await api('info');const h=INFO.hardware;$('#hw').textContent=`${h.tier} machine · ${h.ram_gb} GB · ${h.model} · runs on ${(INFO.settings&&INFO.settings.active)||'this computer'}`;route()})();
 </script>
 </body>
 </html>

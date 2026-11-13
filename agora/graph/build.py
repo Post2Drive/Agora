@@ -18,6 +18,7 @@ from typing import Callable
 import networkx as nx
 
 from ..llm import LLMBackend, LLMError, parse_json
+from ..llm.base import ask_json
 from . import heuristic
 from .store import GraphStore
 
@@ -87,6 +88,16 @@ def _clean_type(t: str, allowed: list[str], default: str) -> str:
     return default
 
 
+def _valid_ontology(d: dict) -> bool:
+    et = [x for x in d.get("entity_types", []) if isinstance(x, dict) and x.get("name")]
+    rt = [x for x in d.get("relation_types", []) if isinstance(x, dict) and x.get("name")]
+    return len(et) >= 3 and len(rt) >= 2
+
+
+def _valid_extraction(d: dict) -> bool:
+    return isinstance(d.get("entities"), list) and isinstance(d.get("relations", []), list)
+
+
 def make_ontology(gs: GraphStore, llm: LLMBackend | None, goal: str) -> dict:
     cached = gs.get_meta("ontology")
     if cached:
@@ -94,44 +105,38 @@ def make_ontology(gs: GraphStore, llm: LLMBackend | None, goal: str) -> dict:
     onto = DEFAULT_ONTOLOGY
     if llm is not None:
         sample = "\n\n".join(t for (t,) in gs.rows("SELECT text FROM chunks ORDER BY id LIMIT 3"))[:3500]
-        try:
-            d = llm.generate_json(
-                [{"role": "user", "content": ONTOLOGY_PROMPT.format(goal=goal, sample=sample)}],
-                max_tokens=600, temperature=0.2, seed=1,
-                meta={"task": "json", "default": DEFAULT_ONTOLOGY})
-        except LLMError:
-            d = {}
+        d = ask_json(
+            llm, [{"role": "user", "content": ONTOLOGY_PROMPT.format(goal=goal, sample=sample)}],
+            _valid_ontology, step="ontology (which kinds of people and things matter)",
+            max_tokens=600, temperature=0.2, seed=1,
+            meta={"task": "json", "default": DEFAULT_ONTOLOGY})
         et = [x for x in d.get("entity_types", []) if isinstance(x, dict) and x.get("name")]
         rt = [x for x in d.get("relation_types", []) if isinstance(x, dict) and x.get("name")]
-        if len(et) >= 3 and len(rt) >= 2:
-            names = {x["name"].lower() for x in et}
-            for must in ("Person", "Organization", "Community"):
-                if must.lower() not in names:
-                    et.append(next(x for x in DEFAULT_ONTOLOGY["entity_types"] if x["name"] == must))
-            if "related_to" not in {x["name"].lower() for x in rt}:
-                rt.append({"name": "RELATED_TO", "description": "any other meaningful link"})
-            onto = {"entity_types": et[:12], "relation_types": rt[:12]}
+        names = {x["name"].lower() for x in et}
+        for must in ("Person", "Organization", "Community"):
+            if must.lower() not in names:
+                et.append(next(x for x in DEFAULT_ONTOLOGY["entity_types"] if x["name"] == must))
+        if "related_to" not in {x["name"].lower() for x in rt}:
+            rt.append({"name": "RELATED_TO", "description": "any other meaningful link"})
+        onto = {"entity_types": et[:12], "relation_types": rt[:12]}
     gs.set_meta("ontology", onto)
     return onto
 
 
 def extract_chunk(llm: LLMBackend | None, text: str, goal: str, onto: dict, seed: int) -> dict:
-    fallback = heuristic.extract(text)
     if llm is None:
-        return fallback
+        return heuristic.extract(text)          # explicit --fast build: no model, by request
     et = [x["name"] for x in onto["entity_types"]]
     rt = [x["name"] for x in onto["relation_types"]]
     prompt = EXTRACT_PROMPT.format(goal=goal, etypes=", ".join(et), rtypes=", ".join(rt), text=text)
-    try:
-        d = llm.generate_json([{"role": "user", "content": prompt}], max_tokens=1200,
-                              temperature=0.1, seed=seed, meta={"task": "json", "default": fallback})
-    except LLMError:
-        return fallback
+    # only the test (mock) backend reads this canned answer; real models ignore it
+    canned = heuristic.extract(text) if llm.cfg.backend == "mock" else None
+    d = ask_json(llm, [{"role": "user", "content": prompt}], _valid_extraction,
+                 step="reading the documents (finding people, groups and facts)",
+                 max_tokens=1200, temperature=0.1, seed=seed, meta={"task": "json", "default": canned})
     ents = [e for e in d.get("entities", []) if isinstance(e, dict) and str(e.get("name", "")).strip()]
     rels = [r for r in d.get("relations", []) if isinstance(r, dict)
             and str(r.get("source", "")).strip() and str(r.get("target", "")).strip()]
-    if not ents:
-        return fallback
     return {"entities": ents, "relations": rels}
 
 

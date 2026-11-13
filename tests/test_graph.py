@@ -111,6 +111,12 @@ class Scripted(LLMBackend):
                 return "sorry I cannot"          # some calls fail -> template fills the gap
             return json.dumps({"name": f"Person{n} Surname", "age": 33, "occupation": "teacher",
                                "persona": "Teaches at a local school and reads labels carefully before buying."})
+        if "You are creating a social-media agent" in p:
+            return json.dumps({"bio": "Public account.",
+                               "persona": "Speaks plainly and reacts to what neighbours say online.",
+                               "stance": 0.1, "influence": 2, "activity": 0.4, "platforms": ["x", "facebook"],
+                               "active_hours": [8, 22], "profession": "organisation", "country": "India",
+                               "interests": ["health"]})
         return "{}"
 
 
@@ -248,7 +254,8 @@ def test_draft_cleans_sloppy_answers(gs):
     assert convs["buy"].requires == ["register"] and convs["complain"].requires == []
     assert convs["register"].when == {"poll": "approval", "result": "yes"}
     assert {s.name for s in parsed.spaces} == {"Lakeview Residents", "r/guntur"}
-    assert 6 <= len(parsed.voices) <= 9                                      # some persona calls failed
+    assert len(parsed.voices) == 10                                          # failed calls were retried
+    assert sum("Create one realistic person" in q for q in llm.prompts) > 10
     assert all(v["name"].startswith("Person") and " " not in v["name"] for v in parsed.voices)
 
 
@@ -299,6 +306,24 @@ def test_entity_agents_from_graph(gs):
     assert "Guntur" not in names                    # places are not agents
     assert all(a.profile.get("source") for a in ents)
     assert len({a.id for a in parsed.accounts}) == len(parsed.accounts)
+
+
+class NoProfiles(Scripted):
+    def _complete(self, messages, **kw):
+        if "You are creating a social-media agent" in messages[-1]["content"]:
+            return "I cannot do that"
+        return super()._complete(messages, **kw)
+
+
+def test_unusable_entity_profile_is_skipped_not_invented(gs):
+    llm = NoProfiles()
+    gbuild.build(gs, llm, "goal")
+    msgs = []
+    sc = gdraft.draft(gs, llm, "How many flats register?", llm_agents=4, crowd_agents=50, entity_limit=5,
+                      rich_personas=False, progress=msgs.append)
+    parsed = scenario_mod.from_dict(json.loads(json.dumps(sc)))
+    assert not [a for a in parsed.accounts if a.segment == "entities"]
+    assert any(m.startswith("SKIPPED") for m in msgs)
 
 
 class ElectionScripted(Scripted):

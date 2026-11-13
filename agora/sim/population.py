@@ -137,11 +137,52 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
 
     # 3. group / community memberships
     memberships: list[tuple[int, str, str]] = []
-    taken: dict[str, set[int]] = {}           # exclusive tag -> agents already placed
+
+    # Exclusive spaces (for example, apartment home groups) form a partition:
+    # each eligible resident belongs to exactly one space in an exclusive group.
+    # Allocate the small simulated population across all such spaces together,
+    # weighted by real group size and any segment weights. Do not let the first
+    # space in YAML consume the entire population.
+    exclusive_groups: dict[str, list] = {}
     for sp in sc.spaces:
-        blocked = taken.setdefault(sp.exclusive, set()) if sp.exclusive else set()
+        if sp.exclusive:
+            exclusive_groups.setdefault(sp.exclusive, []).append(sp)
+
+    for tag, group_spaces in exclusive_groups.items():
+        strata: dict[tuple[str, tuple[int, ...]], list[Agent]] = {}
+        for a in w.agents:
+            if a.kind == "account":
+                continue
+            eligible = tuple(
+                i for i, sp in enumerate(group_spaces)
+                if sp.platform in a.platforms
+                and sp.segments.get(a.segment, 0 if sp.segments else 1) > 0
+            )
+            if eligible:
+                strata.setdefault((a.segment, eligible), []).append(a)
+
+        for (segment, eligible), pool in strata.items():
+            weights = [
+                max(0, group_spaces[i].size) *
+                group_spaces[i].segments.get(segment, 0 if group_spaces[i].segments else 1)
+                for i in eligible
+            ]
+            counts = _alloc(len(pool), weights)
+            order = rng.permutation(len(pool)).tolist()
+            offset = 0
+            for i, count in zip(eligible, counts):
+                selected = [pool[j] for j in order[offset:offset + count]]
+                offset += count
+                sp = group_spaces[i]
+                for a in selected:
+                    w.add_member(a.id, sp.platform, sp.name)
+                    memberships.append((a.id, sp.platform, sp.name))
+
+    # Non-exclusive interest/community groups can overlap, as before.
+    for sp in sc.spaces:
+        if sp.exclusive:
+            continue
         pool = [a for a in w.agents if a.kind != "account" and sp.platform in a.platforms
-                and a.id not in blocked
                 and sp.segments.get(a.segment, 0 if sp.segments else 1) > 0]
         if not pool:
             continue
@@ -151,8 +192,7 @@ def build(sc: Scenario) -> tuple[World, list[tuple[int, int]], list[tuple[int, s
         for i in sorted(pick):
             w.add_member(pool[i].id, sp.platform, sp.name)
             memberships.append((pool[i].id, sp.platform, sp.name))
-            if sp.exclusive:
-                blocked.add(pool[i].id)
+
     for a in w.agents:
         if a.kind != "account":
             continue

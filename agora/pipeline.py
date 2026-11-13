@@ -8,6 +8,7 @@ from typing import Callable
 
 from . import hardware, scenario as scenario_mod
 from .llm import LLMConfig, make_backend
+from .settings import safe_study_llm
 
 SCENARIO_FILE = "scenario.yaml"
 
@@ -42,7 +43,7 @@ def size_population(rounds: int, hours: float, llm_agents=None, crowd=None) -> t
         while (voices < prof.llm_agents and
                prof.estimate_hours(int((voices + 10) * rounds * 0.25)) <= hours):
             voices += 10
-    crowd = crowd if crowd is not None else min(prof.crowd_agents, 3000)
+    crowd = crowd if crowd is not None else 0      # every person is an AI agent unless a crowd is asked for
     return int(voices), int(crowd)
 
 
@@ -92,7 +93,8 @@ def create_project(project: str | Path, files: list[str | Path], goal: str,
         say("3/4 Drafting the simulation")
         days_guess = 7
         voices, crowd = size_population(days_guess * 6, opts.hours, opts.llm_agents, opts.crowd)
-        keep = {k: v for k, v in cfg.__dict__.items() if k in ("backend", "model", "url", "parallel")}
+        keep = safe_study_llm({k: v for k, v in cfg.__dict__.items()
+                               if k in ("backend", "model", "url", "parallel")})
 
         def dprog(m):
             if should_stop():

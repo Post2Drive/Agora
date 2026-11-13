@@ -22,7 +22,8 @@ from urllib.parse import parse_qs, urlparse
 
 import yaml
 
-from .. import __version__, hardware, scenario as scenario_mod
+from .. import __version__, hardware, scenario as scenario_mod, settings
+from ..llm.base import is_private_host
 from ..platforms import REGISTRY
 from .jobs import Job, Jobs
 
@@ -81,13 +82,95 @@ class App:
         p = self.profile
         return {"version": __version__, "workspace": str(self.ws),
                 "hardware": p.as_dict(),
-                "llm_default": {"backend": "ollama", "model": p.model, "url": "http://localhost:11434"},
+                "llm_default": self.llm_default(), "settings": settings.public(),
                 "platforms": [{"key": k, "label": s.label, "kind": s.kind} for k, s in REGISTRY.items()]}
+
+    # ---------------------------------------------------------------- where the model runs
+    def _profile_llm(self) -> dict:
+        """The user's own choice (Settings). Studies never decide where data goes."""
+        try:
+            return settings.llm_overrides()
+        except settings.SettingsError as e:
+            raise ApiError(400, str(e))
+
+    def _form_llm(self, o: dict) -> dict:
+        """Settings, plus whatever the form changed. A remote address can only come from Settings."""
+        base = self._profile_llm()
+        for k in ("backend", "model", "url"):
+            v = o.get(k)
+            if v and v != base.get(k):
+                if k == "url" and not is_private_host(str(v)):
+                    raise ApiError(400, "Remote addresses are chosen in Settings, not for a single study.")
+                base[k] = v
+        return base
+
+    def llm_default(self) -> dict:
+        try:
+            o = settings.llm_overrides()
+        except settings.SettingsError:
+            o = {}
+        return {"backend": o.get("backend", "ollama"), "model": o.get("model", self.profile.model),
+                "url": o.get("url", "http://localhost:11434")}
+
+    def save_settings(self, body: dict) -> dict:
+        def num(k, cast):
+            try:
+                return cast(body[k]) if body.get(k) not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+        try:
+            if body.get("use"):
+                settings.use(str(body["use"]))
+            else:
+                settings.save_profile(str(body.get("kind") or ""), model=body.get("model") or "",
+                                      url=body.get("url") or "", api_key=body.get("api_key") or "",
+                                      parallel=num("parallel", int), price_in=num("price_in", float),
+                                      price_out=num("price_out", float), cache=body.get("cache", True) is not False,
+                                      consent=body.get("consent") is True)
+        except settings.SettingsError as e:
+            raise ApiError(400, str(e))
+        return settings.public()
+
+    def plan(self, pid: str, q: dict) -> dict:
+        from .. import capacity
+        from ..llm import LLMConfig
+        d = self.project_dir(pid)
+        if not (d / "scenario.yaml").exists():
+            raise ApiError(400, "This project has no setup yet.")
+        sc = scenario_mod.load(d / "scenario.yaml")
+        base = {"backend": "ollama", "model": self.profile.model}
+        base.update(settings.safe_study_llm(sc.llm))
+        base.update(self._profile_llm())
+        cfg = LLMConfig.from_dict(base)
+        label = settings.active_name() or "default"
+        bench = capacity.load_bench(label, cfg.model)
+        obs = capacity.observed(d)
+
+        def num(k, cast):
+            try:
+                return cast(q[k]) if q.get(k) not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+        try:
+            price = settings.prices()
+        except settings.SettingsError:
+            price = None
+        p = capacity.plan(sc, bench, agents=num("agents", int), rounds=num("rounds", int),
+                          scenarios=num("scenarios", int) or 1, awake=num("awake", float),
+                          price=price, observed=obs)
+        p.update({"source_text": capacity.describe_source(p, bench, obs),
+                  "time_text": capacity.fmt_time(p["seconds"]), "model": cfg.model,
+                  "profile": label, "cloud": bool(cfg.allow_remote)})
+        return p
 
     def llm_status(self, q: dict) -> dict:
         from ..llm import LLMError, make_backend
-        cfg = {"backend": q.get("backend", "ollama"), "model": q.get("model") or self.profile.model,
-               "url": q.get("url") or "http://localhost:11434", "cache": False}
+        try:
+            cfg = self._form_llm({k: q.get(k) for k in ("backend", "model", "url")})
+        except ApiError as e:
+            return {"ok": False, "message": str(e)}
+        cfg.setdefault("model", self.profile.model)
+        cfg["cache"] = False
         try:
             ok, msg = make_backend(cfg).status()
         except LLMError as e:
@@ -235,18 +318,26 @@ class App:
                         f"SELECT parent, COUNT(*) FROM posts WHERE kind='reply' AND parent IN ({marks}) "
                         "GROUP BY parent", ids):
                     counts.setdefault(parent, {})["replies"] = n
+            agent_names = dict(db.execute("SELECT id, name FROM agents"))
+            handle_id = {h: i for i, h in db.execute("SELECT id, handle FROM agents")}
+            want = sorted({r[5] for r in rows if r[4] in ("quote", "reply") and r[5] is not None})
+            parents = {}
+            if want:
+                m2 = ",".join("?" * len(want))
+                parents = {i: (n, t) for i, n, t in db.execute(
+                    "SELECT p.id, a.name, p.text FROM posts p JOIN agents a ON a.id=p.author "
+                    f"WHERE p.id IN ({m2})", want)}
             for (pid_, rnd, plat, space, kind, parent, root, text, st, name, handle, akind, seg,
                  src_text, src_name, option) in rows:
                 c = counts.get(root if kind == "forward" else pid_, {})
                 to = quoted = None
                 if kind == "dm" and space.startswith("@dm:"):
                     x, _, y = space[4:].partition("-")
-                    other = int(y) if int(x) == db.execute("SELECT id FROM agents WHERE handle=?", (handle,)).fetchone()[0] else int(x)
-                    to = db.execute("SELECT name FROM agents WHERE id=?", (other,)).fetchone()[0]
+                    other = int(y) if int(x) == handle_id.get(handle) else int(x)
+                    to = agent_names.get(other)
                     space = ""
                 if kind in ("quote", "reply") and parent is not None:
-                    pr = db.execute("SELECT a.name, p.text FROM posts p JOIN agents a ON a.id=p.author WHERE p.id=?",
-                                    (parent,)).fetchone()
+                    pr = parents.get(parent)
                     quoted = {"author": pr[0], "text": pr[1][:200]} if pr else None
                 out["posts"].append({
                     "to": to, "quoted": quoted, "option": option or "",
@@ -321,8 +412,11 @@ class App:
         (d / "agora.json").write_text(json.dumps({"title": name}), encoding="utf-8")
         (d / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
         o = body.get("options") or {}
-        llm = {"backend": "mock"} if o.get("mock") else {
-            k: o.get(k) for k in ("backend", "model", "url") if o.get(k)}
+        try:
+            llm = {"backend": "mock"} if o.get("mock") else self._form_llm(o)
+        except ApiError:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
         opts = CreateOptions(fast=bool(o.get("fast")), personas=o.get("personas", True) is not False,
                              llm_agents=int(o["llm_agents"]) if o.get("llm_agents") else None,
                              crowd=int(o["crowd"]) if o.get("crowd") else None,
@@ -372,7 +466,7 @@ class App:
         d = self.project_dir(pid)
         if not (d / "scenario.yaml").exists():
             raise ApiError(400, "This project has no setup yet.")
-        override = {"backend": "mock"} if body.get("mock") else {}
+        override = {"backend": "mock"} if body.get("mock") else self._profile_llm()
         rounds = int(body["rounds"]) if body.get("rounds") else None
 
         def work(job: Job):
@@ -407,7 +501,10 @@ class App:
         if mock:
             return make_llm(d, {"backend": "mock"})[1]
         sc = scenario_mod.load(d / "scenario.yaml")
-        _, llm = make_llm(d, {k: v for k, v in sc.llm.items() if k in ("backend", "model", "url", "parallel")})
+        cfg = {k: v for k, v in settings.safe_study_llm(sc.llm).items()
+               if k in ("backend", "model", "url", "parallel")}
+        cfg.update(self._profile_llm())
+        _, llm = make_llm(d, cfg)
         ok, msg = llm.status()
         if not ok:
             raise ApiError(503, msg + " (Tick 'without a model' to try it with placeholder answers.)")
@@ -667,6 +764,11 @@ class Handler(BaseHTTPRequestHandler):
             return a.info()
         if method == "GET" and p == ["llm", "status"]:
             return a.llm_status(q)
+        if p == ["settings"]:
+            if method == "GET":
+                return settings.public()
+            if method == "POST":
+                return a.save_settings(self._body())
         if p == ["projects"]:
             if method == "GET":
                 return a.list_projects()
@@ -691,6 +793,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not f.exists():
                     raise ApiError(404, "No graph yet")
                 return (f.read_bytes(), "text/html; charset=utf-8")
+            if rest == ["plan"] and method == "GET":
+                return a.plan(pid, q)
             if rest == ["live"] and method == "GET":
                 return a.live(pid, q)
             if rest == ["run"] and method == "POST":
