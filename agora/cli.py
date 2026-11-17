@@ -486,6 +486,26 @@ def cmd_share(args) -> int:
     return 0
 
 
+def cmd_events(args) -> int:
+    from . import events as ev_mod
+    if args.action == "add":
+        r = ev_mod.add(Path(args.project), args.text, source=args.source or "manual", url=args.url or "",
+                       kind=args.kind, at_round=args.round, published=args.published or "")
+        print("Already in the queue." if r["duplicate"] else f"Queued ({r['id']}). Run `agora events sync {args.project}`.")
+        return 0
+    if args.action == "sync":
+        r = ev_mod.sync(Path(args.project))
+        for a in r["added"]:
+            print(f"added for round {a['round']}: {a['text']}")
+        for s in r["skipped"]:
+            print(f"skipped {s['id']}: {s['reason']}")
+        print(f"{len(r['added'])} added, {len(r['skipped'])} skipped.")
+        return 0
+    for e in ev_mod.read(Path(args.project)):
+        print(f"{e['id']}  {e.get('published','')[:10]}  {e.get('source','')}  {e['text'][:90]}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora", description="Agora: local multi-agent social simulation")
     ap.add_argument("--version", action="version", version=f"agora {__version__}")
@@ -604,6 +624,17 @@ def main(argv=None) -> int:
     p.add_argument("--round", type=int, help="0-based round (default: next)")
     p.add_argument("--shift", nargs="+", help='news effect, e.g. "Daniel Okafor=-0.15" or stance=-0.1')
     p.set_defaults(f=cmd_inject)
+
+    p = sub.add_parser("events", help="real-world events queued for a running study")
+    p.add_argument("action", choices=["add", "sync", "list"])
+    p.add_argument("project")
+    p.add_argument("text", nargs="?", default="")
+    p.add_argument("--source")
+    p.add_argument("--url")
+    p.add_argument("--kind", default="news", choices=["news"])
+    p.add_argument("--round", type=int, help="0-based round to apply it (default: next)")
+    p.add_argument("--published")
+    p.set_defaults(f=cmd_events)
 
     p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")
     p.add_argument("project")
