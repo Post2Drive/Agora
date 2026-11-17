@@ -15,9 +15,11 @@ from typing import Callable
 
 from .. import scenario as scenario_mod
 from ..llm import LLMBackend, LLMError
+from ..llm.base import StepFailed, ask_json
 from .store import GraphStore
 
 from ..platforms import REGISTRY, is_spaced, resolve
+from ..sim.llm_agent import stance_words
 
 PLATFORMS = tuple(REGISTRY)
 SPACED = tuple(k for k in REGISTRY if is_spaced(k))
@@ -66,15 +68,44 @@ def doc_excerpt(gs: GraphStore, limit: int = 2500) -> str:
     return text[:limit]
 
 
-def _ask(llm: LLMBackend | None, prompt: str, default: dict, seed: int, max_tokens=900) -> dict:
+def _ask(llm: LLMBackend | None, prompt: str, default: dict, seed: int, max_tokens=900, *,
+         step: str = "setup", check=None, tries: int = 3) -> dict:
+    """One short JSON question. With a model: bad replies are retried, then StepFailed (nothing made up).
+    Without a model (an explicit --fast build) the built-in default is used, by request."""
     if llm is None:
         return default
-    try:
-        d = llm.generate_json([{"role": "user", "content": prompt}], max_tokens=max_tokens,
-                              temperature=0.3, seed=seed, meta={"task": "json", "default": default})
-    except LLMError:
-        return default
-    return d if isinstance(d, dict) and d else default
+    return ask_json(llm, [{"role": "user", "content": prompt}], check or (lambda d: bool(d)),
+                    step=step, tries=tries, max_tokens=max_tokens, temperature=0.3, seed=seed,
+                    meta={"task": "json", "default": default})
+
+
+def _ok_frame(d: dict) -> bool:
+    return bool(str(d.get("topic") or "").strip()) and bool(str(d.get("question") or "").strip())
+
+
+def _ok_segments(d: dict) -> bool:
+    names = {slug(s["name"], 30) for s in (d.get("segments") or []) if isinstance(s, dict) and s.get("name")}
+    return len(names) >= 2
+
+
+def _ok_accounts(d: dict) -> bool:
+    return isinstance(d.get("accounts"), list)
+
+
+def _ok_places(d: dict) -> bool:
+    return any(isinstance(a, dict) and a.get("name") for a in (d.get("actions") or []))
+
+
+def _ok_events(d: dict) -> bool:
+    return any(isinstance(e, dict) and (e.get("text") or e.get("question")) for e in (d.get("events") or []))
+
+
+def _ok_profile(d: dict) -> bool:
+    return bool(str(d.get("persona") or "").strip())
+
+
+def _ok_persona(d: dict) -> bool:
+    return bool(str(d.get("name") or "").strip()) and len(str(d.get("persona") or "").strip()) >= 20
 
 
 HEAD = """You are setting up a social simulation that predicts how real people will react.
@@ -99,6 +130,8 @@ Reply with JSON only:
 
 SEGMENTS = HEAD + """
 Who reacts? Describe 3-6 groups of ordinary people affected by this (not organizations).
+Be realistic, not promotional: real audiences are mixed. Include people who are indifferent,
+and people who are sceptical or against it (distrust, price, side effects, privacy, habit).
 - share: fraction of the population (all add up to 1)
 - stance: their likely starting opinion on {topic}, from -1 (against) to 1 (for)
 - stubbornness: 0 (easily persuaded) to 1 (never changes)
@@ -191,10 +224,14 @@ def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str,
         default = {"bio": (desc or name)[:120], "persona": desc or f"{name}.", "stance": 0.0,
                    "influence": min(5, 1 + mentions / 2), "activity": 0.3,
                    "platforms": ["x", "facebook"] if not individual else ["x", "instagram"]}
-        d = _ask(llm, ENTITY_PROFILE.format(kind="person" if individual else "organisation or group",
-                                            goal=goal, topic=topic, name=name, etype=etype, context=context,
-                                            instruction=instr, platforms=PLATFORM_LIST, fields=fields),
-                 default, seed * 7 + nid, max_tokens=500)
+        try:
+            d = _ask(llm, ENTITY_PROFILE.format(kind="person" if individual else "organisation or group",
+                                                goal=goal, topic=topic, name=name, etype=etype, context=context,
+                                                instruction=instr, platforms=PLATFORM_LIST, fields=fields),
+                     default, seed * 7 + nid, max_tokens=500, step=f"profile of {name}", check=_ok_profile)
+        except StepFailed:
+            say(f"SKIPPED {name}: the model could not write a usable profile for it")
+            continue
         aid = slug(name, 24)
         n = 2
         while aid in taken:
@@ -221,11 +258,15 @@ def entity_agents(gs: GraphStore, llm: LLMBackend | None, goal: str, topic: str,
 PERSONA = """Create one realistic person for a social simulation.
 Situation: {context}
 Group: {segment} - {persona}
+People in a group differ. Decide honestly how THIS person feels about {topic} - keen,
+indifferent, doubtful or against - from their own life, budget, health beliefs, trust in
+brands and habits. Do not make everyone positive; real audiences are mixed.
 Typical jobs: {occupations}. Age range: {age0}-{age1}.
-Make them specific and different from: {others}.
+Make them specific and different from these people already created: {others}.
 Reply with JSON only:
 {{"name": "first name", "age": 30, "occupation": "...",
- "persona": "2-3 sentences: background, habits, what they care about, how they would feel about {topic}"}}"""
+ "persona": "2-3 sentences: background, habits, what they care about, and their honest view of {topic}",
+ "stance": <their view of {topic}: -1 strongly against, 0 indifferent, 1 strongly for>}}"""
 
 
 # ------------------------------------------------------------------ defaults
@@ -296,7 +337,7 @@ def clean_segments(raw: dict) -> list[dict]:
             "occupations": [str(o)[:40] for o in (s.get("occupations") or [])][:6],
             "age": [min(a0, a1), max(a0, a1)]})
     if len(segs) < 2:
-        return clean_segments({"segments": DEFAULT_SEGMENTS})
+        raise ValueError("fewer than two usable groups")
     total = sum(s["share"] for s in segs)
     for s in segs:
         s["share"] = round(s["share"] / total, 3)
@@ -409,7 +450,7 @@ def clean_events(raw: dict, accounts: list[dict], days: int, rph: int) -> list[d
 
 # ------------------------------------------------------------------ main entry
 def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int = 40,
-          crowd_agents: int = 2000, llm_cfg: dict | None = None, rich_personas: bool = True,
+          crowd_agents: int = 0, llm_cfg: dict | None = None, rich_personas: bool = True,
           entity_limit: int = 20,
           seed: int = 42, start: datetime | None = None,
           progress: Callable[[str], None] | None = None) -> dict:
@@ -421,7 +462,7 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
 
     say("framing the question")
     fr_def = default_frame(goal, gs)
-    fr = _ask(llm, FRAME.format(**ctx), fr_def, seed + 1)
+    fr = _ask(llm, FRAME.format(**ctx), fr_def, seed + 1, step="framing the question", check=_ok_frame)
     topic = str(fr.get("topic") or fr_def["topic"])[:120]
     days = int(_num(fr.get("days"), 3, 30, 7))
     ctx["topic"] = topic
@@ -434,18 +475,25 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
     ctx["options_note"] = (("\n- leaning: how much they like each option, -1..1, as "
                             + "{" + ", ".join(f'"{o}": 0.0' for o in options) + "}") if options else "")
     say("describing who reacts")
-    segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2))
+    segs = clean_segments(_ask(llm, SEGMENTS.format(**ctx), {"segments": DEFAULT_SEGMENTS}, seed + 2,
+                               step="who reacts (groups of people)", check=_ok_segments))
 
     say("picking the organisations and people who speak")
-    accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3))
+    accounts = clean_accounts(_ask(llm, ACCOUNTS.format(**ctx), default_accounts(gs), seed + 3,
+                                   step="who speaks and decides", check=_ok_accounts))
 
     if entity_limit:
         say("turning people and organisations in the documents into agents")
         accounts += entity_agents(gs, llm, goal, topic, accounts, limit=entity_limit, seed=seed, say=say)
 
     say("finding where people talk and what they might do")
-    spaces, acts = clean_places(_ask(llm, PLACES.format(**ctx), default_places(topic), seed + 4), segs)
+    spaces, acts = clean_places(_ask(llm, PLACES.format(**ctx), default_places(topic), seed + 4,
+                                     step="where people talk and what actions to predict",
+                                     check=_ok_places), segs)
     if not acts:
+        if llm is not None:
+            raise StepFailed("Step 'actions to predict' failed: the model named no usable action. "
+                             "Nothing was made up. Try a larger model and run again.")
         acts = default_places(topic)["actions"]
 
     say("building the timeline")
@@ -453,8 +501,12 @@ def draft(gs: GraphStore, llm: LLMBackend | None, goal: str, *, llm_agents: int 
     ctx["accounts"] = ", ".join(a["id"] for a in accounts) or "(none)"
     rph = int(24 / ROUND_HOURS)
     ev_def = {"events": [{"day": 0, "type": "news", "text": fr_def["context"][:200]}]}
-    events = clean_events(_ask(llm, EVENTS.format(**ctx), ev_def, seed + 5, 1200), accounts, days, rph)
+    events = clean_events(_ask(llm, EVENTS.format(**ctx), ev_def, seed + 5, 1200,
+                               step="timeline of events", check=_ok_events), accounts, days, rph)
     if not events:
+        if llm is not None:
+            raise StepFailed("Step 'timeline of events' failed: none of the model's events were usable. "
+                             "Nothing was made up. Try a larger model and run again.")
         events = clean_events(ev_def, accounts, days, rph)
 
     rounds = days * rph
@@ -540,27 +592,37 @@ def personas(llm: LLMBackend, sc: dict, seed: int, say) -> list[dict]:
     total, k = sum(counts), 0
     for seg, n in zip(sc["segments"], counts):
         made: list[str] = []
+        views: list[float] = []
         for i in range(n):
             k += 1
             if k == 1 or k % 10 == 0 or k == total:
                 say(f"writing persona {k}/{total}")
-            default = {"name": "", "age": 0, "occupation": "", "persona": ""}
+            # only the test (mock) backend reads this canned answer; real models ignore it
+            default = ({"name": f"Mock{k}", "age": sum(seg["age"]) // 2, "occupation": "",
+                        "persona": f"A made-up person from the {seg['name']} group, for tests only."}
+                       if getattr(getattr(llm, "cfg", None), "backend", "") == "mock" else {})
             d = _ask(llm, PERSONA.format(context=sc["context"][:600], segment=seg["name"],
                                          persona=seg["persona"],
                                          occupations=", ".join(seg.get("occupations") or ["any"]),
                                          age0=seg["age"][0], age1=seg["age"][1],
-                                         others="; ".join(made[-4:]) or "nobody yet",
+                                         others="; ".join(made[-6:]) or "nobody yet",
                                          topic=sc["topic"]),
-                     default, seed * 1000 + k, max_tokens=300)
+                     default, seed * 1000 + k, max_tokens=300, step=f"persona {k} of {total}",
+                     check=_ok_persona, tries=5)
             name = str(d.get("name") or "").strip().split()[0][:24] if d.get("name") else ""
             text = str(d.get("persona") or "").strip()
-            if not name or len(text) < 20:
-                continue                       # population builder fills the gap with a template
             age = int(_num(d.get("age"), seg["age"][0], seg["age"][1], sum(seg["age"]) // 2))
-            v = {"segment": seg["name"], "name": name, "age": age,
+            st = round(_num(d.get("stance"), -1, 1, seg["stance"]["mean"]), 2)
+            v = {"segment": seg["name"], "name": name, "age": age, "stance": st,
                  "occupation": str(d.get("occupation") or "")[:60], "persona": text[:600]}
             voices.append(v)
-            made.append(f"{name}, {age}, {v['occupation']}")
+            views.append(st)
+            made.append(f"{name}, {age}, {v['occupation']} ({stance_words(st)})")
+        if len(views) >= 3:
+            # the group's crowd starts where the AI judged its individual members to be
+            m = sum(views) / len(views)
+            sd = (sum((x - m) ** 2 for x in views) / len(views)) ** 0.5
+            seg["stance"] = {"mean": round(m, 2), "sd": round(max(sd, 0.15), 2)}
     return voices
 
 

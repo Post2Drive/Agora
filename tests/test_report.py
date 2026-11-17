@@ -72,8 +72,8 @@ def test_report_with_lying_model(ran):
     r = write_report(ran, Liar())
     for s in r["sections"]:
         assert "97.3" not in s["text"] and "p999999" not in s["text"]
-    html = (ran / "report" / "report.html").read_text()
-    md = (ran / "report" / "report.md").read_text()
+    html = (ran / "report" / "report.html").read_text(encoding="utf-8")
+    md = (ran / "report" / "report.md").read_text(encoding="utf-8")
     assert "<script" not in html and "Opinion by group" in html and "₹" in html
     assert md.startswith("# ") and "| Action |" in md
 
@@ -174,5 +174,5 @@ def test_report_agent_plans_and_uses_tools(ran):
     assert {"insight"} <= tools
     for s in r["sections"]:
         assert "63.7" not in s["text"]
-    html = (ran / "report" / "report.html").read_text()
+    html = (ran / "report" / "report.html").read_text(encoding="utf-8")
     assert "How this report was researched" in html and "Opinion by group" in html

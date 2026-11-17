@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..llm import LLMBackend, LLMError, parse_json
+from ..llm.base import StepFailed
 from .analysis import Analysis, label, money, nice, pct
 from .evidence import PostIndex
 
@@ -25,6 +26,7 @@ SYSTEM = ("You are a careful research analyst writing one section of a predictio
 
 _CITE = re.compile(r"\[p(\d+)\]")
 _NUM = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*(%|percent)?")
+RULES_NOTE = "(Written from the computed numbers only: the model could not write this section.) "
 
 
 # ------------------------------------------------------------------ facts per section
@@ -153,11 +155,25 @@ def _trust(a: dict) -> str:
     return "\n".join(lines)
 
 
+def _people(o: dict) -> str:
+    if not o["crowd"]:
+        return f"{o['llm_voices']} AI people, each deciding for themselves"
+    return f"{o['llm_voices']} AI voices who write, {o['crowd']} crowd agents who react"
+
+
+def _scale_note(o: dict) -> str:
+    if not o["crowd"]:
+        return (f"All {o['llm_voices']} people were simulated with the model, so the group is small: "
+                "read results as directions and check them against real data.")
+    return (f"Only {o['llm_voices']} people wrote with the model; the other {o['crowd']} reacted "
+            "using opinion-dynamics rules.")
+
+
 def _base(a: dict) -> str:
     o = a["overview"]
     return (f"Question: {a['scenario']['question']}\n"
             f"Simulated {o['days']} days ({o['rounds_done']} of {o['rounds_total']} rounds) with "
-            f"{o['llm_voices']} AI voices who write, {o['crowd']} crowd agents who react, and "
+            f"{_people(o)}, and "
             f"{o['accounts']} named accounts. {o['posts']} posts and messages, {o['shares']} shares/forwards.")
 
 
@@ -204,8 +220,7 @@ SECTIONS = [
      lambda a: "\n".join([_base(a),
                           "Opinion starting points, stubbornness and the action likelihoods in the setup are "
                           "assumptions unless calibrated with real data.",
-                          f"Only {a['overview']['llm_voices']} people wrote with the model; the other "
-                          f"{a['overview']['crowd']} reacted using opinion-dynamics rules.",
+                          _scale_note(a["overview"]),
                           f"Model calls made: {a['overview']['llm_calls']}.", _trust(a)]),
      ""),
     ("recommendations", "What to do next",
@@ -284,8 +299,8 @@ def _fallback(key: str, a: dict) -> str:
     if key == "range":
         return _range(a).replace("\n- ", " ").replace("\n", " ")
     if key == "risks":
-        return (f"Only {o['llm_voices']} people wrote with the model; {o['crowd']} reacted by rules. "
-                "Starting opinions and action likelihoods are assumptions until calibrated with real data.")
+        return (_scale_note(o) + " Starting opinions and action likelihoods are assumptions "
+                "until calibrated with real data.")
     return "Compare this run with a variation of the setup, and collect real results to calibrate it."
 
 
@@ -429,7 +444,8 @@ def _general_facts(a: dict) -> str:
     return "\n".join([_base(a), "Actions:", _funnel(a), "Opinion by group:", _segments(a), _themes(a), _econ(a)])
 
 
-def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int], max_steps: int = 3) -> str:
+def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int], max_steps: int = 3,
+                  shift: int = 0) -> str:
     key = sec["key"]
     facts = LIBRARY[key][2](a) if key in LIBRARY else _general_facts(a)
     query = LIBRARY[key][3] if key in LIBRARY else sec["title"]
@@ -444,10 +460,10 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
                    {"write": _fallback(key, a) if key in LIBRARY else ""})
         try:
             raw = llm.generate([{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
-                               max_tokens=600, temperature=0.3, seed=100 + i * 10 + step, json_mode=True,
+                               max_tokens=600, temperature=0.3, seed=100 + i * 10 + step + shift, json_mode=True,
                                meta={"task": "json", "default": default})
-        except LLMError:
-            break
+        except LLMError as e:
+            raise StepFailed(f"Step 'report section: {sec['title']}' could not run: {e}") from e
         d = parse_json(raw)
         if d.get("write") or not d.get("tool"):
             # a model that ignores the JSON format and just writes prose: take the prose
@@ -460,11 +476,11 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
         raw = llm.generate([{"role": "system", "content": SYSTEM}, {"role": "user", "content":
                             f"Section: {sec['title']}\nGoal: {sec['goal']}\n\nFacts:\n{facts}\n\n"
                             + "\n\n".join(notes) + "\n\nNow write the section."}],
-                           max_tokens=450, temperature=0.3, seed=100 + i,
+                           max_tokens=450, temperature=0.3, seed=100 + i + shift,
                            meta={"default_text": _fallback(key, a) if key in LIBRARY else ""})
         return check(raw, facts + "\n" + "\n".join(notes), known)
-    except LLMError:
-        return ""
+    except LLMError as e:
+        raise StepFailed(f"Step 'report section: {sec['title']}' could not run: {e}") from e
 
 
 def write_report(project: str | Path, llm: LLMBackend | None,
@@ -492,10 +508,22 @@ def write_report(project: str | Path, llm: LLMBackend | None,
         if should_stop():
             raise KeyboardInterrupt
         say(f"Researching and writing {i}/{len(outline)}: {sec['title']}")
-        text = write_section(llm, tb, a, sec, i, known) if llm is not None else ""
-        if len(text) < 40 and sec["key"] in LIBRARY:     # our own computed sentences
+        real = llm is not None and llm.cfg.backend != "mock"
+        text = ""
+        if llm is not None:
+            for attempt in range(3):            # a thin or empty section is written again, differently
+                text = write_section(llm, tb, a, sec, i, known, shift=attempt * 1000)
+                if len(text) >= 40:
+                    break
+        if len(text) < 40 and sec["key"] in LIBRARY:     # our own computed sentences, never invented
             text = _CITE.sub(lambda m: m.group(0) if int(m.group(1)) in known else "", _fallback(sec["key"], a))
+            if real:
+                say(f"WARNING: the model could not write '{sec['title']}' after 3 tries; "
+                    "it shows the computed numbers only")
+                text = RULES_NOTE + text
         if len(text) < 20:
+            if real:
+                say(f"SKIPPED section '{sec['title']}': the model could not write it")
             continue
         sections.append({"key": sec["key"], "title": sec["title"], "text": text})
         for e in log:

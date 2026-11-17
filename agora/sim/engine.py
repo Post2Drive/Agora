@@ -27,6 +27,7 @@ import numpy as np
 from .. import scenario as scenario_mod
 from ..llm import LLMConfig, LLMError, make_backend, parse_json
 from ..store import Store
+from ..settings import safe_study_llm
 from . import llm_agent, opinion, population
 from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
@@ -60,10 +61,13 @@ class RoundOutput:
 
 
 class Simulation:
+    bad_replies = 0       # model replies that stayed unusable after retries (that agent did nothing)
+    retried_replies = 0   # replies that needed a second try
+
     def __init__(self, project: str | Path, llm_override: dict | None = None):
         self.dir = Path(project)
         self.sc = scenario_mod.load(self.dir / SCENARIO_FILE)
-        cfg = dict(self.sc.llm)
+        cfg = safe_study_llm(self.sc.llm)
         cfg.update(llm_override or {})
         self.llm_cfg = LLMConfig.from_dict(cfg)
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
@@ -90,6 +94,7 @@ class Simulation:
     def prepare(self, force: bool = False) -> World:
         """Create the population on first run, or reload it to resume."""
         if not self.store.is_initialised():
+            (self.dir / "decisions.jsonl").unlink(missing_ok=True)
             w, follows, members = population.build(self.sc)
             # accounts that post into groups by schedule are members of those groups
             for ev in self.sc.events:
@@ -140,7 +145,7 @@ class Simulation:
                 choices=out.choices, intentions=out.intentions)
             if progress:
                 progress({"round": r, "of": self.sc.rounds, "posts": len(out.posts),
-                          "conversions": len(out.conversions), **stats})
+                          "conversions": len(out.conversions), "bad_replies": self.bad_replies, "retried": self.retried_replies, **stats})
         return end
 
     def now(self, r: int):
@@ -196,6 +201,7 @@ class Simulation:
                 d = decisions.get(a.id)
                 if d is None:
                     continue
+                prev = a.stance
                 if sc.choice and d.get("prefs"):
                     for o, v in d["prefs"].items():
                         if o in a.prefs:
@@ -206,6 +212,18 @@ class Simulation:
                 if d["thoughts"]:
                     out.thoughts.append((a.id, d["thoughts"]))
                 done = [self._apply(a, x, r, t0, opens[a.id], rng, out) for x in d["actions"]]
+                self._diag(r, a, stance_before=round(prev, 3), stance_reported=round(d["stance"], 3),
+                           stance_after=round(a.stance, 3), thoughts=d["thoughts"],
+                           actions=[x.get("type") for x in d["actions"]],
+                           # Preserve full action payloads and outcomes for later audit.
+                           # "actions" remains the legacy list of action types.
+                           action_results=[
+                               {"type": x.get("type"), "payload": x, "accepted": res is not None,
+                                "result": res}
+                               for x, res in zip(d["actions"], done)
+                           ],
+                           offered=[c.name for c in opens[a.id]],
+                           ignored=[x for x, res in zip(d["actions"], done) if res is None])
                 self._remember(a, feed, [x for x in done if x], d["thoughts"], now)
             else:
                 if sc.choice:
@@ -225,6 +243,16 @@ class Simulation:
             out.intentions = self._intentions()
         self._reflect_all(r, now)
         return out, len(active)
+
+    def _diag(self, r: int, a, **info) -> None:
+        """One line per decision, kept next to the study: what the person was offered, thought and did.
+        Evidence only; the simulation never reads it."""
+        try:
+            with open(self.dir / "decisions.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps({"round": r, "agent": a.handle, "segment": a.segment, **info},
+                                   default=str, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def _shock(self, shift: dict, rng) -> None:
         """A news shock moves everyone a little, more for the open-minded."""
@@ -320,6 +348,8 @@ class Simulation:
         if not voices:
             return {}
         sc, w = self.sc, self.world
+        bad: list[int] = []
+        retried: list[int] = []
 
         def one(a: Agent):
             facts = []
@@ -336,15 +366,27 @@ class Simulation:
             msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending,
                                                recalled)
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
-            try:
-                raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,
-                                        seed=_seed(sc.seed, r, a.id), meta=meta)
-            except LLMError as e:
-                return a.id, None, str(e)
-            return a.id, llm_agent.parse_decision(raw, a), None
+            d = None
+            for attempt in range(3):             # an unusable reply is asked again with a different seed
+                seed = _seed(sc.seed, r, a.id) if attempt == 0 else _seed(sc.seed, r, a.id, attempt)
+                if attempt:
+                    retried.append(a.id)
+                try:
+                    raw = self.llm.generate(msgs, max_tokens=350, temperature=0.8, json_mode=True,
+                                            seed=seed, meta=meta)
+                except LLMError as e:
+                    return a.id, None, str(e)
+                d = llm_agent.parse_decision(raw, a)
+                if d["ok"]:
+                    break
+            else:
+                bad.append(a.id)                 # still unusable: this person does nothing this round
+            return a.id, d, None
 
         with ThreadPoolExecutor(max_workers=max(1, self.llm_cfg.parallel)) as ex:
             results = list(ex.map(one, voices))
+        self.bad_replies += len(bad)
+        self.retried_replies += len(retried)
         errors = [e for _, _, e in results if e]
         if errors and len(errors) > len(voices) / 2:
             raise LLMError(f"Most model calls failed this round ({len(errors)}/{len(voices)}). "
@@ -450,6 +492,10 @@ class Simulation:
         w = self.world
         kind = str(x.get("type", "")).lower().strip()
         text = str(x.get("text", "") or "").strip()
+        open_names = {c.name.lower(): c.name for c in opens}
+        if kind in open_names:                     # the model wrote the action's own name as the type
+            x = {**x, "type": "convert", "name": open_names[kind]}
+            kind = "convert"
         if kind == "post":
             where = str(x.get("where") or x.get("platform") or "").strip()
             plat_part, sep, space_part = where.partition(":")
@@ -469,8 +515,8 @@ class Simulation:
             self._new_post(a, r, t0, plat, space, "post", text, a.stance, out=out)
             return f"you posted on {REGISTRY[plat].label}{' in ' + space if space else ''}: \"{text[:120]}\""
         if kind == "convert":
-            name = str(x.get("name", ""))
-            if any(c.name == name for c in opens):
+            name = self._match_conversion(str(x.get("name") or x.get("action") or ""), opens)
+            if name:
                 self._convert(a, name, out)
                 return f"you decided to {name.replace('_', ' ')}"
             return None
@@ -620,12 +666,28 @@ class Simulation:
         res = "; ".join(f"{w.agents[p.author].name}: \"{p.text[:80]}\"" for p in found)
         return f"you searched for \"{query[:60]}\" and found: {res}"
 
+    @staticmethod
+    def _match_conversion(raw: str, opens: list) -> str | None:
+        """Which open action did the person mean? The exact name, or one clear match (for example
+        "register" when only one register_* is open to them). Anything else is not an action."""
+        s = raw.lower().strip().replace(" ", "_").replace("-", "_")
+        for c in opens:
+            if c.name.lower() == s:
+                return c.name
+        hits = [c.name for c in opens if len(s) >= 4 and c.name.lower().startswith(s)]
+        return hits[0] if len(hits) == 1 else None
+
     def _convert(self, a: Agent, name: str, out: RoundOutput) -> None:
         if name not in a.converted:
             a.converted.add(name)
             out.conversions.append((a.id, name))
 
     def _open_conversions(self, a: Agent, r: int) -> list:
+        # Named accounts represent brands, committees and organisations, not
+        # individual households. They may post and vote, but must not register
+        # a household sample or make a household purchase.
+        if a.kind == "account":
+            return []
         res = []
         for c in self.sc.conversions:
             if not c.open_round <= r <= c.close_round or c.name in a.converted:

@@ -82,9 +82,14 @@ def test_dm_needs_a_shared_app(sim):
     seniors_only_wa = [a for a in w.agents if a.kind == "llm" and a.platforms == ["whatsapp", "facebook", "youtube"]]
     redditors = [a for a in w.agents if a.kind == "llm" and "reddit" in a.platforms and "facebook" not in a.platforms
                  and "whatsapp" not in a.platforms]
-    if not seniors_only_wa or not redditors:
-        pytest.skip("no suitable pair")
-    res, _ = _apply(sim, seniors_only_wa[0], {"type": "dm", "to": f"@{redditors[0].handle}", "text": "hi"})
+    if seniors_only_wa and redditors:
+        a, b = seniors_only_wa[0], redditors[0]
+    else:
+        # this small test world has no such pair, so make one: two people with no app in common
+        a, b = [x for x in w.agents if x.kind == "llm"][:2]
+        a.platforms = ["whatsapp"]
+        b.platforms = ["reddit"]
+    res, _ = _apply(sim, a, {"type": "dm", "to": f"@{b.handle}", "text": "hi"})
     assert res is None
 
 

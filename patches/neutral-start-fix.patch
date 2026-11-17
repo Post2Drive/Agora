@@ -1,0 +1,13 @@
+--- a/agora/sim/population.py
++++ b/agora/sim/population.py
+@@ -132,8 +132,8 @@
+                 prefs = {o: float(np.clip(rng.normal(base.get(o, 0.0), sd), -1, 1)) for o in opts}
+             a.prefs = {o: round(v, 4) for o, v in prefs.items()}
+             a.attrs["prefs0"] = dict(a.prefs)
+-            fav, val = a.favourite()
+-            a.stance = a.initial_stance = round(val, 4)
++            # Starting opinion stays the sampled segment (or account) stance. The option
++            # preferences decide which pack a person would pick, not how positive they are.
+ 
+     # 3. group / community memberships
+     memberships: list[tuple[int, str, str]] = []
