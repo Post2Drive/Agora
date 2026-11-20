@@ -2,7 +2,7 @@
 
 **Status:** design specification only. No implementation, database driver, network client, schema migration or study mutation is included in this document.
 
-**Baseline:** GitHub `main` at `33f44c18cfc1eebd24074694c6cfbe963200380a`.
+**Baseline:** GitHub `main` at `97e24cb93232c1d670c224431dfb822a59328d84`.
 
 ## 1. Purpose and boundaries
 
@@ -66,23 +66,30 @@ columns:
     type: string
     nullable: false
     primary_key: true
+    sensitivity: personal
+    purpose: account and order reconciliation
+    retention: delete 90 days after import validation
   - name: created_at
     type: timestamp
     nullable: true
     timezone: UTC
+    sensitivity: internal
   - name: amount
     type: decimal
     nullable: true
     precision: 12
     scale: 2
+    sensitivity: internal
   - name: active
     type: boolean
     nullable: false
     allowed_values: [true, false]
+    sensitivity: internal
   - name: segment
     type: enum
     nullable: true
     allowed_values: [standard, priority, unknown]
+    sensitivity: internal
 row_policy:
   malformed: fail
   unknown_columns: reject
@@ -101,7 +108,7 @@ This is an illustrative contract, not an implementation file. The parser must va
 - `timestamp` (ISO-8601; timezone required or an explicit schema timezone)
 - `enum` (string value constrained to declared allowed values)
 
-Every column declares `name`, `type`, `nullable` and `sensitivity`. The `sensitivity` value is required on every column and must be one of `public`, `internal`, `personal` or `sensitive`. There is no default; a missing value fails schema validation. Optional constraints include `primary_key`, `allowed_values`, `precision`, `scale`, `timezone`, `minimum`, `maximum` and a documented format. Unknown schema keys should be rejected unless a future schema version explicitly supports them.
+Every column declares `name`, `type`, `nullable` and `sensitivity`. The `sensitivity` value is required on every column and must be one of `public`, `internal`, `personal` or `sensitive`. There is no default; a missing value fails schema validation. Optional constraints include `primary_key`, `allowed_values`, `precision`, `scale`, `timezone`, `minimum`, `maximum` and a documented format. A `personal` column must also declare its processing `purpose` and `retention` policy in the column schema. Unknown schema keys should be rejected unless a future schema version explicitly supports them.
 
 ### Schema validation rules
 
