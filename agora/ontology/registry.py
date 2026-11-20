@@ -8,7 +8,6 @@ import json
 import re
 from typing import Any, Mapping
 
-
 class OntologyError(ValueError):
     """Raised when an ontology pack violates the registry contract."""
 
@@ -344,7 +343,7 @@ def _parse_object(value: Any, index: int) -> ObjectType:
     allowed = {"type_id", "version", "name", "description", "properties", "identity_strategy", "source_binding"}
     _check_keys(row, allowed, allowed - {"source_binding"}, context)
     strategy = _required_text(row["identity_strategy"], f"{context}.identity_strategy")
-    if strategy not in {"primary_key", "record_key", "assigned"}:
+    if strategy not in {"record_key", "assigned"}:
         raise OntologyError(f"{context}.identity_strategy is unsupported")
     return ObjectType(
         _namespaced_id(row["type_id"], f"{context}.type_id"), _version(row["version"], f"{context}.version"),
@@ -358,7 +357,7 @@ def _parse_property(value: Any, index: int) -> PropertyType:
     context = f"property_types[{index}]"
     row = _mapping(value, context)
     allowed = {"property_id", "version", "name", "data_type", "required", "nullable", "sensitivity",
-               "source_registry_id", "locator", "allowed_values", "units", "precision", "scale", "timezone"}
+               "source_binding", "allowed_values", "units", "precision", "scale", "timezone"}
     required = {"property_id", "version", "name", "data_type", "required", "nullable", "sensitivity"}
     _check_keys(row, allowed, required, context)
     if not isinstance(row["required"], bool) or not isinstance(row["nullable"], bool):
@@ -369,13 +368,7 @@ def _parse_property(value: Any, index: int) -> PropertyType:
     sensitivity = _required_text(row["sensitivity"], f"{context}.sensitivity")
     if sensitivity not in SENSITIVITY_LEVELS:
         raise OntologyError(f"{context}.sensitivity must be one of public, internal, personal or sensitive")
-    source_keys = {"source_registry_id", "locator"} & set(row)
-    if source_keys and source_keys != {"source_registry_id", "locator"}:
-        raise OntologyError(f"{context} source binding requires both source_registry_id and locator")
-    source = None
-    if source_keys:
-        source = SourceBinding(_required_text(row["source_registry_id"], f"{context}.source_registry_id"),
-                               _required_text(row["locator"], f"{context}.locator"))
+    source = _parse_source_binding(row.get("source_binding"), context)
     precision = row.get("precision")
     scale = row.get("scale")
     if precision is not None and (type(precision) is not int or precision <= 0):
@@ -431,13 +424,3 @@ def _parse_action(value: Any, index: int) -> ActionType:
         _string_tuple(row["preconditions"], f"{context}.preconditions"), _string_tuple(row["effects"], f"{context}.effects"),
         _string_tuple(row["permissions"], f"{context}.permissions"), True, "simulation_only", "prohibited",
     )
-
-
-def stable_record_key(dataset_identity: str, primary_key_value: Any) -> str:
-    """Return a stable, versioned key for a primary-key-backed domain record."""
-    dataset = _required_text(dataset_identity, "dataset_identity")
-    if primary_key_value is None or isinstance(primary_key_value, (dict, list, set)):
-        raise OntologyError("primary_key_value must be a non-null scalar")
-    payload = _canonical_json({"dataset_identity": dataset, "primary_key": primary_key_value})
-    digest = sha256(("agora-record-v1\0" + payload).encode("utf-8")).hexdigest()
-    return f"agora-record-v1:{digest}"

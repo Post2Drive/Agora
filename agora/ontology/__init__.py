@@ -1,5 +1,6 @@
 """Versioned domain ontology contracts."""
 
+from ..identity import stable_record_key
 from .loader import load_domain_pack
 from .registry import (
     SENSITIVITY_LEVELS,
@@ -13,7 +14,6 @@ from .registry import (
     RegistryChange,
     SourceBinding,
     parse_domain_pack,
-    stable_record_key,
 )
 
 __all__ = [

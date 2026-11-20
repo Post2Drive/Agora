@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from agora.identity import stable_record_key as canonical_stable_record_key
 from agora.ontology import (
     OntologyError,
     OntologyRegistry,
@@ -25,7 +26,7 @@ def make_pack(domain="civic", *, version="1.0.0"):
                 "name": "Participant",
                 "description": "A domain participant.",
                 "properties": [name_property],
-                "identity_strategy": "primary_key",
+                "identity_strategy": "record_key",
                 "source_binding": {
                     "source_registry_id": f"source:{domain}:participants",
                     "locator": "table=participants",
@@ -49,8 +50,10 @@ def make_pack(domain="civic", *, version="1.0.0"):
                 "required": True,
                 "nullable": False,
                 "sensitivity": "personal",
-                "source_registry_id": f"source:{domain}:participants",
-                "locator": "column=name",
+                "source_binding": {
+                    "source_registry_id": f"source:{domain}:participants",
+                    "locator": "column=name",
+                },
             }
         ],
         "link_types": [
@@ -91,6 +94,7 @@ def test_commerce_and_civic_packs_validate_against_the_same_contract():
     assert civic.pack_id == "civic-pack"
     assert commerce.fingerprint != civic.fingerprint
     assert commerce.object_types[0].source_binding.source_registry_id == "source:commerce:participants"
+    assert commerce.property_types[0].source_binding.source_registry_id == "source:commerce:participants"
     assert civic.property_types[0].sensitivity == "personal"
 
 
@@ -158,6 +162,23 @@ def test_source_binding_requires_both_registry_id_and_locator():
         parse_domain_pack(data)
 
 
+def test_property_source_binding_uses_the_same_nested_contract_as_objects():
+    data = make_pack()
+    binding = data["property_types"][0].pop("source_binding")
+    data["property_types"][0].update(binding)
+
+    with pytest.raises(OntologyError, match="unknown keys"):
+        parse_domain_pack(data)
+
+
+def test_primary_key_is_not_an_identity_strategy_alias():
+    data = make_pack()
+    data["object_types"][0]["identity_strategy"] = "primary_key"
+
+    with pytest.raises(OntologyError, match="identity_strategy"):
+        parse_domain_pack(data)
+
+
 def test_action_and_link_references_must_resolve():
     data = make_pack()
     data["link_types"][0]["target_type_id"] = "missing:Type"
@@ -195,8 +216,18 @@ def test_stable_record_key_is_versioned_and_scoped_to_dataset_identity():
     assert first.startswith("agora-record-v1:")
     assert first != stable_record_key("dataset:patients", "P-0043")
     assert first != stable_record_key("dataset:participants", "P-0042")
-    with pytest.raises(OntologyError):
+    with pytest.raises(ValueError):
         stable_record_key("dataset:patients", None)
+
+
+def test_ontology_reexports_the_shared_stable_record_key_function():
+    assert stable_record_key is canonical_stable_record_key
+
+
+@pytest.mark.parametrize("value", [{"id": "P-0042"}, ["P-0042"], float("nan")])
+def test_stable_record_key_rejects_noncanonical_primary_key_values(value):
+    with pytest.raises(ValueError):
+        stable_record_key("dataset:patients", value)
 
 
 def test_load_domain_pack_supports_yaml_and_json(tmp_path):
