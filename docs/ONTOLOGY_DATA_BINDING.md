@@ -87,10 +87,10 @@ The provenance fields are copied from the explicit manifest and row data, never 
 The implementation PR will provide:
 
 - `load_binding(path_or_payload)` — parse and validate the binding shape and fingerprint;
-- `validate_binding(pack, snapshot_manifest)` — validate object/property existence, schema identity, mappings, types, sensitivity, purpose, retention, and identity strategy;
-- `materialize_instances(binding, project, import_id)` — call `agora.tabular.read_snapshot` for the named import and return read-only instances with provenance.
+- `validate_binding(pack, snapshot_manifest, binding)` — validate object/property existence, schema identity, mappings, stored-schema types, sensitivity, purpose, retention, and identity strategy;
+- `materialize_instances(binding, pack, project, import_id)` — load the stored manifest, call `validate_binding` itself, then call `agora.tabular.read_snapshot` for the named import and return read-only instances with provenance. Materialization must fail closed when the binding or pack is unknown or invalid; callers may not bypass validation.
 
-`materialize_instances` must reject unknown bindings, missing imports, schema drift, sealed-holdout misuse, missing primary keys, and `latest` selectors. It must not call a real driver, open a network connection, write to a snapshot, mutate a project database, or invoke `agora/sim/**`.
+`materialize_instances` must reject unknown bindings, missing imports, missing stored type information, schema drift, sealed-holdout misuse, missing primary keys, and `latest` selectors. Type information comes from the stored schema associated with the explicit import, never from a caller-edited manifest. Each instance carries effective per-property sensitivity (the maximum of source-column and ontology-property sensitivity), even when no binding override is supplied. It must not call a real driver, open a network connection, write to a snapshot, mutate a project database, or invoke `agora/sim/**`.
 
 ## 8. Acceptance tests and mutation proofs
 
