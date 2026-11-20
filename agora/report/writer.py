@@ -28,6 +28,9 @@ _CITE = re.compile(r"\[p(\d+)\]")
 _NUM = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)\s*(%|percent)?")
 RULES_NOTE = "(Written from the computed numbers only: the model could not write this section.) "
 
+# Deliberately false until the owner separately approves enabling validated output.
+VALIDATED_PREDICTION_ENABLED = False
+
 
 # ------------------------------------------------------------------ facts per section
 def _segments(a: dict) -> str:
@@ -485,8 +488,28 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
 
 def write_report(project: str | Path, llm: LLMBackend | None,
                  say: Callable[[str], None] = lambda m: None,
-                 should_stop: Callable[[], bool] = lambda: False) -> dict:
+                 should_stop: Callable[[], bool] = lambda: False,
+                 mode: str = 'exploratory', registry_id: str | None = None,
+                 claims: list[str] | None = None) -> dict:
+    if mode not in {'exploratory', 'validated_prediction'}:
+        raise ValueError('Unknown report mode')
     project = Path(project)
+    approval = None
+    if mode == 'validated_prediction':
+        if not registry_id:
+            raise PermissionError('Validated Prediction requires --registry-id')
+        from ..validation.approval import report_scope
+        from ..validation.registry import require_approval
+        scope = report_scope(project, llm)
+        approval = require_approval(
+            project / 'validation' / 'registry.jsonl', registry_id,
+            domain=scope['domain'], use_case=scope['use_case'], target=scope['target'],
+            population=scope['population'], geography=scope['geography'], horizon=scope['horizon'],
+            model_version=scope['model_version'], config_hash=scope['config_hash'],
+            requested_claims=claims or [],
+        )
+        if not VALIDATED_PREDICTION_ENABLED:
+            raise PermissionError('Approval checks passed, but Validated Prediction output remains disabled pending separate owner approval. Use exploratory mode.')
     an = Analysis(project)
     try:
         a = an.everything()
@@ -531,7 +554,16 @@ def write_report(project: str | Path, llm: LLMBackend | None,
                 say(f"  used {e['tool']}: {str(e['input'].get('query') or e['input'].get('name') or e['input'].get('question') or '')[:60]}")
                 e["said"] = True
     cited = sorted({int(x) for s in sections for x in _CITE.findall(s["text"])})
-    report = {"title": a["scenario"]["question"], "generated": time.strftime("%Y-%m-%d %H:%M"),
+    qualification = ({"status": "passed", "registry_id": approval["registry_id"],
+                      "reviewer": approval["reviewer"], "reviewed_at": approval["reviewed_at"],
+                      "expires_at": approval["expires_at"], "approved_claims": approval["approved_claims"],
+                      "review_hash": approval["review_hash"],
+                      "scope": {key: approval[key] for key in ("domain", "use_case", "target", "population", "geography", "horizon")},
+                      "model_version": approval["model_version"], "config_hash": approval["config_hash"]}
+                     if approval else {"status": "not_assessed", "registry_id": None})
+    report = {"mode": mode, "mode_label": ("VALIDATED PREDICTION" if approval else "EXPLORATORY SIMULATION"),
+              "qualification": qualification, "claims": list(claims or []),
+              "title": a["scenario"]["question"], "generated": time.strftime("%Y-%m-%d %H:%M"),
               "model": f"{llm.cfg.backend}:{llm.cfg.model}" if llm is not None else "none",
               "sections": sections, "analysis": a, "outline": outline,
               "research": [{k: v for k, v in e.items() if k != "said"} for e in log],

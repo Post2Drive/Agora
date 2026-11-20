@@ -1,1 +1,1 @@
-"""Validation: prediction log, historical holdouts, and the knowledge store."""
+"""Validation primitives: canonical holdouts, prediction logs, and knowledge store."""

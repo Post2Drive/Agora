@@ -235,7 +235,12 @@ def _project_llm(args, proj: Path):
 def cmd_report(args) -> int:
     from .report.writer import write_report
     proj = Path(args.project)
-    write_report(proj, _project_llm(args, proj), say=lambda m: print(m, flush=True))
+    try:
+        write_report(proj, _project_llm(args, proj), say=lambda m: print(m, flush=True),
+                     mode=args.mode, registry_id=args.registry_id, claims=args.claim)
+    except (PermissionError, ValueError) as exc:
+        print(f"Report blocked: {exc}", file=sys.stderr)
+        return 2
     print(f"Open {proj / 'report' / 'report.html'}")
     return 0
 
@@ -546,6 +551,35 @@ def cmd_events(args) -> int:
     return 0
 
 
+def cmd_validation_add(args) -> int:
+    from .validation.registry import add_entry
+    from .validation.json_io import strict_json_load
+    project = Path(args.project)
+    entry = strict_json_load(args.entry_json)
+    row = add_entry(project / "validation" / "registry.jsonl", entry)
+    print(f"Registered validation evidence: {row['registry_id']} (not_assessed)")
+    return 0
+
+
+def cmd_validation_review(args) -> int:
+    from .validation.registry import transition_entry
+    project = Path(args.project)
+    event = transition_entry(
+        project / "validation" / "registry.jsonl", args.registry_id, args.to_status,
+        reviewer=args.reviewer, rationale=args.rationale, evidence_refs=args.evidence_ref,
+        approved_claims=args.approved_claim, expires_at=args.expires_at,
+    )
+    print(f"Recorded review: {event['from_status']} -> {event['to_status']} ({event['entry_hash']})")
+    return 0
+
+
+def cmd_validation_list(args) -> int:
+    from .validation.registry import list_entries
+    rows = list_entries(Path(args.project) / "validation" / "registry.jsonl")
+    print(json.dumps(rows, indent=2, ensure_ascii=False, default=str))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora", description="Agora: local multi-agent social simulation")
     ap.add_argument("--version", action="version", version=f"agora {__version__}")
@@ -633,6 +667,9 @@ def main(argv=None) -> int:
     p = sub.add_parser("report", help="write the prediction report (report/report.html)")
     p.add_argument("project")
     llm_flags(p)
+    p.add_argument("--mode", choices=["exploratory", "validated_prediction"], default="exploratory")
+    p.add_argument("--registry-id", help="validation registry entry ID")
+    p.add_argument("--claim", action="append", default=[], help="exact claim(s) requested for a validated report; repeat as needed")
     p.set_defaults(f=cmd_report)
 
     p = sub.add_parser("ask", help="ask a question about the results")
@@ -737,6 +774,26 @@ def main(argv=None) -> int:
     p.add_argument("--report-only", action="store_true", help="only the report (html and markdown)")
     p.add_argument("--with-sources", action="store_true", help="also include your documents' text")
     p.set_defaults(f=cmd_share)
+
+    p = sub.add_parser("validation", help="manage append-only validation evidence and review decisions")
+    vsub = p.add_subparsers(dest="validation_command", required=True)
+    vp = vsub.add_parser("add", help="register immutable validation evidence from a JSON file")
+    vp.add_argument("project")
+    vp.add_argument("entry_json", help="path to a JSON validation-evidence object")
+    vp.set_defaults(f=cmd_validation_add)
+    vp = vsub.add_parser("review", help="append a reviewer decision/status transition")
+    vp.add_argument("project")
+    vp.add_argument("registry_id")
+    vp.add_argument("--to-status", required=True, choices=["protocol_drafted", "data_reviewed", "evaluation_pending", "passed", "failed", "inconclusive"])
+    vp.add_argument("--reviewer", required=True)
+    vp.add_argument("--rationale", required=True)
+    vp.add_argument("--evidence-ref", action="append", required=True, help="evidence reference; repeat as needed")
+    vp.add_argument("--approved-claim", action="append", default=[], help="claim approved only when status is passed; repeat as needed")
+    vp.add_argument("--expires-at", help="future ISO-8601 timestamp with timezone; required for passed")
+    vp.set_defaults(f=cmd_validation_review)
+    vp = vsub.add_parser("list", help="show validation entries and their latest status")
+    vp.add_argument("project")
+    vp.set_defaults(f=cmd_validation_list)
 
     args = ap.parse_args(argv)
     try:

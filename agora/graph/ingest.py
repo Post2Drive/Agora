@@ -200,11 +200,26 @@ def ingest(store, project: Path, files: list[str | Path], *, size: int = 1500,
         if f.resolve() != dst.resolve():
             shutil.copy2(f, dst)
         parts = chunk(text, size, overlap)
-        with store.db:
-            store.db.execute("INSERT INTO documents VALUES (?,?,?,?)",
-                             (fid, dst.name, len(text), len(parts)))
-            store.db.executemany(
-                "INSERT INTO chunks (doc, idx, text, status) VALUES (?,?,?,'new')",
-                [(fid, i, c) for i, c in enumerate(parts)])
+        from ..governance import begin_operation, finish_operation, record_source, audit_event
+        source_bytes = f.read_bytes()
+        operation = begin_operation(project, "document_ingest", source_ids=[fid],
+                                    details={"filename": dst.name, "chunks": len(parts)})
+        try:
+            record_source(project, source_id=fid, content=source_bytes, data_role="context",
+                          parser_version="agora-ingest-v1")
+            with store.db:
+                store.db.execute("INSERT INTO documents VALUES (?,?,?,?)",
+                                 (fid, dst.name, len(text), len(parts)))
+                store.db.executemany(
+                    "INSERT INTO chunks (doc, idx, text, status) VALUES (?,?,?,'new')",
+                    [(fid, i, c) for i, c in enumerate(parts)])
+            audit_event(project, "document_ingested", source_id=fid, filename=dst.name,
+                        chunks=len(parts), data_role="context")
+        except Exception as exc:
+            finish_operation(project, operation["operation_id"], "failed",
+                             error=f"{type(exc).__name__}: {exc}")
+            raise
+        finish_operation(project, operation["operation_id"], "committed",
+                         details={"document_id": fid, "chunks": len(parts)})
         added.append({"file": f.name, "id": fid, "chunks": len(parts), "skipped": False})
     return added
