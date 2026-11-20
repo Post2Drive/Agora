@@ -35,6 +35,9 @@ def test_select_returns_typed_projected_rows_and_provenance(connector):
     assert [r["values"]["id"] for r in page.rows] == [1, 2]
     assert page.rows[0]["source_locator"]["connector_id"] == "test-source"
     assert page.rows[0]["source_locator"]["query_fingerprint"] == page.query_fingerprint
+    assert page.source_registry_id.startswith("mock-source-")
+    assert len(page.source_sha256) == 64
+    assert page.rows[0]["source_locator"]["source_sha256"] == page.source_sha256
 
 
 def test_pagination_is_deterministic_without_duplicates(connector):
@@ -130,3 +133,16 @@ def test_read_only_acceptance_detects_a_removed_guard_mutation(monkeypatch):
             pass
         else:
             raise AssertionError("Mutated guard accepted a write statement.")
+
+
+def test_record_identity_is_scoped_to_table_schema(connector):
+    original = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
+    narrower = MockReadOnlyConnector(
+        connector_id="test-source",
+        tables={"customers": [{"id": 1, "name": "A"}]},
+        allowlist={"customers": ("id", "name")},
+        primary_keys={"customers": "id"},
+        snapshot_id="snapshot-001",
+    )
+    changed = narrower.select(QueryPlan("customers", ("id",), filters={"id": 1}))
+    assert original.rows[0]["record_key"] != changed.rows[0]["record_key"]
