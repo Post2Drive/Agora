@@ -376,10 +376,17 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                     (dataset_id, row["record_key"], row["row_id"], now),
                 )
         conn.commit()
-        audit_event(project, "tabular_import_committed", import_id=import_id, source_registry_id=source_id,
-                    file_sha256=file_hash, accepted_records=len(rows), data_role=data_role)
-        finish_operation(project, operation["operation_id"], "committed",
-                         details={"import_id": import_id, "accepted_records": len(rows)})
+        # The SQLite snapshot is already committed. If the external JSONL audit
+        # append fails, leave the operation pending for manual reconciliation;
+        # never rewrite a committed snapshot as a failed import.
+        try:
+            audit_event(project, "tabular_import_committed", import_id=import_id,
+                        source_registry_id=source_id, file_sha256=file_hash,
+                        accepted_records=len(rows), data_role=data_role)
+            finish_operation(project, operation["operation_id"], "committed",
+                             details={"import_id": import_id, "accepted_records": len(rows)})
+        except Exception:
+            pass
         return {"import_id": import_id, "manifest": manifest, "idempotent": False}
     except Exception as exc:
         if conn.in_transaction:
