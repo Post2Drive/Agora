@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import agora.governance as governance
+from agora.ontology import stable_record_key as ontology_stable_record_key
 from agora.tabular import (
     TabularIngestError, ingest_csv, read_snapshot, validate_downstream_policy,
 )
@@ -362,3 +364,44 @@ def test_decimal_precision_and_scale_fail_closed(tmp_path):
     with pytest.raises(TabularIngestError) as exc:
         ingest_csv(tmp_path / "project", source, s, data_role="context")
     assert exc.value.code == "VALUE_INVALID"
+
+
+def test_csv_record_key_uses_shared_ontology_identity(tmp_path):
+    source = write_csv(tmp_path / "shared-key.csv", [["same-id", "21", "12.30", "true"]])
+    result = ingest_csv(tmp_path / "project", source, schema(), data_role="context")
+    row = read_snapshot(tmp_path / "project", result["import_id"])[0]
+    assert row["record_key"] == ontology_stable_record_key("people", "same-id")
+    assert result["manifest"]["record_key_algorithm"] == "agora-record-v1"
+
+
+def test_audit_failure_after_commit_preserves_import_and_pending_operation(tmp_path, monkeypatch):
+    source = write_csv(tmp_path / "audit-success.csv", [["a", "21", "12.30", "true"]])
+    project = tmp_path / "project"
+
+    def fail_audit(*args, **kwargs):
+        raise OSError("synthetic audit sink failure")
+
+    monkeypatch.setattr(governance, "audit_event", fail_audit)
+    result = ingest_csv(project, source, schema(), data_role="context")
+    assert len(read_snapshot(project, result["import_id"])) == 1
+    states = governance.operation_states(project)
+    assert len(states) == 1
+    assert next(iter(states.values()))["status"] == "pending"
+
+
+def test_audit_failure_during_failed_import_preserves_original_error_and_pending_operation(
+    tmp_path, monkeypatch
+):
+    source = write_csv(tmp_path / "audit-failure.csv", [["a", "not-an-integer", "12.30", "true"]])
+    project = tmp_path / "project"
+
+    def fail_audit(*args, **kwargs):
+        raise OSError("synthetic audit sink failure")
+
+    monkeypatch.setattr(governance, "audit_event", fail_audit)
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(project, source, schema(), data_role="context")
+    assert exc.value.code == "VALUE_INVALID"
+    states = governance.operation_states(project)
+    assert len(states) == 1
+    assert next(iter(states.values()))["status"] == "pending"
