@@ -158,10 +158,14 @@ class MockReadOnlyConnector:
         projected = []
         for row in page_rows:
             key_value = row[key]
+            table_schema_fingerprint = hashlib.sha256(
+                _canonical({"table": plan.table, "columns": list(self._allowlist[plan.table])}).encode("utf-8")
+            ).hexdigest()
             record_id = hashlib.sha256(
                 b"agora-db-record-v1\0" + _canonical({
                     "connector_id": self.connector_id, "snapshot_id": self.snapshot_id,
-                    "table": plan.table, "primary_key": key_value,
+                    "table": plan.table, "schema_fingerprint": table_schema_fingerprint,
+                    "primary_key": key_value,
                 }).encode("utf-8")
             ).hexdigest()
             projected.append({
