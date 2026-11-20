@@ -139,6 +139,30 @@ def validate_downstream_policy(schema: dict[str, Any]) -> None:
             )
 
 
+def _bound_value(value: Any, kind: str) -> Any:
+    """Convert a declared range bound to the parsed value's native type."""
+    if kind == "decimal":
+        return Decimal(str(value))
+    if kind == "integer":
+        return int(value)
+    if kind == "date":
+        return date.fromisoformat(str(value))
+    if kind == "timestamp":
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError
+        return parsed.astimezone(timezone.utc)
+    if kind == "boolean":
+        if isinstance(value, bool):
+            return value
+        if str(value).lower() in {"true", "1"}:
+            return True
+        if str(value).lower() in {"false", "0"}:
+            return False
+        raise ValueError
+    return str(value) if kind in {"string", "enum"} else value
+
+
 def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
     name, kind = column["name"], column["type"]
     if value == "" and column.get("empty_as_null", False):
@@ -181,9 +205,14 @@ def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
                 raise ValueError
             result = value
         if result is not None:
-            if "minimum" in column and result < column["minimum"]:
+            comparable = Decimal(result) if kind == "decimal" else result
+            if kind == "date":
+                comparable = date.fromisoformat(result)
+            elif kind == "timestamp":
+                comparable = datetime.fromisoformat(result)
+            if "minimum" in column and comparable < _bound_value(column["minimum"], kind):
                 raise ValueError
-            if "maximum" in column and result > column["maximum"]:
+            if "maximum" in column and comparable > _bound_value(column["maximum"], kind):
                 raise ValueError
         return result
     except (ValueError, TypeError, InvalidOperation, OverflowError, ZoneInfoNotFoundError):
@@ -209,6 +238,12 @@ def _init_db(conn: sqlite3.Connection) -> None:
       dataset_id TEXT PRIMARY KEY, schema_id TEXT NOT NULL,
       schema_version TEXT NOT NULL, schema_fingerprint TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS dataset_schemas (
+      dataset_id TEXT NOT NULL, schema_id TEXT NOT NULL,
+      schema_version TEXT NOT NULL, schema_fingerprint TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(dataset_id, schema_id, schema_version)
     );
     CREATE TABLE IF NOT EXISTS imports (
       import_id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL,
@@ -275,6 +310,10 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         "schema_version": schema_version, "schema_fingerprint": schema_fp,
         "column_sensitivity": {c["name"]: c["sensitivity"] for c in columns},
         "purpose": schema.get("purpose"), "retention_policy": schema.get("retention_policy"),
+        "column_policies": {
+            c["name"]: {"purpose": c.get("purpose"), "retention": c.get("retention")}
+            for c in columns if c["sensitivity"] == "personal"
+        },
         "parser_version": PARSER_VERSION, "application_version": "0.3.0",
         "encoding": schema.get("encoding", "utf-8-sig"),
         "delimiter": schema.get("delimiter", ","), "quotechar": schema.get("quotechar", '"'),
@@ -295,11 +334,14 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
     rows: list[dict[str, Any]] = []
     try:
         _init_db(conn)
+        # Serialise identical imports before the idempotency lookup.
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute(
             "SELECT import_id, manifest_json FROM imports WHERE idempotency_key=? AND status='committed'",
             (idempotency_key,),
         ).fetchone()
         if existing:
+            conn.commit()
             finish_operation(project, operation["operation_id"], "committed",
                              details={"import_id": existing["import_id"], "idempotent_noop": True})
             return {"import_id": existing["import_id"],
@@ -373,6 +415,20 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             raise TabularIngestError("CSV_PARSE_FAILED", "CSV could not be decoded or parsed.") from None
 
         conn.execute("BEGIN IMMEDIATE")
+        prior_schema = conn.execute(
+            "SELECT schema_fingerprint FROM dataset_schemas "
+            "WHERE dataset_id=? AND schema_id=? AND schema_version=?",
+            (dataset_id, schema_id, schema_version),
+        ).fetchone()
+        if prior_schema and prior_schema["schema_fingerprint"] != schema_fp:
+            raise TabularIngestError("SCHEMA_DRIFT",
+                                     "Schema fingerprint changed without a schema-version change.")
+        if not prior_schema:
+            conn.execute(
+                "INSERT INTO dataset_schemas(dataset_id,schema_id,schema_version,schema_fingerprint,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (dataset_id, schema_id, schema_version, schema_fp, now),
+            )
         conn.execute(
             "INSERT INTO datasets(dataset_id,schema_id,schema_version,schema_fingerprint,created_at) "
             "VALUES(?,?,?,?,?) ON CONFLICT(dataset_id) DO UPDATE SET "
@@ -413,7 +469,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             finish_operation(project, operation["operation_id"], "committed",
                              details={"import_id": import_id, "accepted_records": len(rows)})
         except Exception:
-            pass
+            logger.warning("Tabular import audit finalisation failed; operation remains pending.")
         return {"import_id": import_id, "manifest": manifest, "idempotent": False}
     except Exception as exc:
         if conn.in_transaction:
@@ -463,7 +519,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             finish_operation(project, operation["operation_id"], "failed",
                              error=f"{type(exc).__name__}: {getattr(exc, 'code', 'IMPORT_FAILED')}")
         except Exception:
-            pass
+            logger.warning("Tabular import failure audit finalisation failed; operation remains pending.")
         raise
     finally:
         conn.close()
