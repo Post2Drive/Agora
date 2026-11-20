@@ -86,7 +86,7 @@ class MockReadOnlyConnector:
                 raise ConnectorError("Primary key must be allowlisted.")
             seen = set()
             for row in self._tables[table]:
-                if set(row) - set(columns) or key not in row or row[key] is None:
+                if set(row) != set(columns) or key not in row or row[key] is None:
                     raise ConnectorError("Mock row violates its declared table schema.")
                 token = _canonical(row[key])
                 if token in seen:
