@@ -58,7 +58,7 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
     allowed_schema_keys = {
         "schema_id", "schema_version", "dataset_id", "dataset_name", "purpose",
         "retention_policy", "encoding", "delimiter", "quotechar", "header",
-        "columns", "row_policy",
+        "columns", "row_policy", "allow_empty",
     }
     if set(schema) - allowed_schema_keys:
         raise TabularIngestError("SCHEMA_INVALID", "Schema contains unsupported fields.")
@@ -112,6 +112,8 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
             raise TabularIngestError("SCHEMA_RETENTION_POLICY", "Retention policy must be text.")
     if schema.get("header", True) is not True:
         raise TabularIngestError("SCHEMA_HEADER_REQUIRED", "CSV v1 requires a header row.")
+    if "allow_empty" in schema and not isinstance(schema["allow_empty"], bool):
+        raise TabularIngestError("SCHEMA_EMPTY_POLICY", "allow_empty must be boolean.")
     row_policy = schema.get("row_policy", {})
     if not isinstance(row_policy, dict) or row_policy.get("malformed", "fail") != "fail":
         raise TabularIngestError("SCHEMA_ROW_POLICY", "CSV v1 supports fail-closed malformed-row handling only.")
@@ -355,6 +357,8 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                              "locator": {"source_registry_id": source_id, "file_sha256": file_hash,
                                          "source_record_number": record_number, "dataset_id": dataset_id,
                                          "import_id": import_id}})
+            if not rows and not schema.get("allow_empty", False):
+                raise TabularIngestError("CSV_EMPTY", "CSV contains no data records.")
             manifest["accepted_records"] = len(rows)
             if rows:
                 manifest["first_source_record_number"] = rows[0]["source_record_number"]
