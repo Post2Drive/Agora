@@ -316,8 +316,8 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                 record_key = None
                 if primary:
                     pk_value = payload[primary["name"]]
-                    if pk_value is None:
-                        raise TabularIngestError("PRIMARY_KEY_NULL", "Primary key cannot be null.",
+                    if pk_value is None or pk_value == "":
+                        raise TabularIngestError("PRIMARY_KEY_NULL", "Primary key cannot be null or empty.",
                                                  row_number=record_number, column_name=primary["name"])
                     record_key = hashlib.sha256(
                         b"agora-record-v1\0" + _canonical({
