@@ -17,6 +17,17 @@ class ConnectorError(ValueError):
     """Safe connector contract error."""
 
 
+def _typed_sort_key(value: Any) -> tuple[str, Any]:
+    """Sort homogeneous values by their native type, not their JSON text."""
+    if isinstance(value, bool):
+        return ("bool", int(value))
+    if isinstance(value, (int, float)):
+        return ("number", value)
+    if isinstance(value, str):
+        return ("string", value)
+    return (type(value).__name__, _canonical(value))
+
+
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                       allow_nan=False)
@@ -151,7 +162,7 @@ class MockReadOnlyConnector:
                 raise ConnectorError("Query cancelled.")
             if all(row.get(column) == value for column, value in plan.filters.items()):
                 filtered.append(row)
-        filtered.sort(key=lambda row: tuple(_canonical(row[c]) for c in order))
+        filtered.sort(key=lambda row: tuple(_typed_sort_key(row[c]) for c in order))
         page_rows = filtered[plan.offset:plan.offset + plan.limit]
         from datetime import datetime, timezone
         extracted_at = datetime.now(timezone.utc).isoformat()
@@ -161,15 +172,16 @@ class MockReadOnlyConnector:
             table_schema_fingerprint = hashlib.sha256(
                 _canonical({"table": plan.table, "columns": list(self._allowlist[plan.table])}).encode("utf-8")
             ).hexdigest()
-            record_id = hashlib.sha256(
-                b"agora-db-record-v1\0" + _canonical({
+            row_id = hashlib.sha256(
+                b"agora-db-row-v1\\0" + _canonical({
                     "connector_id": self.connector_id, "snapshot_id": self.snapshot_id,
                     "table": plan.table, "schema_fingerprint": table_schema_fingerprint,
                     "primary_key": key_value,
                 }).encode("utf-8")
             ).hexdigest()
             projected.append({
-                "record_key": record_id,
+                "row_id": row_id,
+                "record_key": None,  # TODO(shared-key): use agora.identity.stable_record_key after PR #21 merges.
                 "values": {column: row[column] for column in plan.columns},
                 "source_locator": {
                     "connector_id": self.connector_id, "source_registry_id": self.source_registry_id,
@@ -190,7 +202,7 @@ class MockReadOnlyConnector:
         )
 
 
-def validate_read_only_statement(statement: str) -> None:
+def reject_sql_text(statement: str) -> None:
     """Fail closed for any SQL statement; SQL is intentionally not a v1 input."""
     if not isinstance(statement, str) or not statement.strip():
         raise ConnectorError("Statement must be non-empty text.")
