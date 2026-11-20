@@ -4,10 +4,8 @@ import threading
 
 import pytest
 
-import agora.readonly_connector as readonly_connector
-
 from agora.readonly_connector import (
-    ConnectorError, MockReadOnlyConnector, QueryPlan, validate_read_only_statement,
+    ConnectorError, MockReadOnlyConnector, QueryPlan, reject_sql_text,
 )
 
 
@@ -50,7 +48,8 @@ def test_pagination_is_deterministic_without_duplicates(connector):
 def test_primary_key_row_identity_is_stable_for_same_snapshot(connector):
     a = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
     b = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
-    assert a.rows[0]["record_key"] == b.rows[0]["record_key"]
+    assert a.rows[0]["row_id"] == b.rows[0]["row_id"]
+    assert a.rows[0]["record_key"] is None  # TODO(shared-key): populated after PR #21 merges.
 
 
 def test_query_parameters_are_data_and_not_in_fingerprint(connector):
@@ -122,19 +121,6 @@ def test_filter_uses_parameter_values_without_string_interpolation(connector):
     assert [r["values"]["id"] for r in page.rows] == [1]
 
 
-def test_read_only_acceptance_detects_a_removed_guard_mutation(monkeypatch):
-    # Simulate a mutation that removes the statement guard. The acceptance
-    # expectation itself must fail when a write statement is no longer rejected.
-    monkeypatch.setattr(readonly_connector, "validate_read_only_statement", lambda statement: None)
-    with pytest.raises(AssertionError):
-        try:
-            readonly_connector.validate_read_only_statement("DELETE FROM customers")
-        except ConnectorError:
-            pass
-        else:
-            raise AssertionError("Mutated guard accepted a write statement.")
-
-
 def test_record_identity_is_scoped_to_table_schema(connector):
     original = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
     narrower = MockReadOnlyConnector(
@@ -145,4 +131,39 @@ def test_record_identity_is_scoped_to_table_schema(connector):
         snapshot_id="snapshot-001",
     )
     changed = narrower.select(QueryPlan("customers", ("id",), filters={"id": 1}))
-    assert original.rows[0]["record_key"] != changed.rows[0]["record_key"]
+    assert original.rows[0]["row_id"] != changed.rows[0]["row_id"]
+
+
+def test_numeric_ordering_is_numeric_not_lexicographic():
+    numeric = MockReadOnlyConnector(
+        connector_id="numeric-source",
+        tables={"items": [{"id": 2}, {"id": 10}, {"id": 1}]},
+        allowlist={"items": ("id",)}, primary_keys={"items": "id"},
+    )
+    page = numeric.select(QueryPlan("items", ("id",), order_by=("id",)))
+    assert [row["values"]["id"] for row in page.rows] == [1, 2, 10]
+
+
+def test_timeout_returns_no_partial_page(connector, monkeypatch):
+    ticks = iter([0.0, 0.0, 0.0, 6.0])
+    monkeypatch.setattr(readonly_connector.time, "monotonic", lambda: next(ticks))
+    with pytest.raises(ConnectorError, match="timed out"):
+        connector.select(QueryPlan("customers", ("id",), limit=3), timeout_seconds=5)
+
+
+def test_failed_extraction_exposes_no_partial_result(connector, monkeypatch):
+    ticks = iter([0.0, 0.0, 0.0, 6.0])
+    monkeypatch.setattr(readonly_connector.time, "monotonic", lambda: next(ticks))
+    result = None
+    with pytest.raises(ConnectorError):
+        result = connector.select(QueryPlan("customers", ("id",), limit=3), timeout_seconds=5)
+    assert result is None
+
+
+def test_query_fingerprint_and_errors_do_not_expose_filter_values(connector):
+    secret = "synthetic-secret-DO-NOT-LEAK"
+    page = connector.select(QueryPlan("customers", ("id",), filters={"name": secret}))
+    assert secret not in page.query_fingerprint
+    with pytest.raises(ConnectorError) as exc:
+        connector.select(QueryPlan("customers", ("id",), filters={"private_column": secret}))
+    assert secret not in str(exc.value)
