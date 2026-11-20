@@ -5,6 +5,7 @@ import threading
 import pytest
 
 import agora.readonly_connector as readonly_connector
+from agora.identity import stable_record_key
 
 from agora.readonly_connector import (
     ConnectorError, MockReadOnlyConnector, QueryPlan, reject_sql_text,
@@ -51,7 +52,7 @@ def test_primary_key_row_identity_is_stable_for_same_snapshot(connector):
     a = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
     b = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
     assert a.rows[0]["row_id"] == b.rows[0]["row_id"]
-    assert a.rows[0]["record_key"] is None  # TODO(shared-key): populated after PR #21 merges.
+    assert a.rows[0]["record_key"] == stable_record_key("test-source:customers", 1)
 
 
 def test_query_parameters_are_data_and_not_in_fingerprint(connector):
@@ -169,3 +170,51 @@ def test_query_fingerprint_and_errors_do_not_expose_filter_values(connector):
     with pytest.raises(ConnectorError) as exc:
         connector.select(QueryPlan("customers", ("id",), filters={"private_column": secret}))
     assert secret not in str(exc.value)
+
+
+def test_record_key_stable_across_snapshots_while_row_id_changes():
+    def make(snapshot_id):
+        return MockReadOnlyConnector(
+            connector_id="stable-source",
+            tables={"customers": [{"id": 7, "name": "Ada"}]},
+            allowlist={"customers": ("id", "name")},
+            primary_keys={"customers": "id"},
+            snapshot_id=snapshot_id,
+        )
+
+    first = make("snapshot-a").select(QueryPlan("customers", ("id",)))
+    second = make("snapshot-b").select(QueryPlan("customers", ("id",)))
+    assert first.rows[0]["record_key"] == second.rows[0]["record_key"]
+    assert first.rows[0]["row_id"] != second.rows[0]["row_id"]
+    assert first.rows[0]["record_key"] == stable_record_key("stable-source:customers", 7)
+
+
+def test_record_key_is_scoped_to_connector_and_table():
+    def read(connector_id, table):
+        return MockReadOnlyConnector(
+            connector_id=connector_id,
+            tables={table: [{"id": 7}]},
+            allowlist={table: ("id",)},
+            primary_keys={table: "id"},
+        ).select(QueryPlan(table, ("id",))).rows[0]["record_key"]
+
+    baseline = read("source-a", "customers")
+    assert baseline != read("source-b", "customers")
+    assert baseline != read("source-a", "accounts")
+
+
+def test_record_key_matches_documented_shared_identity(connector):
+    page = connector.select(QueryPlan("customers", ("id",), filters={"id": 1}))
+    assert page.rows[0]["record_key"] == stable_record_key("test-source:customers", 1)
+
+
+def test_source_registry_and_row_hash_separators_are_nul_bytes():
+    source = MockReadOnlyConnector(
+        connector_id="sep-source", tables={"t": [{"id": 1}]},
+        allowlist={"t": ("id",)}, primary_keys={"t": "id"},
+        snapshot_id="sep-snapshot",
+    )
+    expected = "mock-source-" + readonly_connector.hashlib.sha256(
+        f"sep-source\0sep-snapshot\0{source.source_sha256}".encode("utf-8")
+    ).hexdigest()[:24]
+    assert source.source_registry_id == expected
