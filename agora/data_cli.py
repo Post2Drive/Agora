@@ -14,7 +14,8 @@ ROLES = ("context", "scenario_input", "calibration", "validation", "sealed_holdo
 
 
 def _db(project: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(project / "data" / "tabular.sqlite3")
+    database = (project / "data" / "tabular.sqlite3").resolve()
+    conn = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -34,6 +35,9 @@ def import_csv(args: argparse.Namespace) -> int:
         code = 3 if exc.code == "PERSONAL_DATA_POLICY_REQUIRED" else 2
         print(f"{exc.code}: {exc}", file=sys.stderr)
         return code
+    except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError, TypeError, AttributeError):
+        print("SCHEMA_FILE_INVALID: schema file could not be read or parsed.", file=sys.stderr)
+        return 2
     if result.get("idempotent"):
         print(f"already imported: {result['import_id']}")
     else:

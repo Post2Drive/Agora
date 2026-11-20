@@ -51,3 +51,29 @@ def test_data_cli_requires_role_and_lists_choices(capsys):
     with pytest.raises(SystemExit):
         main(["data", "import-csv", "--project", "p", "--csv", "f", "--schema", "s"])
     assert "context" in capsys.readouterr().err
+
+
+def test_data_cli_reports_bad_schema_without_traceback(tmp_path, capsys):
+    source, _schema = files(tmp_path, personal=False)
+    rc = main(["data", "import-csv", "--project", str(tmp_path / "project"), "--csv", str(source), "--schema", str(tmp_path / "missing.yaml"), "--role", "context"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "SCHEMA_FILE_INVALID" in err
+    assert "Traceback" not in err
+
+
+def test_data_cli_rejected_outputs_safe_diagnostics(tmp_path, capsys):
+    source, schema = files(tmp_path, personal=False)
+    source.write_text("id,email\n1,SECRET-CLI-VALUE\n1,SECRET-CLI-VALUE-2\n", encoding="utf-8")
+    project = tmp_path / "project"
+    rc = main(["data", "import-csv", "--project", str(project), "--csv", str(source), "--schema", str(schema), "--role", "context"])
+    assert rc == 2
+    import_id = next(project.glob("data/tabular.sqlite3"))
+    import sqlite3
+    conn = sqlite3.connect(import_id)
+    failed_id = conn.execute("SELECT import_id FROM imports WHERE status='failed'").fetchone()[0]
+    conn.close()
+    assert main(["data", "rejected", "--project", str(project), "--import-id", failed_id]) == 0
+    output = capsys.readouterr().out
+    assert "SECRET-CLI-VALUE" not in output
+    assert "PRIMARY_KEY_DUPLICATE" in output
