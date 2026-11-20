@@ -581,6 +581,10 @@ def cmd_validation_list(args) -> int:
 
 
 def main(argv=None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if len(raw_argv) > 1 and raw_argv[0] == "data" and raw_argv[1] in {"import-csv", "snapshots", "show", "rejected"}:
+        from .data_cli import main as data_cli_main
+        return data_cli_main(raw_argv[1:])
     ap = argparse.ArgumentParser(prog="agora", description="Agora: local multi-agent social simulation")
     ap.add_argument("--version", action="version", version=f"agora {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
