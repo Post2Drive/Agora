@@ -16,7 +16,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any\nfrom zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 PARSER_VERSION = "agora-tabular-csv-v1"
 ROLES = {"context", "scenario_input", "calibration", "validation", "sealed_holdout"}
@@ -54,6 +54,13 @@ def _hash(prefix: bytes, value: Any) -> str:
 def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str, str]:
     if not isinstance(schema, dict):
         raise TabularIngestError("SCHEMA_INVALID", "Schema must be an object.")
+    allowed_schema_keys = {
+        "schema_id", "schema_version", "dataset_id", "dataset_name", "purpose",
+        "retention_policy", "encoding", "delimiter", "quotechar", "header",
+        "columns", "row_policy",
+    }
+    if set(schema) - allowed_schema_keys:
+        raise TabularIngestError("SCHEMA_INVALID", "Schema contains unsupported fields.")
     dataset_id = schema.get("dataset_id") or schema.get("dataset_name")
     if not isinstance(dataset_id, str) or not dataset_id.strip():
         raise TabularIngestError("SCHEMA_DATASET_REQUIRED", "Schema dataset identity is required.")
@@ -66,6 +73,7 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
     allowed_column_keys = {
         "name", "type", "nullable", "primary_key", "allowed_values", "precision",
         "scale", "timezone", "minimum", "maximum", "format", "sensitivity",
+        "empty_as_null",
     }
     for item in columns:
         if not isinstance(item, dict) or set(item) - allowed_column_keys:
@@ -78,6 +86,8 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
         sensitivity = item.get("sensitivity")
         if sensitivity not in SENSITIVITY:
             raise TabularIngestError("SCHEMA_SENSITIVITY_REQUIRED", "Every column needs a valid sensitivity classification.")
+        if "empty_as_null" in item and not isinstance(item["empty_as_null"], bool):
+            raise TabularIngestError("SCHEMA_EMPTY_POLICY", "empty_as_null must be boolean.")
         if item.get("primary_key"):
             primary.append(name)
         if kind == "enum" and (not isinstance(item.get("allowed_values"), list)
@@ -121,7 +131,7 @@ def validate_downstream_policy(schema: dict[str, Any]) -> None:
 
 def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
     name, kind = column["name"], column["type"]
-    if value == "":
+    if value == "" and column.get("empty_as_null", False):
         if column["nullable"]:
             return None
         raise TabularIngestError("NULL_NOT_ALLOWED", "A required CSV value is empty.",
@@ -154,10 +164,7 @@ def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
                 zone = column.get("timezone")
                 if not zone:
                     raise ValueError
-                if zone.upper() == "UTC":
-                    parsed = parsed.replace(tzinfo=timezone.utc)
-                else:
-                    raise ValueError
+                parsed = parsed.replace(tzinfo=ZoneInfo(zone))
             result = parsed.astimezone(timezone.utc).isoformat()
         else:
             if value not in column["allowed_values"]:
@@ -169,7 +176,7 @@ def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
             if "maximum" in column and result > column["maximum"]:
                 raise ValueError
         return result
-    except (ValueError, TypeError, InvalidOperation, OverflowError):
+    except (ValueError, TypeError, InvalidOperation, OverflowError, ZoneInfoNotFoundError):
         raise TabularIngestError(
             "VALUE_INVALID", "A CSV value failed schema validation.",
             row_number=row_number, column_name=name,
