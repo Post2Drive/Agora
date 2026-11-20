@@ -101,7 +101,7 @@ This is an illustrative contract, not an implementation file. The parser must va
 - `timestamp` (ISO-8601; timezone required or an explicit schema timezone)
 - `enum` (string value constrained to declared allowed values)
 
-Every column declares `name`, `type`, `nullable` and `sensitivity`. The `sensitivity` value must be one of `public`, `internal`, `personal` or `sensitive`; it defaults to `internal` only when explicitly supplied by the schema author, never by inference. Optional constraints include `primary_key`, `allowed_values`, `precision`, `scale`, `timezone`, `minimum`, `maximum` and a documented format. Unknown schema keys should be rejected unless a future schema version explicitly supports them.
+Every column declares `name`, `type`, `nullable` and `sensitivity`. The `sensitivity` value is required on every column and must be one of `public`, `internal`, `personal` or `sensitive`. There is no default; a missing value fails schema validation. Optional constraints include `primary_key`, `allowed_values`, `precision`, `scale`, `timezone`, `minimum`, `maximum` and a documented format. Unknown schema keys should be rejected unless a future schema version explicitly supports them.
 
 ### Schema validation rules
 
@@ -368,7 +368,7 @@ The current `agora/calibrate/project.py` flow reads project-level `data/observat
 3. Implement the read-only connector interface and mock connector in a separate pull request.
 4. Run the full four-job CI matrix on each exact final pull-request head.
 5. Demonstrate the required mutation proofs without committing mutation changes.
-6. Merge neither pull request until Claude has approved the exact head and all repository governance gates pass.
+6. Merge neither pull request until independent reviewer approval is recorded for the exact head and all repository governance gates pass.
 7. After both are merged, publish a rung 1–3 exit-test status report.
 
 No rung 3 implementation is authorised by this document alone; the implementation begins only after the specification is reviewed and the owner-approved sequence is satisfied.
@@ -383,7 +383,10 @@ Defaults are proposed so implementation can proceed without avoidable ambiguity.
 | First import mode | Immutable full snapshot only; no append/upsert/replace | No |
 | Malformed-row policy | Fail the entire import and roll back; add explicit reject mode only in a later reviewed change | No |
 | Header matching | Exact column names; order may vary; duplicate/unknown/missing columns fail | No |
-| Snapshot row identity | Versioned SHA-256 over source ID, file hash, schema fingerprint, canonical row and source record number | No |\n| Cross-snapshot identity | Versioned `record_key` hash of dataset identity plus declared primary key; no automatic key reconciliation | No |\n| Storage | Separate project-level `data/tabular.sqlite3` with imports, rows, rejected-row references and dataset identity tables | No |\n| Sensitivity | Required per-column classification: public, internal, personal or sensitive; personal data needs purpose and retention metadata before downstream use | No |
+| Snapshot row identity | Versioned SHA-256 over source ID, file hash, schema fingerprint, canonical row and source record number | No |
+| Cross-snapshot identity | Versioned `record_key` hash of dataset identity plus declared primary key; no automatic key reconciliation | No |
+| Storage | Separate project-level `data/tabular.sqlite3` with imports, rows, rejected-row references and dataset identity tables | No |
+| Sensitivity | Required per-column classification: public, internal, personal or sensitive; personal data needs purpose and retention metadata before downstream use | No |
 | Primary key | Optional for CSV row identity; required for mock DB extraction unless a future stable-key design is approved | No |
 | Data role | Caller must explicitly choose one of the existing registry roles; never infer | No |
 | Large-file limits | Configurable, with explicit failure and no truncation; set a conservative initial default in implementation | No |
