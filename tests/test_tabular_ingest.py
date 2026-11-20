@@ -243,7 +243,7 @@ def test_decimal_integer_and_date_bounds_use_native_types(tmp_path):
                      "maximum": "2026-12-31"}],
     }
     dates = tmp_path / "dates.csv"
-    dates.write_text("day\\n2026-07-15\\n", encoding="utf-8")
+    dates.write_text("day\n2026-07-15\n", encoding="utf-8")
     assert ingest_csv(tmp_path / "date-project", dates, date_schema,
                       data_role="context")["manifest"]["accepted_records"] == 1
 
@@ -296,7 +296,7 @@ def test_csv_quoted_delimiter_escaped_quote_and_embedded_newline(tmp_path):
                      {"name": "note", "type": "string", "nullable": False,
                       "sensitivity": "internal"}]}
     source = tmp_path / "notes.csv"
-    expected = 'comma, quote " and\\nnewline'
+    expected = 'comma, quote " and\nnewline'
     with source.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["id", "note"])
@@ -316,7 +316,7 @@ def test_invalid_encoding_and_malformed_quoting_fail_closed(tmp_path):
         ingest_csv(tmp_path / "invalid-project", invalid, s, data_role="context")
     assert exc.value.code == "CSV_PARSE_FAILED"
     malformed = tmp_path / "malformed.csv"
-    malformed.write_text('id\\n"unterminated\\n', encoding="utf-8")
+    malformed.write_text('id\n"unterminated\n', encoding="utf-8")
     with pytest.raises(TabularIngestError) as exc:
         ingest_csv(tmp_path / "malformed-project", malformed, s, data_role="context")
     assert exc.value.code == "CSV_PARSE_FAILED"
@@ -327,7 +327,7 @@ def test_uneven_row_width_fails_closed(tmp_path):
          "columns": [{"name": "id", "type": "string", "nullable": False,
                       "sensitivity": "internal"}]}
     source = tmp_path / "uneven.csv"
-    source.write_text("id\\n1,extra\\n", encoding="utf-8")
+    source.write_text("id\n1,extra\n", encoding="utf-8")
     with pytest.raises(TabularIngestError) as exc:
         ingest_csv(tmp_path / "project", source, s, data_role="context")
     assert exc.value.code == "ROW_WIDTH_INVALID"
@@ -346,7 +346,7 @@ def test_date_timestamp_and_enum_conversion(tmp_path):
     }
     source = tmp_path / "typed-extra.csv"
     source.write_text(
-        "day,created,state\\n2026-11-20,2026-11-20T10:00:00Z,active\\n",
+        "day,created,state\n2026-11-20,2026-11-20T10:00:00Z,active\n",
         encoding="utf-8",
     )
     result = ingest_csv(tmp_path / "project", source, s, data_role="context")
