@@ -1,6 +1,6 @@
 import json
 
-from agora import events
+from agora import events, governance
 from agora.sim.engine import Simulation
 
 from conftest import make_project
@@ -11,6 +11,7 @@ def test_add_dedupes_and_sync_queues_next_round(tmp_path):
     assert events.add(p, "Corruption allegations reported in state office")["duplicate"] is False
     assert events.add(p, "Corruption allegations reported in state office")["duplicate"] is True
     assert len(events.read(p)) == 1
+    assert {row["status"] for row in governance.operation_states(p).values()} == {"committed"}
 
 
 def test_sync_before_run_says_so(tmp_path):

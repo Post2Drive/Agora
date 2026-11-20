@@ -75,7 +75,7 @@ def test_report_with_lying_model(ran):
     html = (ran / "report" / "report.html").read_text(encoding="utf-8")
     md = (ran / "report" / "report.md").read_text(encoding="utf-8")
     assert "<script" not in html and "Opinion by group" in html and "₹" in html
-    assert md.startswith("# ") and "| Action |" in md
+    assert md.startswith("**EXPLORATORY SIMULATION") and "# " in md and "| Action |" in md
 
 
 def test_report_without_model_states_numbers(ran):
