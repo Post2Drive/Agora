@@ -331,3 +331,34 @@ def test_uneven_row_width_fails_closed(tmp_path):
     with pytest.raises(TabularIngestError) as exc:
         ingest_csv(tmp_path / "project", source, s, data_role="context")
     assert exc.value.code == "ROW_WIDTH_INVALID"
+
+
+def test_date_timestamp_and_enum_conversion(tmp_path):
+    s = {
+        "schema_id": "typed-extra", "schema_version": "1", "dataset_id": "typed-extra",
+        "columns": [
+            {"name": "day", "type": "date", "nullable": False, "sensitivity": "internal"},
+            {"name": "created", "type": "timestamp", "nullable": False,
+             "timezone": "UTC", "sensitivity": "internal"},
+            {"name": "state", "type": "enum", "nullable": False,
+             "allowed_values": ["active", "inactive"], "sensitivity": "internal"},
+        ],
+    }
+    source = tmp_path / "typed-extra.csv"
+    source.write_text(
+        "day,created,state\\n2026-11-20,2026-11-20T10:00:00Z,active\\n",
+        encoding="utf-8",
+    )
+    result = ingest_csv(tmp_path / "project", source, s, data_role="context")
+    values = read_snapshot(tmp_path / "project", result["import_id"])[0]["values"]
+    assert values == {
+        "day": "2026-11-20", "created": "2026-11-20T10:00:00+00:00", "state": "active"
+    }
+
+
+def test_decimal_precision_and_scale_fail_closed(tmp_path):
+    s = schema()
+    source = write_csv(tmp_path / "bad-scale.csv", [["a", "21", "1.234", "true"]])
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "project", source, s, data_role="context")
+    assert exc.value.code == "VALUE_INVALID"
