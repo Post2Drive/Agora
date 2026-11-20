@@ -121,8 +121,11 @@ def validate_downstream_policy(schema: dict[str, Any]) -> None:
 
 def _convert(value: str, column: dict[str, Any], row_number: int) -> Any:
     name, kind = column["name"], column["type"]
-    if value == "" and column["nullable"]:
-        return None
+    if value == "":
+        if column["nullable"]:
+            return None
+        raise TabularIngestError("NULL_NOT_ALLOWED", "A required CSV value is empty.",
+                                 row_number=row_number, column_name=name)
     try:
         if kind == "string":
             result: Any = value
@@ -204,6 +207,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
       UNIQUE(import_id, source_record_number),
       FOREIGN KEY(import_id) REFERENCES imports(import_id)
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_committed_import_idempotency
+      ON imports(idempotency_key) WHERE status='committed';
     CREATE INDEX IF NOT EXISTS idx_import_rows_record_key ON import_rows(record_key);
     CREATE TABLE IF NOT EXISTS rejected_rows (
       rejection_id TEXT PRIMARY KEY, import_id TEXT NOT NULL,
@@ -265,6 +270,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                                 details={"dataset_id": dataset_id, "file_sha256": file_hash})
     conn = _db(project)
     rejected: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     try:
         _init_db(conn)
         existing = conn.execute(
@@ -276,6 +282,9 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                              details={"import_id": existing["import_id"], "idempotent_noop": True})
             return {"import_id": existing["import_id"],
                     "manifest": json.loads(existing["manifest_json"]), "idempotent": True}
+        # Register the exact bytes before parsing so failed source attempts retain provenance.
+        record_source(project, source_id=source_id, content=raw, data_role=data_role,
+                      parser_version=PARSER_VERSION, extraction_status="received")
         try:
             text = raw.decode(schema.get("encoding", "utf-8-sig"))
             reader = csv.reader(text.splitlines(keepends=True), delimiter=schema.get("delimiter", ","),
@@ -285,7 +294,6 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             if not header or len(header) != len(set(header)) or set(header) != set(names):
                 raise TabularIngestError("HEADER_INVALID", "CSV header does not match the declared schema.")
             indexes = {name: header.index(name) for name in names}
-            rows: list[dict[str, Any]] = []
             keys: set[str] = set()
             for record_number, values in enumerate(reader, start=2):
                 if record_number - 1 > max_rows:
@@ -337,9 +345,6 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             manifest["rejected_records"] = 1
             raise TabularIngestError("CSV_PARSE_FAILED", "CSV could not be decoded or parsed.") from None
 
-        # Source registration is deterministic and safe to retry if the SQLite commit fails.
-        record_source(project, source_id=source_id, content=raw, data_role=data_role,
-                      parser_version=PARSER_VERSION, extraction_status="parsed")
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
             "INSERT INTO datasets(dataset_id,schema_id,schema_version,schema_fingerprint,created_at) "
@@ -383,9 +388,19 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             rejected.append({"row_number": getattr(exc, "row_number", None),
                              "column_name": getattr(exc, "column_name", None),
                              "error_code": getattr(exc, "code", "IMPORT_FAILED")})
+        # The whole snapshot is atomic: all previously parsed candidate rows are rejected
+        # on failure, but only safe row/column/error metadata is retained.
+        failed_numbers = {r.get("row_number") for r in rejected}
+        for candidate in rows:
+            number = candidate["source_record_number"]
+            if number not in failed_numbers:
+                rejected.append({"row_number": number, "column_name": None,
+                                 "error_code": "IMPORT_ROLLED_BACK"})
         failed_manifest = dict(manifest)
-        failed_manifest.update({"status": "failed", "completed_at": datetime.now(timezone.utc).isoformat(),
-                                "accepted_records": 0, "rejected_records": len(rejected)})
+        failed_import_id = import_id + "-failed-" + uuid.uuid4().hex[:8]
+        failed_manifest.update({"import_id": failed_import_id, "status": "failed",
+                                "completed_at": datetime.now(timezone.utc).isoformat(),
+                                "accepted_records": 0, "rejected_records": manifest["parsed_records"]})
         # Persist only a failed manifest and safe diagnostics; no partial accepted rows.
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
@@ -396,19 +411,19 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         conn.execute(
             "INSERT OR IGNORE INTO imports(import_id,idempotency_key,dataset_id,source_registry_id,file_sha256,status,manifest_json,created_at) "
             "VALUES(?,?,?,?,?,?,?,?)",
-            (import_id, idempotency_key, dataset_id, source_id, file_hash, "failed",
+            (failed_import_id, idempotency_key, dataset_id, source_id, file_hash, "failed",
              _canonical(failed_manifest), now),
         )
         for diag in rejected:
             conn.execute(
                 "INSERT INTO rejected_rows(rejection_id,import_id,source_record_number,column_name,error_code,diagnostic_json) "
                 "VALUES(?,?,?,?,?,?)",
-                (uuid.uuid4().hex, import_id, diag.get("row_number"), diag.get("column_name"),
+                (uuid.uuid4().hex, failed_import_id, diag.get("row_number"), diag.get("column_name"),
                  diag.get("error_code", "IMPORT_FAILED"), _canonical(diag)),
             )
         conn.commit()
         try:
-            audit_event(project, "tabular_import_failed", import_id=import_id,
+            audit_event(project, "tabular_import_failed", import_id=failed_import_id,
                         file_sha256=file_hash, rejected_records=len(rejected),
                         diagnostics=rejected, data_role=data_role)
             finish_operation(project, operation["operation_id"], "failed",
