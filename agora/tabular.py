@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -18,6 +19,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+\nfrom .identity import stable_record_key
+
+logger = logging.getLogger(__name__)
 
 PARSER_VERSION = "agora-tabular-csv-v1"
 ROLES = {"context", "scenario_input", "calibration", "validation", "sealed_holdout"}
@@ -376,12 +380,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                     if pk_value is None or pk_value == "":
                         raise TabularIngestError("PRIMARY_KEY_NULL", "Primary key cannot be null or empty.",
                                                  row_number=record_number, column_name=primary["name"])
-                    record_key = hashlib.sha256(
-                        b"agora-record-v1\0" + _canonical({
-                            "dataset_id": dataset_id, "primary_key": pk_value,
-                            "primary_key_type": primary["type"],
-                        }).encode("utf-8")
-                    ).hexdigest()
+                    record_key = stable_record_key(dataset_id, pk_value)
                     if record_key in keys:
                         raise TabularIngestError("PRIMARY_KEY_DUPLICATE",
                                                  "Duplicate primary key in CSV snapshot.",
