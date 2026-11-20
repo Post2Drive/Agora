@@ -16,7 +16,8 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any\nfrom zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 PARSER_VERSION = "agora-tabular-csv-v1"
 ROLES = {"context", "scenario_input", "calibration", "validation", "sealed_holdout"}
