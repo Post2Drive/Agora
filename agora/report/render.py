@@ -20,7 +20,18 @@ def _cite_html(text: str) -> str:
 # ------------------------------------------------------------------ markdown
 def to_markdown(r: dict) -> str:
     a = r["analysis"]
-    lines = [f"# {r['title']}", "",
+    qualification = r.get("qualification") or {}
+    if r.get("mode") == "validated_prediction":
+        approved = ", ".join(qualification.get("approved_claims") or [])
+        scope = qualification.get("scope") or {}
+        scope_text = " | ".join(str(scope.get(key, "")) for key in
+                                 ("domain", "use_case", "target", "population", "geography", "horizon"))
+        mode_banner = (f"**VALIDATED PREDICTION — registry {qualification.get('registry_id')} · "
+                       f"reviewed by {qualification.get('reviewer')} · expires {qualification.get('expires_at')}.** "
+                       f"Scope: {scope_text}. Approved claims: {approved}")
+    else:
+        mode_banner = "**EXPLORATORY SIMULATION — simulated outputs, not validated real-world predictions.**"
+    lines = [mode_banner, "", f"# {r['title']}", "",
              f"_Agora simulation report · {r['generated']} · model {r['model']}_", ""]
     for s in r["sections"]:
         lines += [f"## {s['title']}", "", s["text"], ""]
@@ -125,6 +136,8 @@ svg{width:100%;height:auto;display:block}.grid{stroke:var(--line)}.tick{font-siz
 a.cite{color:var(--accent);text-decoration:none;font-family:system-ui,sans-serif;font-size:.85em}
 .quotes li{margin:8px 0;font-size:14px}.quotes li:target{background:var(--sunk);border-radius:6px}
 .note{font-size:13px;color:var(--muted);border-left:3px solid var(--line);padding-left:12px;margin-top:40px;font-family:system-ui,sans-serif}
+.mode-banner{font:600 13px/1.5 system-ui,sans-serif;padding:12px 14px;margin:0 0 18px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;background:var(--sunk)}
+.mode-banner span{display:block;font-weight:400;color:var(--muted);margin-top:3px}
 @media print{body{background:#fff;color:#000}h2{break-after:avoid}.chart,.kpi{break-inside:avoid}}
 """
 
@@ -238,6 +251,20 @@ def to_html(r: dict) -> str:
         body.append(f'<h2 id="range-detail">Range of outcomes</h2>{range_html}')
     if "drivers" not in keys and drivers_html:
         body.append(f'<h2 id="voices-detail">Most influential voices</h2>{drivers_html}')
+    qualification = r.get("qualification") or {}
+    if r.get("mode") == "validated_prediction":
+        approved = ", ".join(qualification.get("approved_claims") or [])
+        scope = qualification.get("scope") or {}
+        scope_text = " | ".join(str(scope.get(key, "")) for key in
+                                 ("domain", "use_case", "target", "population", "geography", "horizon"))
+        mode_banner_html = (f'<div class="mode-banner"><strong>VALIDATED PREDICTION</strong> — '
+                            f'registry {_e(qualification.get("registry_id"))}; reviewed by '
+                            f'{_e(qualification.get("reviewer"))}; expires {_e(qualification.get("expires_at"))}. '
+                            f'<span>Scope: {_e(scope_text)}. Approved claims: {_e(approved)}</span></div>')
+    else:
+        mode_banner_html = ('<div class="mode-banner"><strong>EXPLORATORY SIMULATION</strong> — '
+                            'simulated outputs, not validated real-world predictions. '
+                            f'<span>Qualification: {_e(qualification.get("status", "not_assessed"))}</span></div>')
     research = r.get("research") or []
     if research:
         body.append('<h2 id="research">How this report was researched</h2><ol class="quotes">' + "".join(
@@ -247,7 +274,7 @@ def to_html(r: dict) -> str:
     quotes = "".join(f'<li id="q{pid}">{_e(q)}</li>' for pid, q in r["quotes"].items() if q)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Agora report</title><style>{CSS}</style></head>
-<body><main><div class="meta">Agora simulation report · {_e(r["generated"])} · model {_e(r["model"])}</div>
+<body><main>{mode_banner_html}<div class="meta">Agora simulation report · {_e(r["generated"])} · model {_e(r["model"])}</div>
 <h1>{_e(r["title"])}</h1>
 <p class="meta">{o["days"]} simulated days · {o["llm_voices"]} AI voices · {o["crowd"]:,} crowd agents · {o["posts"]:,} posts · {o["shares"]:,} shares and forwards</p>
 {"".join(body)}

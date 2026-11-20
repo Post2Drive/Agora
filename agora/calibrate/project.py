@@ -30,13 +30,21 @@ def _load(proj: Path) -> tuple[dict, object]:
     return d, scenario_mod.from_dict(copy.deepcopy(d))
 
 
+def _verified_source_ids(proj: Path, kind: str) -> list[str]:
+    from ..governance import require_registered_source
+    return require_registered_source(proj, proj / "data" / f"{kind}.csv", allowed_roles=("calibration",))
+
+
 def _obs(proj: Path, sc):
     f = proj / "data" / "observations.csv"
-    return data_mod.load_observations(f, sc) if f.exists() else []
+    if not f.exists():
+        return []
+    _verified_source_ids(proj, "observations")
+    return data_mod.load_observations(f, sc)
 
 
 def save_data(proj: Path, kind: str, text: str) -> dict:
-    """Validate and store an uploaded CSV ('observations' or 'reviews')."""
+    # Validate and store a calibration CSV with idempotent provenance.
     _, sc = _load(proj)
     if kind == "observations":
         obs = data_mod.load_observations(text, sc)
@@ -47,8 +55,38 @@ def save_data(proj: Path, kind: str, text: str) -> dict:
         summary = {"groups": {g: {"mean": m, "n": n} for g, (m, _, n) in rv.items()}}
     else:
         raise data_mod.DataError("Unknown data kind")
-    (proj / "data").mkdir(exist_ok=True)
-    (proj / "data" / f"{kind}.csv").write_text(text, encoding="utf-8")
+    import hashlib, os, tempfile
+    from ..governance import begin_operation, finish_operation, record_source, audit_event
+    raw = text.encode("utf-8")
+    source_id = f"data-{kind}-" + hashlib.sha256(raw).hexdigest()[:16]
+    data_dir = proj / "data"
+    data_dir.mkdir(exist_ok=True)
+    target = data_dir / f"{kind}.csv"
+    operation = begin_operation(proj, "calibration_data_save", source_ids=[source_id],
+                                details={"kind": kind, "target": target.name})
+    temp_name = None
+    try:
+        fd, temp_name = tempfile.mkstemp(prefix=f".{kind}.", suffix=".tmp", dir=str(data_dir))
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        record_source(proj, source_id=source_id, content=raw, data_role="calibration",
+                      parser_version="agora-calibration-csv-v1")
+        os.replace(temp_name, target)
+        audit_event(proj, "calibration_data_saved", source_id=source_id, kind=kind,
+                    bytes=len(raw), data_role="calibration", sha256=hashlib.sha256(raw).hexdigest())
+    except Exception as exc:
+        if temp_name:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+        finish_operation(proj, operation["operation_id"], "failed",
+                         error=f"{type(exc).__name__}: {exc}")
+        raise
+    finish_operation(proj, operation["operation_id"], "committed",
+                     details={"source_id": source_id, "target": target.name})
     return summary
 
 
@@ -56,11 +94,14 @@ def calibrate_project(proj: Path, say: Say = print, should_stop=lambda: False) -
     d, sc = _load(proj)
     changes = []
     rv = proj / "data" / "reviews.csv"
+    review_source_ids = []
     if rv.exists():
+        review_source_ids = _verified_source_ids(proj, "reviews")
         say("Setting starting opinions from reviews")
         d, ch = seed_opinions(d, data_mod.load_reviews(rv, sc))
         changes += ch
     obs = _obs(proj, sc)
+    observation_source_ids = _verified_source_ids(proj, "observations") if (proj / "data" / "observations.csv").exists() else []
     fit = {}
     if obs:
         res = calibrate(d, obs, say=say, should_stop=should_stop)
@@ -70,7 +111,10 @@ def calibrate_project(proj: Path, say: Say = print, should_stop=lambda: False) -
         raise data_mod.DataError("Add observations.csv and/or reviews.csv first.")
     d["calibrated"] = {"at": time.strftime("%Y-%m-%d %H:%M"), "points": len(obs),
                        "reviews": rv.exists()}
-    out = {"changes": changes, "fit": fit, "scenario": d, "points": len(obs)}
+    out = {"changes": changes, "fit": fit, "scenario": d, "points": len(obs),
+           "governance": {"data_role": "calibration",
+                          "observation_source_ids": observation_source_ids,
+                          "review_source_ids": review_source_ids}}
     (proj / "calibration").mkdir(exist_ok=True)
     (proj / "calibration" / "calibration.json").write_text(json.dumps(out, indent=1, default=str),
                                                            encoding="utf-8")
@@ -99,7 +143,11 @@ def backtest_project(proj: Path, cutoff_day: float | None = None, say: Say = pri
     obs = _obs(proj, sc)
     if not obs:
         raise data_mod.DataError("Add observations.csv first.")
+    observation_source_ids = _verified_source_ids(proj, "observations")
     res = backtest(d, obs, cutoff_day, say=say, should_stop=should_stop)
+    res["governance"] = {"data_role": "calibration",
+                         "observation_source_ids": observation_source_ids,
+                         "evaluation_type": "ordinary_backtest_not_independent_validation"}
     (proj / "calibration").mkdir(exist_ok=True)
     (proj / "calibration" / "backtest.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     return res

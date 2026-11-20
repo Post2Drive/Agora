@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agora import scenario as scenario_mod
+from agora import scenario as scenario_mod, governance
 from agora.cli import main
 from agora.graph import GraphStore
 from agora.graph import build as gbuild, draft as gdraft, ingest as gingest, view as gview
@@ -184,6 +184,7 @@ def test_chunking_covers_text():
 def test_ingest_copies_and_dedupes(tmp_path, gs):
     proj = tmp_path / "proj"
     assert (proj / "sources" / "doc.md").exists()
+    assert {row["status"] for row in governance.operation_states(proj).values()} == {"committed"}
     again = gingest.ingest(gs, proj, [tmp_path / "doc.md"])
     assert again[0]["skipped"]
 

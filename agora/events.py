@@ -40,8 +40,23 @@ def add(project: str | Path, text: str, *, source: str = "manual", url: str = ""
     known = {e["id"] for e in read(project)}
     if ev["id"] in known:
         return {"ok": True, "duplicate": True, "id": ev["id"]}
-    with f.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    from .governance import begin_operation, finish_operation, record_source, audit_event
+    source_id = "event-" + ev["id"]
+    operation = begin_operation(project, "event_queue", source_ids=[source_id],
+                                details={"event_id": ev["id"]})
+    try:
+        record_source(project, source_id=source_id, content=ev["text"].encode("utf-8"),
+                      data_role="scenario_input", source_url=url, publisher=source)
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        audit_event(project, "event_queued", event_id=ev["id"], source=source,
+                    published=published, data_role="scenario_input")
+    except Exception as exc:
+        finish_operation(project, operation["operation_id"], "failed",
+                         error=f"{type(exc).__name__}: {exc}")
+        raise
+    finish_operation(project, operation["operation_id"], "committed",
+                     details={"event_id": ev["id"]})
     return {"ok": True, "duplicate": False, "id": ev["id"]}
 
 
