@@ -74,7 +74,7 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
     allowed_column_keys = {
         "name", "type", "nullable", "primary_key", "allowed_values", "precision",
         "scale", "timezone", "minimum", "maximum", "format", "sensitivity",
-        "empty_as_null",
+        "empty_as_null", "purpose", "retention",
     }
     for item in columns:
         if not isinstance(item, dict) or set(item) - allowed_column_keys:
@@ -414,7 +414,6 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
             manifest["rejected_records"] = 1
             raise TabularIngestError("CSV_PARSE_FAILED", "CSV could not be decoded or parsed.") from None
 
-        conn.execute("BEGIN IMMEDIATE")
         prior_schema = conn.execute(
             "SELECT schema_fingerprint FROM dataset_schemas "
             "WHERE dataset_id=? AND schema_id=? AND schema_version=?",
