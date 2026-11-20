@@ -110,6 +110,13 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
             pass
         if schema.get("retention_policy") is not None and not isinstance(schema["retention_policy"], str):
             raise TabularIngestError("SCHEMA_RETENTION_POLICY", "Retention policy must be text.")
+    if schema.get("header", True) is not True:
+        raise TabularIngestError("SCHEMA_HEADER_REQUIRED", "CSV v1 requires a header row.")
+    row_policy = schema.get("row_policy", {})
+    if not isinstance(row_policy, dict) or row_policy.get("malformed", "fail") != "fail":
+        raise TabularIngestError("SCHEMA_ROW_POLICY", "CSV v1 supports fail-closed malformed-row handling only.")
+    if row_policy.get("unknown_columns", "reject") != "reject" or row_policy.get("missing_columns", "reject") != "reject":
+        raise TabularIngestError("SCHEMA_ROW_POLICY", "CSV v1 rejects unknown and missing columns.")
     schema_version = schema.get("schema_version", "1.0.0")
     if not isinstance(schema_version, str) or not schema_version.strip():
         raise TabularIngestError("SCHEMA_VERSION", "Schema version is required.")
@@ -266,8 +273,13 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         "schema_version": schema_version, "schema_fingerprint": schema_fp,
         "column_sensitivity": {c["name"]: c["sensitivity"] for c in columns},
         "purpose": schema.get("purpose"), "retention_policy": schema.get("retention_policy"),
-        "parser_version": PARSER_VERSION, "data_role": data_role,
-        "source_registry_id": source_id, "started_at": now, "completed_at": None,
+        "parser_version": PARSER_VERSION, "application_version": "0.3.0",
+        "encoding": schema.get("encoding", "utf-8-sig"),
+        "delimiter": schema.get("delimiter", ","), "quotechar": schema.get("quotechar", '"'),
+        "max_bytes": max_bytes, "max_rows": max_rows,
+        "data_role": data_role, "source_registry_id": source_id,
+        "first_source_record_number": None, "last_source_record_number": None,
+        "started_at": now, "completed_at": None,
         "status": "pending", "parsed_records": 0, "accepted_records": 0,
         "rejected_records": 0, "row_id_algorithm": "agora-row-v1",
         "record_key_algorithm": "agora-record-v1", "idempotency_key": idempotency_key,
@@ -344,6 +356,9 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                                          "source_record_number": record_number, "dataset_id": dataset_id,
                                          "import_id": import_id}})
             manifest["accepted_records"] = len(rows)
+            if rows:
+                manifest["first_source_record_number"] = rows[0]["source_record_number"]
+                manifest["last_source_record_number"] = rows[-1]["source_record_number"]
         except TabularIngestError as exc:
             rejected.append(exc.diagnostic)
             manifest["rejected_records"] = 1
