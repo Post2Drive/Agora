@@ -66,17 +66,16 @@ An ObjectType definition declares:
 - project and tenant scope;
 - whether instances are source-backed, user-authored, scenario-derived or simulation-generated.
 
-Illustrative types for an apartment sampling project:
+Illustrative domain-neutral example pack:
 
-- Resident
-- Apartment
-- Building
+- Customer
+- Site
 - Product
-- SamplingCampaign
-- SampleDistribution
-- PurchaseObservation
+- Campaign
+- Order
+- Observation
 
-These are examples, not a claim that they exist in the current codebase.
+These are examples, not a claim that they exist in the current codebase. Projects may define different packs without changing Agora's core ontology contract.
 
 ### 2.2 PropertyType
 
@@ -104,7 +103,7 @@ Each LinkType declares:
 - permission scope for creating, reading and retiring the link;
 - whether the link is observed, imported, manually asserted or simulation-generated.
 
-Examples: Resident lives_in Apartment; Apartment belongs_to Building; SampleDistribution belongs_to SamplingCampaign; PurchaseObservation concerns Product.
+Examples: Customer located_at Site; Campaign promotes Product; Order contains Product; Observation records an outcome for a Campaign. These examples illustrate relationship semantics only; they do not imply a particular business vertical.
 
 A relationship does not by itself establish causation.
 
@@ -135,13 +134,12 @@ Illustrative ActionTypes:
 
 | ActionType | Meaning inside Agora | Simulated-only? | External write-back |
 |---|---|---:|---|
-| RegisterInterest | A synthetic agent records interest | Yes | Prohibited |
-| BuyProduct | A synthetic agent records a simulated purchase event | Yes | Prohibited |
-| Vote | A synthetic agent records a poll / choice response | Yes | Prohibited |
-| RequestSample | A synthetic agent requests a sample in the model | Yes | Prohibited |
-| AttendConsultation | A synthetic agent expresses a simulated consultation action | Yes | Prohibited |
+| RegisterInterest | A synthetic agent records interest in a simulated object or offer | Yes | Prohibited |
+| PlaceOrder | A synthetic agent records a simulated order event | Yes | Prohibited |
+| CastVote | A synthetic agent records a simulated poll / choice response | Yes | Prohibited |
+| RequestService | A synthetic agent records a simulated service request | Yes | Prohibited |
 
-These examples represent simulation events only. They do not book a real consultation, register a real person, create an order, charge a payment method, send a message or reserve inventory.
+These examples represent simulation events only. They do not register a real person, create a real order, charge a payment method, send a message, book a service or reserve inventory.
 
 ## 3. Backing data sources and provenance
 
@@ -245,7 +243,7 @@ Rung 2 is accepted only when the design and a future implementation can demonstr
 5. Scenario segments, accounts and run-scoped agents map to distinct, stable ontology instances with explicit links.
 6. SimulationRun references an immutable scenario version, ontology version, seed and model/engine metadata.
 7. Every simulated action resolves to a registered ActionType version and has simulated_only=true.
-8. RegisterInterest, BuyProduct, Vote, RequestSample and AttendConsultation examples are classified as simulated-only and cannot write to external systems.
+8. Every registered ActionType in rungs 2–4 has simulated_only: true, execution_mode: simulation_only and external_writeback: prohibited. Tests demonstrate these invariants against at least two example packs from different domains (for example, a commerce pack using Customer, Product and Order, and a civic-feedback pack using Participant, Proposal and Ballot). No example ActionType can write to an external system.
 9. Permission checks distinguish read, review, approve, export and execute_simulation scopes.
 10. Provenance links can be followed from an ontology instance to its source record, hash and locator, or to the run/event that generated it.
 11. A schema version change is detectable and does not silently reinterpret historical run data.
@@ -256,6 +254,7 @@ Rung 2 is accepted only when the design and a future implementation can demonstr
 - **Rung 2 — Domain ontology:** type registry, typed instances and links, source bindings, action contracts and permission design.
 - **Rung 3 — Ingestion with provenance:** implement source adapters and typed ingestion while preserving source IDs, hashes, locators, connector/parser versions and audit history.
 - **Rung 4 — Governed simulation actions:** enforce simulated ActionType contracts, scoped permissions, audit and fail-closed behavior inside Agora.
+- **Rung 5 — Approved decisions and actions:** a future capability may introduce carefully bounded real-world write-back only through a separate design, explicit owner approval, user/subject consent where applicable, human approval gates, and a dedicated threat model. This document does not specify or authorise that capability.
 
 Rungs 2–4 do not include write-back to real systems. The ontology must not be interpreted as permission to operate external systems.
 
@@ -268,3 +267,4 @@ Rungs 2–4 do not include write-back to real systems. The ontology must not be 
 - What is the minimum permission model for single-user local projects versus future multi-user workspaces?
 - Which event schema fields are mandatory for every simulated ActionType?
 - How should ontology version fingerprints be embedded in run metadata and reports?
+- What separate threat model, approval workflow, consent controls, audit guarantees and rollback strategy would be required before rung 5 could introduce any real-system write-back?
