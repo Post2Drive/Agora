@@ -4,6 +4,8 @@ import threading
 
 import pytest
 
+import agora.readonly_connector as readonly_connector
+
 from agora.readonly_connector import (
     ConnectorError, MockReadOnlyConnector, QueryPlan, reject_sql_text,
 )
