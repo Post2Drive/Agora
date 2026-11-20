@@ -19,7 +19,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-\nfrom .identity import stable_record_key
+
+from .identity import stable_record_key
 
 logger = logging.getLogger(__name__)
 
