@@ -1,5 +1,6 @@
 import csv
 import json
+import pytest
 
 from agora.cli import main
 
@@ -44,3 +45,9 @@ def test_data_cli_never_prints_values_and_requires_role(tmp_path, capsys):
     assert "SECRET-CLI-VALUE" not in output
     assert main(["data", "show", "--project", str(project), "--import-id", output.split(":", 1)[1].strip()]) == 0
     assert "SECRET-CLI-VALUE" not in capsys.readouterr().out
+
+
+def test_data_cli_requires_role_and_lists_choices(capsys):
+    with pytest.raises(SystemExit):
+        main(["data", "import-csv", "--project", "p", "--csv", "f", "--schema", "s"])
+    assert "context" in capsys.readouterr().err
