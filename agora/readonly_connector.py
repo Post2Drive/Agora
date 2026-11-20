@@ -40,6 +40,8 @@ class ConnectorPage:
     snapshot_id: str
     extracted_at: str
     connector_id: str
+    source_registry_id: str
+    source_sha256: str
 
 
 class ReadOnlyConnector(Protocol):
@@ -71,6 +73,10 @@ class MockReadOnlyConnector:
         self._allowlist = {name: tuple(cols) for name, cols in allowlist.items()}
         self._primary_keys = dict(primary_keys)
         self.snapshot_id = snapshot_id
+        self.source_sha256 = hashlib.sha256(_canonical(self._tables).encode("utf-8")).hexdigest()
+        self.source_registry_id = "mock-source-" + hashlib.sha256(
+            f"{connector_id}\\0{snapshot_id}\\0{self.source_sha256}".encode("utf-8")
+        ).hexdigest()[:24]
         self.max_page_size = max_page_size
         if max_page_size < 1:
             raise ConnectorError("Maximum page size must be positive.")
@@ -131,6 +137,7 @@ class MockReadOnlyConnector:
             "filter_columns": sorted(plan.filters), "order_by": list(order),
             "limit": plan.limit, "offset": plan.offset,
             "connector_id": self.connector_id, "snapshot_id": self.snapshot_id,
+            "source_registry_id": self.source_registry_id, "source_sha256": self.source_sha256,
             "allowlist": {k: list(v) for k, v in sorted(self._allowlist.items())},
         }
         fingerprint = hashlib.sha256(
@@ -146,6 +153,8 @@ class MockReadOnlyConnector:
                 filtered.append(row)
         filtered.sort(key=lambda row: tuple(_canonical(row[c]) for c in order))
         page_rows = filtered[plan.offset:plan.offset + plan.limit]
+        from datetime import datetime, timezone
+        extracted_at = datetime.now(timezone.utc).isoformat()
         projected = []
         for row in page_rows:
             key_value = row[key]
@@ -159,8 +168,9 @@ class MockReadOnlyConnector:
                 "record_key": record_id,
                 "values": {column: row[column] for column in plan.columns},
                 "source_locator": {
-                    "connector_id": self.connector_id, "snapshot_id": self.snapshot_id,
-                    "table": plan.table, "primary_key_column": key,
+                    "connector_id": self.connector_id, "source_registry_id": self.source_registry_id,
+                    "source_sha256": self.source_sha256, "snapshot_id": self.snapshot_id,
+                    "extracted_at": extracted_at, "table": plan.table, "primary_key_column": key,
                     "primary_key_value": key_value,
                     "query_fingerprint": fingerprint,
                 },
@@ -168,12 +178,11 @@ class MockReadOnlyConnector:
         next_offset = plan.offset + len(page_rows)
         if next_offset >= len(filtered):
             next_offset = None
-        from datetime import datetime, timezone
         return ConnectorPage(
             rows=tuple(projected), next_offset=next_offset,
             query_fingerprint=fingerprint, snapshot_id=self.snapshot_id,
-            extracted_at=datetime.now(timezone.utc).isoformat(),
-            connector_id=self.connector_id,
+            extracted_at=extracted_at, connector_id=self.connector_id,
+            source_registry_id=self.source_registry_id, source_sha256=self.source_sha256,
         )
 
 
