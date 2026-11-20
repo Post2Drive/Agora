@@ -194,7 +194,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS imports (
-      import_id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE,
+      import_id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL,
       dataset_id TEXT NOT NULL, source_registry_id TEXT NOT NULL,
       file_sha256 TEXT NOT NULL, status TEXT NOT NULL,
       manifest_json TEXT NOT NULL, created_at TEXT NOT NULL,
