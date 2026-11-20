@@ -129,14 +129,14 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
 def validate_downstream_policy(schema: dict[str, Any]) -> None:
     """Fail closed before downstream use of personal columns."""
     columns = schema.get("columns", [])
-    if any(isinstance(c, dict) and c.get("sensitivity") == "personal" for c in columns):
-        if not (isinstance(schema.get("purpose"), str) and schema["purpose"].strip()
-                and isinstance(schema.get("retention_policy"), str)
-                and schema["retention_policy"].strip()):
-            raise TabularIngestError(
-                "PERSONAL_DATA_POLICY_REQUIRED",
-                "Personal columns require a declared purpose and retention policy before downstream use.",
-            )
+    for column in columns:
+        if isinstance(column, dict) and column.get("sensitivity") == "personal":
+            if not (isinstance(column.get("purpose"), str) and column["purpose"].strip()
+                    and isinstance(column.get("retention"), str) and column["retention"].strip()):
+                raise TabularIngestError(
+                    "PERSONAL_DATA_POLICY_REQUIRED",
+                    "Every personal column requires its own purpose and retention policy before downstream use.",
+                )
 
 
 def _bound_value(value: Any, kind: str) -> Any:
