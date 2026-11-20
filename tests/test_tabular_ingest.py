@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import csv
-import itertools
 import json
 import sqlite3
 from pathlib import Path
 
 import pytest
-
-import agora.tabular as tabular
 
 from agora.tabular import (
     TabularIngestError, ingest_csv, read_snapshot, validate_downstream_policy,
@@ -22,7 +19,8 @@ def schema():
         "retention_policy": "Delete after test",
         "columns": [
             {"name": "person_id", "type": "string", "nullable": False,
-             "primary_key": True, "sensitivity": "personal"},
+             "primary_key": True, "sensitivity": "personal",
+             "purpose": "Account reconciliation", "retention": "Delete after validation"},
             {"name": "age", "type": "integer", "nullable": True, "sensitivity": "internal"},
             {"name": "score", "type": "decimal", "nullable": True,
              "precision": 8, "scale": 2, "sensitivity": "internal"},
@@ -95,8 +93,8 @@ def test_invalid_value_diagnostic_never_contains_value(tmp_path):
 
 def test_personal_data_requires_purpose_and_retention_before_downstream_use():
     s = schema()
-    s.pop("purpose")
-    s.pop("retention_policy")
+    s["columns"][0].pop("purpose")
+    s["columns"][0].pop("retention")
     with pytest.raises(TabularIngestError, match="purpose and retention"):
         validate_downstream_policy(s)
 
@@ -215,46 +213,121 @@ def test_header_only_csv_rejected_unless_schema_allows_empty(tmp_path):
     assert result["manifest"]["accepted_records"] == 0
 
 
-def test_no_truncation_acceptance_detects_a_truncating_reader_mutation(tmp_path, monkeypatch):
-    source = write_csv(tmp_path / "mutated-large.csv", [
-        [f"id-{i}", str(i), "1.00", "true"] for i in range(2001)
-    ])
-    original_reader = tabular.csv.reader
-
-    def mutated_reader(*args, **kwargs):
-        # Simulate a regression that silently stops after 2,000 data rows.
-        return itertools.islice(original_reader(*args, **kwargs), 2001)
-
-    monkeypatch.setattr(tabular.csv, "reader", mutated_reader)
-    result = ingest_csv(tmp_path / "project", source, schema(), data_role="context")
-    with pytest.raises(AssertionError):
-        assert result["manifest"]["accepted_records"] == 2001
 
 
-def test_idempotency_acceptance_detects_a_bypassed_lookup_mutation(tmp_path, monkeypatch):
-    source = write_csv(tmp_path / "idempotency-mutation.csv", [["a", "21", "12.30", "true"]])
+def test_personal_column_policy_is_declared_per_column():
+    s = schema()
+    validate_downstream_policy(s)
+    s["columns"][0].pop("purpose")
+    with pytest.raises(TabularIngestError, match="purpose and retention"):
+        validate_downstream_policy(s)
+
+
+def test_decimal_integer_and_date_bounds_use_native_types(tmp_path):
+    s = schema()
+    s["columns"][1]["minimum"] = 18
+    s["columns"][2]["minimum"] = 10
+    s["columns"][2]["maximum"] = 20
+    source = write_csv(tmp_path / "bounds.csv", [["a", "19", "12.30", "true"]])
+    result = ingest_csv(tmp_path / "project", source, s, data_role="context")
+    assert result["manifest"]["accepted_records"] == 1
+    bad = write_csv(tmp_path / "bad-bounds.csv", [["b", "17", "21.00", "true"]])
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "project-bad", bad, s, data_role="context")
+    assert exc.value.code == "VALUE_INVALID"
+
+    date_schema = {
+        "schema_id": "dates", "schema_version": "1", "dataset_id": "dates",
+        "columns": [{"name": "day", "type": "date", "nullable": False,
+                     "sensitivity": "internal", "minimum": "2026-01-01",
+                     "maximum": "2026-12-31"}],
+    }
+    dates = tmp_path / "dates.csv"
+    dates.write_text("day\\n2026-07-15\\n", encoding="utf-8")
+    assert ingest_csv(tmp_path / "date-project", dates, date_schema,
+                      data_role="context")["manifest"]["accepted_records"] == 1
+
+
+def test_same_schema_version_with_changed_fingerprint_fails(tmp_path):
+    source = write_csv(tmp_path / "drift.csv", [["a", "21", "12.30", "true"]])
     project = tmp_path / "project"
-    first = ingest_csv(project, source, schema(), data_role="context")
-    real_db = tabular._db
+    ingest_csv(project, source, schema(), data_role="context")
+    changed = schema()
+    changed["columns"][1]["nullable"] = False
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(project, source, changed, data_role="context")
+    assert exc.value.code == "SCHEMA_DRIFT"
 
-    class EmptyCursor:
-        @staticmethod
-        def fetchone():
-            return None
 
-    class BypassedLookupConnection:
-        def __init__(self, connection):
-            self._connection = connection
+def test_new_schema_version_preserves_schema_history(tmp_path):
+    source = write_csv(tmp_path / "versions.csv", [["a", "21", "12.30", "true"]])
+    project = tmp_path / "project"
+    ingest_csv(project, source, schema(), data_role="context")
+    newer = schema()
+    newer["schema_version"] = "1.0.1"
+    ingest_csv(project, source, newer, data_role="context")
+    db = sqlite3.connect(project / "data" / "tabular.sqlite3")
+    assert db.execute("select count(*) from dataset_schemas").fetchone()[0] == 2
 
-        def execute(self, sql, *args, **kwargs):
-            if "SELECT import_id, manifest_json FROM imports" in sql:
-                return EmptyCursor()
-            return self._connection.execute(sql, *args, **kwargs)
 
-        def __getattr__(self, name):
-            return getattr(self._connection, name)
+def test_concurrent_identical_import_commits_one_snapshot(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
 
-    monkeypatch.setattr(tabular, "_db", lambda path: BypassedLookupConnection(real_db(path)))
-    with pytest.raises(sqlite3.IntegrityError):
-        ingest_csv(project, source, schema(), data_role="context")
+    source = write_csv(tmp_path / "concurrent.csv", [["a", "21", "12.30", "true"]])
+    project = tmp_path / "project"
+    barrier = threading.Barrier(2)
+
+    def run():
+        barrier.wait()
+        return ingest_csv(project, source, schema(), data_role="context")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = list(pool.map(lambda _: run(), range(2)))
+    assert first["import_id"] == second["import_id"]
+    assert sum(bool(x["idempotent"]) for x in (first, second)) == 1
     assert len(read_snapshot(project, first["import_id"])) == 1
+
+
+def test_csv_quoted_delimiter_escaped_quote_and_embedded_newline(tmp_path):
+    s = {"schema_id": "notes", "schema_version": "1", "dataset_id": "notes",
+         "columns": [{"name": "id", "type": "string", "nullable": False,
+                      "primary_key": True, "sensitivity": "internal"},
+                     {"name": "note", "type": "string", "nullable": False,
+                      "sensitivity": "internal"}]}
+    source = tmp_path / "notes.csv"
+    expected = 'comma, quote " and\\nnewline'
+    with source.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["id", "note"])
+        writer.writerow(["n1", expected])
+    result = ingest_csv(tmp_path / "project", source, s, data_role="context")
+    row = read_snapshot(tmp_path / "project", result["import_id"])[0]
+    assert row["values"]["note"] == expected
+
+
+def test_invalid_encoding_and_malformed_quoting_fail_closed(tmp_path):
+    s = {"schema_id": "simple", "schema_version": "1", "dataset_id": "simple",
+         "columns": [{"name": "id", "type": "string", "nullable": False,
+                      "sensitivity": "internal"}]}
+    invalid = tmp_path / "invalid.csv"
+    invalid.write_bytes(bytes([105, 100, 10, 255]))
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "invalid-project", invalid, s, data_role="context")
+    assert exc.value.code == "CSV_PARSE_FAILED"
+    malformed = tmp_path / "malformed.csv"
+    malformed.write_text('id\\n"unterminated\\n', encoding="utf-8")
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "malformed-project", malformed, s, data_role="context")
+    assert exc.value.code == "CSV_PARSE_FAILED"
+
+
+def test_uneven_row_width_fails_closed(tmp_path):
+    s = {"schema_id": "simple", "schema_version": "1", "dataset_id": "simple",
+         "columns": [{"name": "id", "type": "string", "nullable": False,
+                      "sensitivity": "internal"}]}
+    source = tmp_path / "uneven.csv"
+    source.write_text("id\\n1,extra\\n", encoding="utf-8")
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "project", source, s, data_role="context")
+    assert exc.value.code == "ROW_WIDTH_INVALID"
