@@ -205,7 +205,7 @@ def test_failed_attempt_can_be_retried_without_idempotency_collision(tmp_path):
 
 def test_header_only_csv_rejected_unless_schema_allows_empty(tmp_path):
     source = tmp_path / "header-only.csv"
-    source.write_text("person_id,age,score,active\\n", encoding="utf-8")
+    source.write_text("person_id,age,score,active\n", encoding="utf-8")
     with pytest.raises(TabularIngestError) as exc:
         ingest_csv(tmp_path / "project", source, schema(), data_role="context")
     assert exc.value.code == "CSV_EMPTY"
