@@ -1,0 +1,251 @@
+"""Read-only bindings from tabular snapshots to ontology instances."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any, Mapping
+
+import yaml
+
+from ..identity import stable_record_key
+from ..tabular import read_snapshot
+from .loader import _UniqueKeyLoader
+from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
+
+
+_ALLOWED_KEYS = {
+    "binding_id", "binding_version", "object_type_id", "object_type_version",
+    "dataset_id", "schema_id", "schema_version", "column_map", "identity",
+    "property_sensitivity", "fingerprint",
+}
+_REQUIRED_KEYS = _ALLOWED_KEYS - {"property_sensitivity", "fingerprint"}
+_COMPATIBLE = {
+    "string": {"string", "identifier", "enum"},
+    "integer": {"integer", "decimal"},
+    "decimal": {"decimal"},
+    "boolean": {"boolean"},
+    "date": {"date"},
+    "timestamp": {"timestamp"},
+    "enum": {"enum", "string"},
+}
+_SENSITIVITY_RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+
+
+def _text(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise OntologyError(f"{field} must be a non-empty string")
+    return value.strip()
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def _fingerprint(value: Mapping[str, Any]) -> str:
+    body = {key: value[key] for key in sorted(value) if key != "fingerprint"}
+    return "sha256:" + hashlib.sha256(_canonical(body).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class IdentityBinding:
+    strategy: str
+    primary_key_column: str
+
+
+@dataclass(frozen=True)
+class DataBinding:
+    binding_id: str
+    binding_version: str
+    object_type_id: str
+    object_type_version: str
+    dataset_id: str
+    schema_id: str
+    schema_version: str
+    column_map: dict[str, str]
+    identity: IdentityBinding
+    property_sensitivity: dict[str, str]
+    fingerprint: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "binding_id": self.binding_id,
+            "binding_version": self.binding_version,
+            "object_type_id": self.object_type_id,
+            "object_type_version": self.object_type_version,
+            "dataset_id": self.dataset_id,
+            "schema_id": self.schema_id,
+            "schema_version": self.schema_version,
+            "column_map": dict(self.column_map),
+            "identity": {"strategy": self.identity.strategy, "primary_key_column": self.identity.primary_key_column},
+            "property_sensitivity": dict(self.property_sensitivity),
+        }
+
+
+def load_binding(path_or_payload: str | Path | Mapping[str, Any]) -> DataBinding:
+    """Load and validate a binding from YAML/JSON or a mapping."""
+    if isinstance(path_or_payload, Mapping):
+        raw = dict(path_or_payload)
+    else:
+        source = Path(path_or_payload)
+        try:
+            content = source.read_text(encoding="utf-8")
+            raw = json.loads(content) if source.suffix.lower() == ".json" else yaml.load(content, Loader=_UniqueKeyLoader)
+        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError, TypeError) as exc:
+            raise OntologyError(f"invalid binding: {exc}") from exc
+    if not isinstance(raw, Mapping):
+        raise OntologyError("binding must be an object")
+    unknown = sorted(set(raw) - _ALLOWED_KEYS)
+    missing = sorted(_REQUIRED_KEYS - set(raw))
+    if unknown:
+        raise OntologyError(f"binding has unknown keys: {', '.join(unknown)}")
+    if missing:
+        raise OntologyError(f"binding is missing required fields: {', '.join(missing)}")
+    column_map = raw["column_map"]
+    if not isinstance(column_map, Mapping) or not column_map or any(not isinstance(k, str) or not isinstance(v, str) for k, v in column_map.items()):
+        raise OntologyError("column_map must map non-empty column names to property IDs")
+    if len(set(column_map.values())) != len(column_map):
+        raise OntologyError("column_map cannot map multiple columns to one property")
+    identity = raw["identity"]
+    if not isinstance(identity, Mapping) or set(identity) != {"strategy", "primary_key_column"}:
+        raise OntologyError("identity must contain strategy and primary_key_column")
+    if identity["strategy"] != "record_key":
+        raise OntologyError("binding identity strategy must be record_key")
+    if identity["primary_key_column"] not in column_map:
+        raise OntologyError("identity primary_key_column must be mapped")
+    sensitivities = raw.get("property_sensitivity", {})
+    if not isinstance(sensitivities, Mapping) or any(not isinstance(k, str) or v not in _SENSITIVITY_RANK for k, v in sensitivities.items()):
+        raise OntologyError("property_sensitivity must contain valid classifications")
+    body = {
+        "binding_id": _text(raw["binding_id"], "binding_id"),
+        "binding_version": _text(raw["binding_version"], "binding_version"),
+        "object_type_id": _text(raw["object_type_id"], "object_type_id"),
+        "object_type_version": _text(raw["object_type_version"], "object_type_version"),
+        "dataset_id": _text(raw["dataset_id"], "dataset_id"),
+        "schema_id": _text(raw["schema_id"], "schema_id"),
+        "schema_version": _text(raw["schema_version"], "schema_version"),
+        "column_map": dict(column_map),
+        "identity": {"strategy": "record_key", "primary_key_column": identity["primary_key_column"]},
+        "property_sensitivity": dict(sensitivities),
+    }
+    expected = _fingerprint(body)
+    supplied = raw.get("fingerprint")
+    if supplied is not None and supplied != expected:
+        raise OntologyError("binding fingerprint does not match content")
+    return DataBinding(**{**body, "identity": IdentityBinding(**body["identity"]), "fingerprint": expected})
+
+
+def _properties(pack: OntologyPack, binding: DataBinding) -> tuple[Any, dict[str, PropertyType]]:
+    objects = [item for item in pack.object_types if item.type_id == binding.object_type_id and item.version == binding.object_type_version]
+    if len(objects) != 1:
+        raise OntologyError("binding object type/version does not resolve")
+    properties = {item.property_id: item for item in pack.property_types}
+    missing = sorted(set(binding.column_map.values()) - set(properties))
+    if missing:
+        raise OntologyError(f"binding references unknown properties: {', '.join(missing)}")
+    object_properties = set(objects[0].properties)
+    if set(binding.column_map.values()) != object_properties:
+        raise OntologyError("binding must map exactly the ObjectType properties")
+    return objects[0], properties
+
+
+def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], binding: DataBinding | Mapping[str, Any]) -> DataBinding:
+    """Validate a binding against an ontology pack and explicit snapshot manifest."""
+    binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
+    _object, properties = _properties(pack, binding)
+    required_manifest = {"import_id", "dataset_id", "schema_id", "schema_version", "schema_fingerprint", "column_sensitivity"}
+    missing = sorted(required_manifest - set(snapshot_manifest))
+    if missing:
+        raise OntologyError(f"snapshot manifest is missing required fields: {', '.join(missing)}")
+    for key in ("dataset_id", "schema_id", "schema_version"):
+        if snapshot_manifest[key] != getattr(binding, key):
+            raise OntologyError(f"snapshot {key} does not match binding")
+    if not snapshot_manifest["import_id"] or snapshot_manifest["import_id"] == "latest":
+        raise OntologyError("an explicit import_id is required")
+    columns = snapshot_manifest["column_sensitivity"]
+    if not isinstance(columns, Mapping) or set(columns) != set(binding.column_map):
+        raise OntologyError("snapshot columns do not match binding")
+    policies = snapshot_manifest.get("column_policies", {})
+    for column, property_id in binding.column_map.items():
+        prop = properties[property_id]
+        source_sensitivity = columns[column]
+        target_sensitivity = binding.property_sensitivity.get(property_id, prop.sensitivity)
+        if source_sensitivity not in _SENSITIVITY_RANK or target_sensitivity not in _SENSITIVITY_RANK:
+            raise OntologyError("unknown sensitivity classification")
+        if _SENSITIVITY_RANK[target_sensitivity] < _SENSITIVITY_RANK[source_sensitivity]:
+            raise OntologyError(f"sensitivity downgrade for {column}")
+        if source_sensitivity == "personal" and target_sensitivity not in {"personal", "sensitive"}:
+            raise OntologyError(f"personal column {column} requires personal or sensitive property")
+        if source_sensitivity == "personal":
+            policy = policies.get(column, {})
+            if not policy.get("purpose") or not policy.get("retention"):
+                raise OntologyError(f"personal column {column} requires purpose and retention")
+        source_type = snapshot_manifest.get("column_types", {}).get(column)
+        if source_type and (source_type not in _COMPATIBLE or prop.data_type not in _COMPATIBLE[source_type]):
+            raise OntologyError(f"type mismatch for {column}")
+    return binding
+
+
+def _snapshot_manifest(project: Path, import_id: str) -> dict[str, Any]:
+    if not import_id or import_id == "latest":
+        raise OntologyError("an explicit import_id is required")
+    db = project / "data" / "tabular.sqlite3"
+    try:
+        conn = sqlite3.connect(db)
+        row = conn.execute("SELECT manifest_json FROM imports WHERE import_id=? AND status='committed'", (import_id,)).fetchone()
+    except sqlite3.Error as exc:
+        raise OntologyError("snapshot metadata could not be read") from exc
+    finally:
+        try:
+            conn.close()
+        except UnboundLocalError:
+            pass
+    if row is None:
+        raise OntologyError("explicit committed snapshot was not found")
+    return json.loads(row[0])
+
+
+def materialize_instances(binding: DataBinding | Mapping[str, Any], project: str | Path, import_id: str) -> list[dict[str, Any]]:
+    """Read one explicit snapshot and return provenance-rich ontology instances."""
+    binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
+    project = Path(project)
+    manifest = _snapshot_manifest(project, import_id)
+    # The caller must supply the pack to validate_binding; materialization still
+    # checks snapshot identity and uses the immutable stored rows only.
+    for key in ("dataset_id", "schema_id", "schema_version"):
+        if manifest.get(key) != getattr(binding, key):
+            raise OntologyError(f"snapshot {key} does not match binding")
+    rows = read_snapshot(project, import_id)
+    if not rows:
+        raise OntologyError("snapshot contains no materializable rows")
+    values_by_column = set(manifest.get("column_sensitivity", {}))
+    if values_by_column != set(binding.column_map):
+        raise OntologyError("snapshot columns do not match binding")
+    reverse = {column: property_id for column, property_id in binding.column_map.items()}
+    instances = []
+    for row in rows:
+        primary_value = row["values"].get(binding.identity.primary_key_column)
+        if primary_value is None:
+            raise OntologyError("primary key value is missing")
+        instances.append({
+            "object_type_id": binding.object_type_id,
+            "object_type_version": binding.object_type_version,
+            "property_values": {reverse[column]: row["values"].get(column) for column in reverse},
+            "record_key": stable_record_key(binding.dataset_id, primary_value),
+            "row_id": row["row_id"],
+            "import_id": import_id,
+            "dataset_id": binding.dataset_id,
+            "schema_id": binding.schema_id,
+            "schema_version": binding.schema_version,
+            "source_registry_id": row["source_locator"].get("source_registry_id"),
+            "file_sha256": row["source_locator"].get("file_sha256"),
+            "source_locator": row["source_locator"],
+            "binding_id": binding.binding_id,
+            "binding_version": binding.binding_version,
+            "binding_fingerprint": binding.fingerprint,
+            "property_sensitivity": dict(binding.property_sensitivity),
+        })
+    return instances
