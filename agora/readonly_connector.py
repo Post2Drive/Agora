@@ -9,6 +9,8 @@ import hashlib
 import json
 import threading
 import time
+
+from .identity import stable_record_key
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
@@ -86,7 +88,7 @@ class MockReadOnlyConnector:
         self.snapshot_id = snapshot_id
         self.source_sha256 = hashlib.sha256(_canonical(self._tables).encode("utf-8")).hexdigest()
         self.source_registry_id = "mock-source-" + hashlib.sha256(
-            f"{connector_id}\\0{snapshot_id}\\0{self.source_sha256}".encode("utf-8")
+            f"{connector_id}\0{snapshot_id}\0{self.source_sha256}".encode("utf-8")
         ).hexdigest()[:24]
         self.max_page_size = max_page_size
         if max_page_size < 1:
@@ -173,7 +175,7 @@ class MockReadOnlyConnector:
                 _canonical({"table": plan.table, "columns": list(self._allowlist[plan.table])}).encode("utf-8")
             ).hexdigest()
             row_id = hashlib.sha256(
-                b"agora-db-row-v1\\0" + _canonical({
+                b"agora-db-row-v1\0" + _canonical({
                     "connector_id": self.connector_id, "snapshot_id": self.snapshot_id,
                     "table": plan.table, "schema_fingerprint": table_schema_fingerprint,
                     "primary_key": key_value,
@@ -181,7 +183,7 @@ class MockReadOnlyConnector:
             ).hexdigest()
             projected.append({
                 "row_id": row_id,
-                "record_key": None,  # TODO(shared-key): use agora.identity.stable_record_key after PR #21 merges.
+                "record_key": stable_record_key(f"{self.connector_id}:{plan.table}", key_value),
                 "values": {column: row[column] for column in plan.columns},
                 "source_locator": {
                     "connector_id": self.connector_id, "source_registry_id": self.source_registry_id,
