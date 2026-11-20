@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 import sqlite3
 from pathlib import Path
 
 import pytest
+
+import agora.tabular as tabular
 
 from agora.tabular import (
     TabularIngestError, ingest_csv, read_snapshot, validate_downstream_policy,
@@ -210,3 +213,48 @@ def test_header_only_csv_rejected_unless_schema_allows_empty(tmp_path):
     s["allow_empty"] = True
     result = ingest_csv(tmp_path / "project-empty", source, s, data_role="context")
     assert result["manifest"]["accepted_records"] == 0
+
+
+def test_no_truncation_acceptance_detects_a_truncating_reader_mutation(tmp_path, monkeypatch):
+    source = write_csv(tmp_path / "mutated-large.csv", [
+        [f"id-{i}", str(i), "1.00", "true"] for i in range(2001)
+    ])
+    original_reader = tabular.csv.reader
+
+    def mutated_reader(*args, **kwargs):
+        # Simulate a regression that silently stops after 2,000 data rows.
+        return itertools.islice(original_reader(*args, **kwargs), 2001)
+
+    monkeypatch.setattr(tabular.csv, "reader", mutated_reader)
+    result = ingest_csv(tmp_path / "project", source, schema(), data_role="context")
+    with pytest.raises(AssertionError):
+        assert result["manifest"]["accepted_records"] == 2001
+
+
+def test_idempotency_acceptance_detects_a_bypassed_lookup_mutation(tmp_path, monkeypatch):
+    source = write_csv(tmp_path / "idempotency-mutation.csv", [["a", "21", "12.30", "true"]])
+    project = tmp_path / "project"
+    first = ingest_csv(project, source, schema(), data_role="context")
+    real_db = tabular._db
+
+    class EmptyCursor:
+        @staticmethod
+        def fetchone():
+            return None
+
+    class BypassedLookupConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def execute(self, sql, *args, **kwargs):
+            if "SELECT import_id, manifest_json FROM imports" in sql:
+                return EmptyCursor()
+            return self._connection.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    monkeypatch.setattr(tabular, "_db", lambda path: BypassedLookupConnection(real_db(path)))
+    with pytest.raises(sqlite3.IntegrityError):
+        ingest_csv(project, source, schema(), data_role="context")
+    assert len(read_snapshot(project, first["import_id"])) == 1
