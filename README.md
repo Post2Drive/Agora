@@ -23,7 +23,7 @@ will say and do, with numbers you can check.
 > **Status: Phases 1–4 are done**: the engine; upload, graph and setup; the report and
 > interaction; MiroFish-level conversations, memory and report tools; elections; and
 > calibration, backtests and probability ranges. Next is installers and polish (5).
-> See [ROADMAP.md](ROADMAP.md).
+> See [ROADMAP.md](ROADMAP.md) and the [six-rung platform roadmap](docs/PLATFORM_ROADMAP.md).
 
 ## Quick start: the website
 
