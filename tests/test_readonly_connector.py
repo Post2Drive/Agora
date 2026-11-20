@@ -4,6 +4,8 @@ import threading
 
 import pytest
 
+import agora.readonly_connector as readonly_connector
+
 from agora.readonly_connector import (
     ConnectorError, MockReadOnlyConnector, QueryPlan, validate_read_only_statement,
 )
@@ -115,3 +117,12 @@ def test_non_unique_primary_key_rejected():
 def test_filter_uses_parameter_values_without_string_interpolation(connector):
     page = connector.select(QueryPlan("customers", ("id",), filters={"name": "A"}))
     assert [r["values"]["id"] for r in page.rows] == [1]
+
+
+def test_read_only_acceptance_detects_a_removed_guard_mutation(monkeypatch):
+    # Simulate a mutation that removes the statement guard. The acceptance
+    # expectation itself must fail when a write statement is no longer rejected.
+    monkeypatch.setattr(readonly_connector, "validate_read_only_statement", lambda statement: None)
+    with pytest.raises(AssertionError):
+        with pytest.raises(ConnectorError):
+            readonly_connector.validate_read_only_statement("DELETE FROM customers")
