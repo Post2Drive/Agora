@@ -366,6 +366,25 @@ def test_decimal_precision_and_scale_fail_closed(tmp_path):
     assert exc.value.code == "VALUE_INVALID"
 
 
+@pytest.mark.parametrize("kind,bounds", [
+    ("integer", {"minimum": "abc"}),
+    ("decimal", {"minimum": "2", "maximum": "1"}),
+    ("date", {"minimum": "not-a-date"}),
+])
+def test_invalid_schema_bounds_fail_before_reading_rows(tmp_path, kind, bounds):
+    s = {
+        "dataset_name": "bounds",
+        "columns": [{"name": "value", "type": kind, "nullable": False, "sensitivity": "internal", **bounds}],
+    }
+    if kind == "decimal":
+        s["columns"][0].update(precision=6, scale=2)
+    source = tmp_path / "bounds.csv"
+    source.write_text("value\n1\n", encoding="utf-8")
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "project", source, s, data_role="context")
+    assert exc.value.code == "SCHEMA_BOUND_INVALID"
+
+
 def test_csv_record_key_uses_shared_ontology_identity(tmp_path):
     source = write_csv(tmp_path / "shared-key.csv", [["same-id", "21", "12.30", "true"]])
     result = ingest_csv(tmp_path / "project", source, schema(), data_role="context")

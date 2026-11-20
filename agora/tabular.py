@@ -104,6 +104,16 @@ def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str,
                 raise TabularIngestError("SCHEMA_DECIMAL_PRECISION", "Decimal columns need precision and scale.")
             if item["precision"] <= 0 or item["scale"] < 0 or item["scale"] > item["precision"]:
                 raise TabularIngestError("SCHEMA_DECIMAL_PRECISION", "Decimal precision or scale is invalid.")
+        if "minimum" in item or "maximum" in item:
+            try:
+                minimum = _bound_value(item["minimum"], kind) if "minimum" in item else None
+                maximum = _bound_value(item["maximum"], kind) if "maximum" in item else None
+                if minimum is not None and maximum is not None and minimum > maximum:
+                    raise ValueError
+            except (ValueError, TypeError, InvalidOperation, OverflowError, ZoneInfoNotFoundError):
+                raise TabularIngestError(
+                    "SCHEMA_BOUND_INVALID", "Schema bounds are invalid for the declared column type."
+                ) from None
         names.add(name)
         clean.append(dict(item))
     if len(primary) > 1:
