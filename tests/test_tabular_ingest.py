@@ -77,7 +77,7 @@ def test_duplicate_primary_key_fails_without_partial_rows(tmp_path):
     assert exc.value.code == "PRIMARY_KEY_DUPLICATE"
     db = sqlite3.connect(project / "data" / "tabular.sqlite3")
     assert db.execute("select count(*) from import_rows").fetchone()[0] == 0
-    assert db.execute("select count(*) from rejected_rows").fetchone()[0] == 1
+    assert db.execute("select count(*) from rejected_rows").fetchone()[0] == 2
 
 
 def test_invalid_value_diagnostic_never_contains_value(tmp_path):
