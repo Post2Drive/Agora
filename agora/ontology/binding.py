@@ -156,7 +156,7 @@ def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], b
     """Validate a binding against an ontology pack and explicit snapshot manifest."""
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     _object, properties = _properties(pack, binding)
-    required_manifest = {"import_id", "dataset_id", "schema_id", "schema_version", "schema_fingerprint", "column_sensitivity"}
+    required_manifest = {"import_id", "dataset_id", "schema_id", "schema_version", "schema_fingerprint", "column_sensitivity", "column_types"}
     missing = sorted(required_manifest - set(snapshot_manifest))
     if missing:
         raise OntologyError(f"snapshot manifest is missing required fields: {', '.join(missing)}")
@@ -165,9 +165,14 @@ def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], b
             raise OntologyError(f"snapshot {key} does not match binding")
     if not snapshot_manifest["import_id"] or snapshot_manifest["import_id"] == "latest":
         raise OntologyError("an explicit import_id is required")
+    if snapshot_manifest.get("data_role") == "sealed_holdout":
+        raise OntologyError("sealed_holdout snapshots cannot be materialized")
     columns = snapshot_manifest["column_sensitivity"]
     if not isinstance(columns, Mapping) or set(columns) != set(binding.column_map):
         raise OntologyError("snapshot columns do not match binding")
+    types = snapshot_manifest["column_types"]
+    if not isinstance(types, Mapping) or set(types) != set(binding.column_map):
+        raise OntologyError("stored snapshot column types are missing or incomplete")
     policies = snapshot_manifest.get("column_policies", {})
     for column, property_id in binding.column_map.items():
         prop = properties[property_id]
@@ -183,8 +188,8 @@ def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], b
             policy = policies.get(column, {})
             if not policy.get("purpose") or not policy.get("retention"):
                 raise OntologyError(f"personal column {column} requires purpose and retention")
-        source_type = snapshot_manifest.get("column_types", {}).get(column)
-        if source_type and (source_type not in _COMPATIBLE or prop.data_type not in _COMPATIBLE[source_type]):
+        source_type = types[column]
+        if source_type not in _COMPATIBLE or prop.data_type not in _COMPATIBLE[source_type]:
             raise OntologyError(f"type mismatch for {column}")
     return binding
 
@@ -193,8 +198,10 @@ def _snapshot_manifest(project: Path, import_id: str) -> dict[str, Any]:
     if not import_id or import_id == "latest":
         raise OntologyError("an explicit import_id is required")
     db = project / "data" / "tabular.sqlite3"
+    if not db.is_file():
+        raise OntologyError("snapshot database was not found")
     try:
-        conn = sqlite3.connect(db)
+        conn = sqlite3.connect(f"file:{db.resolve().as_posix()}?mode=ro", uri=True)
         row = conn.execute("SELECT manifest_json FROM imports WHERE import_id=? AND status='committed'", (import_id,)).fetchone()
     except sqlite3.Error as exc:
         raise OntologyError("snapshot metadata could not be read") from exc
@@ -208,16 +215,12 @@ def _snapshot_manifest(project: Path, import_id: str) -> dict[str, Any]:
     return json.loads(row[0])
 
 
-def materialize_instances(binding: DataBinding | Mapping[str, Any], project: str | Path, import_id: str) -> list[dict[str, Any]]:
+def materialize_instances(binding: DataBinding | Mapping[str, Any], pack: OntologyPack, project: str | Path, import_id: str) -> list[dict[str, Any]]:
     """Read one explicit snapshot and return provenance-rich ontology instances."""
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
     manifest = _snapshot_manifest(project, import_id)
-    # The caller must supply the pack to validate_binding; materialization still
-    # checks snapshot identity and uses the immutable stored rows only.
-    for key in ("dataset_id", "schema_id", "schema_version"):
-        if manifest.get(key) != getattr(binding, key):
-            raise OntologyError(f"snapshot {key} does not match binding")
+    validate_binding(pack, manifest, binding)
     rows = read_snapshot(project, import_id)
     if not rows:
         raise OntologyError("snapshot contains no materializable rows")
@@ -225,6 +228,16 @@ def materialize_instances(binding: DataBinding | Mapping[str, Any], project: str
     if values_by_column != set(binding.column_map):
         raise OntologyError("snapshot columns do not match binding")
     reverse = {column: property_id for column, property_id in binding.column_map.items()}
+    properties = {item.property_id: item for item in pack.property_types}
+    effective_sensitivity = {
+        property_id: max(
+            (binding.property_sensitivity.get(property_id, "public"),
+             manifest["column_sensitivity"][column],
+             properties[property_id].sensitivity),
+            key=lambda value: _SENSITIVITY_RANK[value],
+        )
+        for column, property_id in binding.column_map.items()
+    }
     instances = []
     for row in rows:
         primary_value = row["values"].get(binding.identity.primary_key_column)
@@ -246,6 +259,6 @@ def materialize_instances(binding: DataBinding | Mapping[str, Any], project: str
             "binding_id": binding.binding_id,
             "binding_version": binding.binding_version,
             "binding_fingerprint": binding.fingerprint,
-            "property_sensitivity": dict(binding.property_sensitivity),
+            "property_sensitivity": effective_sensitivity,
         })
     return instances

@@ -324,6 +324,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         "file_sha256": file_hash, "byte_length": len(raw), "schema_id": schema_id,
         "schema_version": schema_version, "schema_fingerprint": schema_fp,
         "column_sensitivity": {c["name"]: c["sensitivity"] for c in columns},
+        "column_types": {c["name"]: c["type"] for c in columns},
         "purpose": schema.get("purpose"), "retention_policy": schema.get("retention_policy"),
         "column_policies": {
             c["name"]: {"purpose": c.get("purpose"), "retention": c.get("retention")}
