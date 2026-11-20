@@ -124,5 +124,9 @@ def test_read_only_acceptance_detects_a_removed_guard_mutation(monkeypatch):
     # expectation itself must fail when a write statement is no longer rejected.
     monkeypatch.setattr(readonly_connector, "validate_read_only_statement", lambda statement: None)
     with pytest.raises(AssertionError):
-        with pytest.raises(ConnectorError):
+        try:
             readonly_connector.validate_read_only_statement("DELETE FROM customers")
+        except ConnectorError:
+            pass
+        else:
+            raise AssertionError("Mutated guard accepted a write statement.")
