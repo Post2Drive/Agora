@@ -177,3 +177,24 @@ def test_source_role_is_registered(tmp_path):
     ingest_csv(project, source, schema(), data_role="calibration")
     rows = list_sources(project / "governance" / "sources.jsonl")
     assert rows[0]["data_role"] == "calibration"
+
+
+def test_empty_value_is_not_silently_converted_to_null(tmp_path):
+    source = write_csv(tmp_path / "empty.csv", [["a", "", "1.00", "true"]])
+    with pytest.raises(TabularIngestError) as exc:
+        ingest_csv(tmp_path / "project", source, schema(), data_role="context")
+    assert exc.value.code == "VALUE_INVALID"
+    s = schema()
+    s["columns"][1]["empty_as_null"] = True
+    result = ingest_csv(tmp_path / "project-allowed", source, s, data_role="context")
+    assert read_snapshot(tmp_path / "project-allowed", result["import_id"])[0]["values"]["age"] is None
+
+
+def test_failed_attempt_can_be_retried_without_idempotency_collision(tmp_path):
+    source = write_csv(tmp_path / "retry.csv", [["a", "21", "12.30", "true"]])
+    project = tmp_path / "project"
+    with pytest.raises(TabularIngestError):
+        ingest_csv(project, source, schema(), data_role="context", max_rows=0)
+    result = ingest_csv(project, source, schema(), data_role="context")
+    assert result["manifest"]["status"] == "committed"
+    assert len(read_snapshot(project, result["import_id"])) == 1
