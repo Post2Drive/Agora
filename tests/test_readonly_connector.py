@@ -85,7 +85,7 @@ def test_unallowlisted_column_rejected(connector):
 ])
 def test_arbitrary_sql_and_write_statements_rejected(statement):
     with pytest.raises(ConnectorError):
-        validate_read_only_statement(statement)
+        reject_sql_text(statement)
 
 
 def test_connector_rejects_sql_execution_method(connector):
