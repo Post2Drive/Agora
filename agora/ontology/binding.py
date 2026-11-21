@@ -223,6 +223,7 @@ def materialize_instances(
     import_id: str,
     *,
     policy: PolicyCallable | None = None,
+    audit: Any | None = None,
     purpose: str | None = None,
     retention: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -249,6 +250,7 @@ def materialize_instances(
         try:
             enforce_policy(
                 policy,
+                audit=audit,
                 project=project,
                 operation="binding",
                 resource={

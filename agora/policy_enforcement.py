@@ -30,12 +30,17 @@ def enforce_policy(
     project: str | Path,
     operation: str,
     resource: Mapping[str, Any],
+    audit: Any | None = None,
 ) -> Mapping[str, Any] | None:
     """Evaluate an optional decision callable and audit every denial.
 
     With policy=None this is a no-op, preserving legacy caller behaviour.
     The policy receives only declared metadata; callers invoke this before
     reading source bytes or snapshot databases.
+
+    audit, when given, is an object with append(event) (for example an
+    AnchoredAuditChain). The caller owns its lifecycle. Without it the legacy
+    unanchored project-local chain is used.
     """
     if policy is None:
         return None
@@ -81,23 +86,27 @@ def enforce_policy(
     safe_resource_ids = [token for value in resource_ids
                          if (token := safe_token(value)) is not None]
 
-    audit_path = Path(project) / "data" / "audit_chain.sqlite3"
-    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "event_id": f"policy-denial-{uuid.uuid4().hex}",
+        "event_type": "policy_denied",
+        "subject_id": str(subject_id),
+        "operation": operation,
+        "decision": "deny",
+        "policy_version": policy_version,
+        "resource_ids": safe_resource_ids,
+        "reason": reason,
+    }
     try:
-        store = AuditChainStore(audit_path)
-        try:
-            store.append({
-                "event_id": f"policy-denial-{uuid.uuid4().hex}",
-                "event_type": "policy_denied",
-                "subject_id": str(subject_id),
-                "operation": operation,
-                "decision": "deny",
-                "policy_version": policy_version,
-                "resource_ids": safe_resource_ids,
-                "reason": reason,
-            })
-        finally:
-            store.close()
+        if audit is not None:
+            audit.append(event)
+        else:
+            audit_path = Path(project) / "data" / "audit_chain.sqlite3"
+            audit_path.parent.mkdir(parents=True, exist_ok=True)
+            store = AuditChainStore(audit_path)
+            try:
+                store.append(event)
+            finally:
+                store.close()
     except Exception as exc:
         raise PolicyEnforcementError(
             "policy denied the operation and the denial audit could not be recorded"
