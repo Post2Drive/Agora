@@ -212,6 +212,7 @@ def _commit_approval(
     return updated
 
 
+APPROVAL_BASELINE_SENSITIVITY = "internal"
 LEGACY_APPROVE_ENV = "AGORA_TEST_ONLY_LEGACY_APPROVE"
 
 
@@ -288,16 +289,21 @@ def approve_as(
     """Approve using a trusted principal; role, scope and actor come from it.
 
     There is no role parameter: authority is derived from the adapter-issued
-    principal, so callers cannot self-assert approver rights.
+    principal, so callers cannot self-assert approver rights. ``resource`` is
+    accepted for compatibility but ignored; policy inputs come from the stored
+    decision only.
     """
     if require_anchored:
         _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     moment = _time(now)
-    policy_resource = dict(resource or {})
-    policy_resource.update(current.project_scope)
+    # Policy resource is derived ONLY from the stored decision record. The
+    # caller-supplied ``resource`` is ignored: it cannot set or downgrade
+    # sensitivity, purpose, retention or role. Decision records carry no
+    # sensitivity field, so the fixed baseline "internal" is used server-side.
+    policy_resource = dict(current.project_scope)
     policy_resource["resource_ids"] = [decision_id]
-    policy_resource.setdefault("source_sensitivity", "internal")
+    policy_resource["source_sensitivity"] = APPROVAL_BASELINE_SENSITIVITY
     try:
         policy_decision, _role = authorize_decision_approval_principal(
             principal, policy_resource, now=moment)
