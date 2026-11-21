@@ -3,7 +3,7 @@
 **Status:** Documentation plan only; no source-code change or implementation approval  
 **Assessment base:** `main` at `ef09a828868cfa774eff58bcb56e41a639408ae2` (21 November 2026). The code baseline remains `19f51d84d3ecc8392eb8713e392f93cb58a736bf`; the later #62 merge changed documentation only.  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
-**Implementation under development:** PR #63, `feat/audit-anchor`, head `b135fdadd17bebfac4ab3137554bb4519070d5f9`; open draft, not merged. Exact-head workflow run 184 completed with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. The PR has no review submissions or inline review threads at this check.
+**Implementation under development:** PR #63, `feat/audit-anchor`, head `b135fdadd17bebfac4ab3137554bb4519070d5f9`; in the review queue per the latest collaboration entry (GitHub state remains open draft, not merged). Exact-head workflow run 184 completed with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. No formal review submission or inline review thread was present at this check.
 
 ## 1. Purpose and non-claims
 
@@ -187,7 +187,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63:** open draft, not merged. Its exact-head CI run 184 is green across all four matrix jobs, but no review submission or review thread was present at this check. The code does not wire the wrapper into approval, outcomes or policy enforcement.
+- **PR #63:** in the review queue per the latest collaboration entry; GitHub still shows it as open draft, not merged. Exact-head CI run 184 is green across all four matrix jobs, but no formal review submission or inline review thread was present at this check. The code does not wire the wrapper into approval, outcomes or policy enforcement.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
 - **Principal migration:** merged PR #58 provides only the synthetic `approve_as()` slice. Other role-string boundaries remain a separate migration task.
