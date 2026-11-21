@@ -12,6 +12,7 @@ from typing import Any, Mapping
 import yaml
 
 from ..identity import stable_record_key
+from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 from ..tabular import read_snapshot
 from .loader import _UniqueKeyLoader
 from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
@@ -215,10 +216,45 @@ def _snapshot_manifest(project: Path, import_id: str) -> dict[str, Any]:
     return json.loads(row[0])
 
 
-def materialize_instances(binding: DataBinding | Mapping[str, Any], pack: OntologyPack, project: str | Path, import_id: str) -> list[dict[str, Any]]:
-    """Read one explicit snapshot and return provenance-rich ontology instances."""
+def materialize_instances(
+    binding: DataBinding | Mapping[str, Any],
+    pack: OntologyPack,
+    project: str | Path,
+    import_id: str,
+    *,
+    policy: PolicyCallable | None = None,
+) -> list[dict[str, Any]]:
+    """Read one explicit snapshot and return provenance-rich ontology instances.
+
+    When supplied, policy is called as policy("binding", resource) before the
+    snapshot database is opened. None preserves the legacy behaviour.
+    """
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
+    if policy is not None:
+        _object, properties = _properties(pack, binding)
+        sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+        source_sensitivity = max(
+            (binding.property_sensitivity.get(property_id, properties[property_id].sensitivity)
+             for property_id in binding.column_map.values()),
+            key=lambda value: sensitivity_rank[value],
+        )
+        try:
+            enforce_policy(
+                policy,
+                project=project,
+                operation="binding",
+                resource={
+                    "project_id": project.name or str(project),
+                    "resource_ids": [binding.binding_id, binding.dataset_id],
+                    "binding_id": binding.binding_id,
+                    "dataset_id": binding.dataset_id,
+                    "source_sensitivity": source_sensitivity,
+                    "target_sensitivity": source_sensitivity,
+                },
+            )
+        except PolicyEnforcementError as exc:
+            raise OntologyError("Policy denied ontology materialization.") from exc
     manifest = _snapshot_manifest(project, import_id)
     validate_binding(pack, manifest, binding)
     rows = read_snapshot(project, import_id)

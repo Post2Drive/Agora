@@ -12,6 +12,7 @@ from agora.ontology import stable_record_key as ontology_stable_record_key
 from agora.tabular import (
     TabularIngestError, ingest_csv, read_snapshot, validate_downstream_policy,
 )
+from agora.audit_chain import AuditChainStore
 
 
 def schema():
@@ -424,3 +425,53 @@ def test_audit_failure_during_failed_import_preserves_original_error_and_pending
     states = governance.operation_states(project)
     assert len(states) == 1
     assert next(iter(states.values()))["status"] == "pending"
+
+
+
+def test_policy_denial_is_audited_before_csv_source_is_read(tmp_path):
+    source = tmp_path / "missing.csv"
+
+    def deny(operation, resource):
+        assert operation == "import"
+        assert resource["dataset_id"] == "people"
+        return {
+            "decision": "deny", "reason": "cross_scope",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": ["people"],
+        }
+
+    with pytest.raises(TabularIngestError, match="Policy denied") as exc:
+        ingest_csv(tmp_path / "project", source, schema(),
+                   data_role="context", policy=deny)
+    assert exc.value.code == "POLICY_DENIED"
+    audit = AuditChainStore(tmp_path / "project" / "data" / "audit_chain.sqlite3")
+    try:
+        assert audit.verify()["valid"] is True
+        row = audit.db.execute("SELECT event_json FROM audit_events").fetchone()
+        event = json.loads(row[0])
+        assert event["operation"] == "import"
+        assert event["decision"] == "deny"
+        assert event["reason"] == "cross_scope"
+        assert event["resource_ids"] == ["people"]
+    finally:
+        audit.close()
+
+
+def test_policy_allow_preserves_csv_import(tmp_path):
+    source = write_csv(tmp_path / "people.csv", [["a", "21", "12.30", "true"]])
+    seen = {}
+
+    def allow(operation, resource):
+        seen["operation"] = operation
+        seen["resource"] = dict(resource)
+        return {
+            "decision": "allow", "reason": "policy_allow",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": ["people"],
+        }
+
+    result = ingest_csv(tmp_path / "project", source, schema(),
+                        data_role="context", policy=allow)
+    assert result["manifest"]["accepted_records"] == 1
+    assert seen["operation"] == "import"
+    assert seen["resource"]["dataset_id"] == "people"

@@ -21,6 +21,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .identity import stable_record_key
+from .policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 
 logger = logging.getLogger(__name__)
 
@@ -293,18 +294,47 @@ def _init_db(conn: sqlite3.Connection) -> None:
 
 def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, Any], *,
                data_role: str, max_bytes: int = DEFAULT_MAX_BYTES,
-               max_rows: int = DEFAULT_MAX_ROWS) -> dict[str, Any]:
-    """Import a local CSV as an immutable, typed, provenance-registered snapshot."""
+               max_rows: int = DEFAULT_MAX_ROWS,
+               policy: PolicyCallable | None = None) -> dict[str, Any]:
+    """Import a local CSV as an immutable, typed, provenance-registered snapshot.
+
+    When supplied, policy is called as policy("import", resource) before the
+    source file is checked or read. None preserves the legacy behaviour.
+    """
     project, source_path = Path(project), Path(source_path)
     if data_role not in ROLES:
         raise TabularIngestError("DATA_ROLE_INVALID", "An explicit valid data role is required.")
+    columns, dataset_id, schema_fp = _schema_contract(schema)
+    if policy is not None:
+        sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+        source_sensitivity = max(
+            (column["sensitivity"] for column in columns),
+            key=lambda value: sensitivity_rank[value],
+        )
+        try:
+            enforce_policy(
+                policy,
+                project=project,
+                operation="import",
+                resource={
+                    "project_id": project.name or str(project),
+                    "resource_ids": [dataset_id],
+                    "dataset_id": dataset_id,
+                    "source_role": data_role,
+                    "source_sensitivity": source_sensitivity,
+                    "target_sensitivity": source_sensitivity,
+                },
+            )
+        except PolicyEnforcementError as exc:
+            raise TabularIngestError(
+                "POLICY_DENIED", "Policy denied CSV import."
+            ) from exc
     if not source_path.is_file():
         raise FileNotFoundError("CSV source file was not found.")
     raw = source_path.read_bytes()
     if len(raw) > max_bytes:
         raise TabularIngestError("FILE_TOO_LARGE", "CSV exceeds the configured byte limit.")
     file_hash = hashlib.sha256(raw).hexdigest()
-    columns, dataset_id, schema_fp = _schema_contract(schema)
     schema_id = str(schema.get("schema_id", dataset_id))
     schema_version = str(schema.get("schema_version", "1.0.0"))
     primary = next((c for c in columns if c.get("primary_key")), None)

@@ -4,6 +4,7 @@ import csv
 import pytest
 
 from agora.ontology import OntologyError, parse_domain_pack
+from agora.audit_chain import AuditChainStore
 from agora.ontology.binding import load_binding, materialize_instances, validate_binding
 from agora.tabular import ingest_csv
 
@@ -163,3 +164,55 @@ def test_materialization_is_read_only_and_civic_pack_works(tmp_path):
     instances = materialize_instances(binding("civic"), pack("civic"), tmp_path, result["import_id"])
     assert instances[0]["property_sensitivity"]["civic:Customer.id"] == "personal"
     assert database.read_bytes() == before
+
+
+
+def test_policy_denial_is_audited_before_snapshot_database_is_read(tmp_path):
+    def deny(operation, resource):
+        assert operation == "binding"
+        assert resource["binding_id"] == "commerce.customer.v1"
+        return {
+            "decision": "deny", "reason": "cross_scope",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": ["commerce.customer.v1", "customers"],
+        }
+
+    with pytest.raises(OntologyError, match="Policy denied"):
+        materialize_instances(binding(), pack(), tmp_path / "missing-project",
+                              "missing-import", policy=deny)
+    audit = AuditChainStore(
+        tmp_path / "missing-project" / "data" / "audit_chain.sqlite3"
+    )
+    try:
+        assert audit.verify()["valid"] is True
+        event = audit.db.execute("SELECT event_json FROM audit_events").fetchone()[0]
+        import json
+        payload = json.loads(event)
+        assert payload["operation"] == "binding"
+        assert payload["decision"] == "deny"
+        assert payload["reason"] == "cross_scope"
+        assert payload["resource_ids"] == ["commerce.customer.v1", "customers"]
+    finally:
+        audit.close()
+
+
+def test_policy_allow_preserves_read_only_materialization(tmp_path):
+    source = tmp_path / "customers.csv"
+    write_csv(source, [["C-1", "one@example.test"]])
+    imported = ingest_csv(tmp_path, source, schema(), data_role="context")
+    seen = {}
+
+    def allow(operation, resource):
+        seen["operation"] = operation
+        seen["resource"] = dict(resource)
+        return {
+            "decision": "allow", "reason": "policy_allow",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": ["commerce.customer.v1", "customers"],
+        }
+
+    instances = materialize_instances(binding(), pack(), tmp_path,
+                                      imported["import_id"], policy=allow)
+    assert len(instances) == 1
+    assert seen["operation"] == "binding"
+    assert seen["resource"]["dataset_id"] == "customers"
