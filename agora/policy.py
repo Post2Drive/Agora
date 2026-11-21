@@ -79,16 +79,25 @@ def decide(subject: Any, role: str, operation: str, resource: Mapping[str, Any],
         return deny("sealed_holdout_forbidden")
 
     subject_scope, resource_scope = _scope(subject, resource)
-    if subject_scope is not None and resource_scope is not None and subject_scope != resource_scope:
+    if subject_scope is None or resource_scope is None:
+        return deny("scope_missing")
+    if subject_scope != resource_scope:
         return deny("cross_scope")
 
     source_sensitivity = resource.get("source_sensitivity", resource.get("sensitivity"))
     target_sensitivity = resource.get("target_sensitivity", source_sensitivity)
-    if (source_sensitivity in SENSITIVITY_RANK and target_sensitivity in SENSITIVITY_RANK
-            and SENSITIVITY_RANK[target_sensitivity] < SENSITIVITY_RANK[source_sensitivity]):
+    if source_sensitivity not in SENSITIVITY_RANK or target_sensitivity not in SENSITIVITY_RANK:
+        return deny("sensitivity_missing")
+    if SENSITIVITY_RANK[target_sensitivity] < SENSITIVITY_RANK[source_sensitivity]:
         return deny("sensitivity_downgrade")
 
-    if source_sensitivity == "personal" and operation != "import":
+    # Imports may validate a snapshot before downstream use.  If the caller
+    # declares that it will be bound/scenario-fed, purpose and retention are
+    # required at the import boundary as well.
+    requires_policy = operation != "import" or bool(
+        resource.get("will_bind") or resource.get("downstream_use")
+    )
+    if SENSITIVITY_RANK[source_sensitivity] >= SENSITIVITY_RANK["personal"] and requires_policy:
         if not _text(resource.get("purpose")) or not _text(resource.get("retention")):
             return deny("personal_data_policy_required")
     return _decision(subject, role, operation, resource, policy_version=policy_version,
