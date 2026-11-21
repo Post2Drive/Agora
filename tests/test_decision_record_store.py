@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from agora.decisions import DecisionRecordError, DecisionRecordStore
+from agora.decisions.schema import load_decision_record
 
 
 def record():
@@ -23,8 +24,14 @@ def record():
 def test_store_appends_versions_and_rejects_replacement(tmp_path):
     store = DecisionRecordStore(tmp_path / "decisions.db")
     first = store.append(record())
-    second = dict(record(), version=2, status="proposed", supersedes=first.fingerprint)
-    store.append(second)
+    second = load_decision_record(dict(
+        record(), version=2, status="proposed", supersedes=first.fingerprint,
+        updated_at="2026-11-21T00:01:00Z",
+    ))
+    store.append_transition(second, {
+        "transition": "proposed", "actor": "analyst", "method": "manual",
+        "occurred_at": second.updated_at, "decision_fingerprint": second.fingerprint,
+    })
     assert [item.version for item in store.versions("decision-001")] == [1, 2]
     changed = dict(record(), statement="changed")
     with pytest.raises(DecisionRecordError, match="already exists"):
