@@ -1,6 +1,8 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026), including merged PRs through #92; #91 is merged and no ChatGPT docs PR is open.
+> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
+
+**Assessment base:** `main` at `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026), including merged PRs through #94; #91 and #93 are merged and no ChatGPT docs PR was open at the start of this refresh.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -13,7 +15,7 @@
 | 3 — Ingestion with provenance | **Demonstrated for local structured snapshots; broader connectors remain partial** | Read-only snapshot commands (#28), scenario-input adapter and fixture proofs (#31/#41), provenance store (#35), policy wiring (#43), report provenance (#44), and default-on data-boundary policy hooks (#79/#89). | No real database drivers, network connector framework or write-back. Explicit `require_policy=False` remains possible; policy-denial `audit=None` still logs to an unanchored local chain. |
 | 4 — Simulation as decision engine | **Partial** | Scenario-input contract/adapter (#29, #31), run provenance store (#35), report provenance export (#44), and governed-pipeline synthetic end-to-end test (#46). The test does not run the simulation engine. | Scenario-input provenance is **not wired into** `agora/sim/engine.py`: new runs do not yet prepare and persist the input envelope before population creation, and resume does not yet call `Store.assert_resume_input` before `World.load`. Matched-run validity and observed-outcome separation remain distinct evidence requirements. No simulation wiring is authorised by this status update. |
 | 5 — Decisions and actions | **Partial; no operational action execution** | Decision schema/store (#37), approval state machine (#42), append-only observed outcomes/reviews (#53), Principal outcome wrappers (#70/#86), and #92 retirement of the public role-string outcome exports. | No action executor or external write-back exists. Dependency review markers (#60) and decision/audit reconciliation (#57) remain specifications only. Decision-store and audit-chain writes remain separate transactions. An approved decision or recorded outcome is not permission to execute an external action. |
-| 6 — Security and deployment | **Partial; not an enterprise security/deployment capability** | Deny-by-default PDP (#39), audit chain/anchor (#38/#63), writer/lifecycle wiring (#71/#74/#75), Principal policy (#78), data-boundary hooks (#79/#89), principal approval (#80/#84/#89), legacy approval gate (#82), Principal outcome public routes (#70/#86/#92) and guided synthetic pilot (#88). | Public role-string outcome exports are retired, but legacy `approve()` retains a runtime env switch; explicit policy/anchor opt-outs and unanchored policy-denial `audit=None` remain. Reconciliation/markers, backup/restore, incident response and fleet deployment remain incomplete. |
+| 6 — Security and deployment | **Partial; not an enterprise security/deployment capability** | Deny-by-default PDP (#39), audit chain/anchor (#38/#63), writer/lifecycle wiring (#71/#74/#75), Principal policy (#78), data-boundary hooks (#79/#89), principal approval (#80/#84/#89), legacy approval gate (#82), Principal outcome public routes (#70/#86/#92), guided synthetic pilot (#88) and CLI lazy-engine-import boundary (#94). | Public role-string outcome exports are retired, but legacy `approve()` retains a runtime env switch; explicit policy/anchor opt-outs and unanchored policy-denial `audit=None` remain. Reconciliation/markers, backup/restore, incident response and fleet deployment remain incomplete. |
 
 ## Merged implementation and design PRs
 
@@ -40,11 +42,12 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#84:** `approve_as()` ignores caller-supplied policy resource data and derives its PDP resource from stored decision scope plus fixed baseline sensitivity `internal`; precise `AnchorRequiredError`/unchanged-state coverage was added. Exact-head CI run `44939812441` passed all four matrix jobs.
 - **#85:** ChatGPT documentation refresh and operator run-record field map merged; exact-head CI run `44945012741` passed all four jobs.
 - **#86:** outcome `_as` wrappers ignore caller resource data; exact-head CI run `44942485500` passed all four jobs.
-- **#92:** public role-string `record_outcome()` / `review_outcome()` exports were retired; `record_outcome_as()` / `review_outcome_as()` are the public routes. Exact-head run `44950576945` passed all four matrix jobs.
 - **#88:** guided synthetic `agora pilot --workdir` entry point merged; exact-head CI run `44945307064` passed all four jobs. It does not persist the M2 run-record envelope or invoke the scenario-input adapter/engine.
-
 - **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
-**Open PRs at this snapshot:** none. ChatGPT docs PR #91 merged; Claude's #92 merged. The next ChatGPT documentation refresh is being prepared on a new docs branch.
+- **#92:** public role-string `record_outcome()` / `review_outcome()` exports were retired; `record_outcome_as()` / `review_outcome_as()` are the public routes. Exact-head run `44950576945` passed all four matrix jobs.
+- **#94:** `agora.cli` no longer imports `.sim.engine` at module scope; engine imports are lazy inside simulation handlers. Exact-head run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+
+**At the assessed main snapshot, no PRs were open.** ChatGPT docs PRs #91 and #93 and Claude implementation PRs #92 and #94 are merged; this current ChatGPT-owned documentation refresh is draft PR #95.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
@@ -74,4 +77,4 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Process note
 
-This assessment is a documentation snapshot of merged main at `1fbde112d00fc4fc579e9be6385104d655a9ced4`; #91 and #92 are merged and no PR was open when this refresh began.
+This assessment is a documentation snapshot of merged main at `810f33b1a89dc227f9d54764e324488e20a64817`; #91–#94 relevant PRs are merged and no PR was open when this refresh began.

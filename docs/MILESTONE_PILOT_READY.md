@@ -1,15 +1,17 @@
 # Governed Synthetic Pilot — Milestone Readiness
 
+> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
+
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `1fbde112d00fc4fc579e9be6385104d655a9ced4`
+**Main base:** `810f33b1a89dc227f9d54764e324488e20a64817`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Main is `1fbde112d00fc4fc579e9be6385104d655a9ced4` after merged #92. #88 provides the guided local synthetic `agora pilot --workdir <new-empty-directory>` flow; #89 sets default-True policy/anchor flags on six protected APIs; #92 retires public role-string `record_outcome()` / `review_outcome()` and leaves the Principal wrappers as the only public outcome routes. Exact-head Actions run `44950576945` for #92 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Explicit `False` bypasses, direct `enforce_policy()` default-off, the unanchored `audit=None` policy-denial fallback and the runtime legacy-approval switch remain. The pilot embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
+Main is `810f33b1a89dc227f9d54764e324488e20a64817` after merged #94. #88 provides the guided local synthetic `agora pilot --workdir <new-empty-directory>` flow; #89 sets default-True policy/anchor flags on six protected APIs; #92 retires public role-string `record_outcome()` / `review_outcome()` and leaves the Principal wrappers as the only public outcome routes; #94 lazy-loads the simulation engine only inside engine-dependent CLI handlers. Exact-head Actions run `44950576945` for #92 and `44955653075` for #94 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Explicit `False` bypasses, direct `enforce_policy()` default-off, the unanchored `audit=None` policy-denial fallback and the runtime legacy-approval switch remain. The pilot embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
 
-The `agora pilot` command is a guided local entry point. #92 retires the public role-string outcome exports: `record_outcome_as()` / `review_outcome_as()` are the public routes and derive actor identity from Principal. Remaining protected-mode gaps are explicit `require_policy=False` / `require_anchored=False`, direct `enforce_policy()` defaulting to `False`, unanchored policy-denial logging when `audit=None`, and legacy `approve()` runtime-enableable through `AGORA_TEST_ONLY_LEGACY_APPROVE=1`. `agora.cli` still imports `.sim.engine` at module scope before dispatch; the `agora.pilot` module itself does not call the engine. Scenario-input remains disconnected from the engine.
+The `agora pilot` command is a guided local entry point. #92 retires the public role-string outcome exports: `record_outcome_as()` / `review_outcome_as()` are the public routes and derive actor identity from Principal. #94 removes the module-level `.sim.engine` import from `agora.cli`; simulation handlers load it lazily, while pilot and data dispatch remain engine-import-free. Remaining protected-mode gaps are explicit `require_policy=False` / `require_anchored=False`, direct `enforce_policy()` defaulting to `False`, unanchored policy-denial logging when `audit=None`, and legacy `approve()` runtime-enableable through `AGORA_TEST_ONLY_LEGACY_APPROVE=1`. Scenario-input remains disconnected from the engine.
 
 The anchor remains a local JSONL sidecar with `local_sidecar` trust; coordinated rollback of both local stores is not detected, and the Linux lock-removal mutation gap remains. #89 makes the three Principal write wrappers default to anchored audit, but explicit `require_anchored=False` remains possible. Policy-denial `audit=None` still writes to an unanchored local chain. #92 retires public role-string outcome exports, although private outcome helpers still have optional audit internals. Universal protected-mode enforcement is therefore incomplete.
 
@@ -19,7 +21,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `1fbde112d00fc4fc579e9be6385104d655a9ced4`.
+Assessment base: `810f33b1a89dc227f9d54764e324488e20a64817`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -47,7 +49,8 @@ Confirmed merged implementation PRs:
 - #88 — adds the `agora pilot --workdir <new-empty-directory>` guided synthetic workflow, with per-stage results, first-denial stop, anchored audit verification and synthetic-labelled report; exact-head CI run `44945307064` passed all four jobs.
 
 - #89 — default-on policy/anchor parameters on six protected entry points; merged at `87c7cc95b3e7c231f52dca4924d6fc433c698462`. Exact-head Actions run `44948055801` passed all four matrix jobs.
-- #92 — retires public role-string `record_outcome()` / `review_outcome()` exports and routes public writes through Principal wrappers; merged as `1fbde112d00fc4fc579e9be6385104d655a9ced4`. Exact-head Actions run `44950576945` passed all four matrix jobs.
+- #92 — retires public role-string `record_outcome()` / `review_outcome()` exports and routes public writes through Principal wrappers; merged at `1fbde112` before #94. Exact-head Actions run `44950576945` passed all four matrix jobs.
+- #94 — lazy-loads `.sim.engine` only in engine-dependent CLI handlers; fresh-process tests cover `import agora.cli` and `agora pilot --help`. Exact-head Actions run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 Exact-head GitHub Actions evidence:
 - #63 head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`, run [44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154): all four Ubuntu/Windows × Python 3.11/3.12 jobs passed.
 - #66 head `6e0b483d628e5b4317e2cd3296a0bf0604d403f6`, run [44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682): all four matrix jobs passed.
@@ -106,8 +109,9 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #89 | Default-on policy/anchor parameters on six protected entry points | Merged (`87c7cc95`); exact-head CI run `44948055801` passed 4/4 |
 | #91 | Documentation refresh after #88/#89 | Merged; exact-head CI run `44949947675` passed 4/4 |
 | #92 | Public role-string outcome API retirement | Merged; exact-head CI run `44950576945` passed 4/4 |
+| #94 | Lazy-load simulation engine only in engine-dependent CLI handlers | Merged; exact-head CI run `44955653075` passed 4/4 |
 
-Main is `1fbde112d00fc4fc579e9be6385104d655a9ced4` (merge of #92). #85/#86/#88/#89/#91/#92 are merged; no ChatGPT-owned docs PR was open at the start of this refresh.
+Main is `810f33b1a89dc227f9d54764e324488e20a64817` (merge of #94). #85/#86/#88/#89/#91/#92/#93/#94 are merged; no ChatGPT-owned docs PR was open at the start of this refresh.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -126,6 +130,7 @@ Main is `1fbde112d00fc4fc579e9be6385104d655a9ced4` (merge of #92). #85/#86/#88/#
 - [ ] Decision/audit reconciliation implemented, or a documented manual recovery procedure approved and rehearsed. The manual procedure draft is not approval or evidence of a tested repair path.
 - [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. The manual procedure draft is not an implemented marker/propagation system.
 - [x] A callable CLI/API entry point runs the synthetic example end to end: PR #88 provides `agora pilot --workdir <new-empty-directory>` with import, bind, decision, principal approval, anchored audit, observed outcome/review and a synthetic-labelled report; it does not call the engine.
+- [x] The CLI module no longer imports the simulation engine for pilot/data dispatch; #94 lazy-loads it only in engine-dependent handlers and passes exact-head CI 4/4.
 - [ ] Exact-head CI is green on final reviewed implementation heads; required mutation proofs and clean-checkout review evidence are recorded.
 - [ ] Claude logs the exact milestone confirmation with main SHA, four green CI jobs, merged implementation PR numbers, exact end-to-end command/example, and all readiness rows Done except simulation wiring and owner-only items.
 - [ ] Only after that confirmation, the owner separately approves any synthetic rehearsal. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval.
@@ -134,7 +139,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `1fbde112d00fc4fc579e9be6385104d655a9ced4`, after #91 docs and #92 outcome-API retirement merged. No ChatGPT docs PR is currently open.
+This assessment is refreshed against main `810f33b1a89dc227f9d54764e324488e20a64817`, after #91/#93 docs, #92 outcome-API retirement and #94 CLI import isolation merged. No ChatGPT-owned docs PR was open at the start of this refresh; this update is maintained as one draft docs PR.
 
 ## 7. Permanent safety boundaries
 

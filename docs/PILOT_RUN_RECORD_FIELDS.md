@@ -1,7 +1,7 @@
 # Operator Pilot Run-Record Field Map
 
 **Status:** Documentation specification only; no implementation or durable operator run record is created here. PR #88 returns an in-memory `PilotResult` and does not persist this envelope.  
-**Assessment base:** `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026)  
+**Assessment base:** `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026)  
 **Parent contract:** `docs/RUN_PROVENANCE_SPEC.md`  
 **Execution boundary:** No simulation-engine call, no `agora/sim/**` changes, no real data, credentials, connectors or write-back.
 
