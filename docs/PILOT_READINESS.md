@@ -1,7 +1,6 @@
 # Pilot Readiness — Engineering Gate
 
-**Assessment base:** `main` at `81361c7` (PRs #30, #32, and #33 merged;
-scenario-input implementation PR #31 remains under review).
+**Assessment base:** `main` at `2a881d28` (PRs #30, #31, #32, and #33 merged).
 
 This is an engineering readiness document for a first external pilot in India
 with one customer. It permits synthetic data or customer-supplied non-personal
@@ -15,21 +14,20 @@ to use personal data, external write-back, or validated prediction.
 | 1 — Foundation | Reproducible project identity, deterministic seed/resume checks, safe local run store, supported Python/OS CI matrix | `tests/test_engine.py`; merged Rung 1 evidence in `docs/RUNG_1_3_STATUS.md` |
 | 2 — Ontology | Versioned ontology registry, fingerprints, fail-closed ActionType simulation guards, binding validation/materialization, synthetic retail pack | PRs #21, #24, #30; `domain_packs/retail_in/`; 377-test clean-checkout proof for #30 |
 | 3 — Ingestion/provenance | Typed CSV snapshots, immutable imports, source/file provenance, stable record identity, sensitivity and policy checks, read-only binding materialization | PRs #18–#20, #24, #30; `agora/tabular.py`, `agora/ontology/binding.py` |
-| 4 — Scenario bridge | Contract and design for explicit snapshot-derived scenario inputs and run provenance; implementation is not yet merged | `docs/SCENARIO_INPUTS_SPEC.md`, `docs/RUN_PROVENANCE_SPEC.md`; PR #31 under review |
+| 4 — Scenario bridge | Explicit snapshot-derived scenario-input implementation is merged; run-record persistence remains the next implementation gap | `docs/SCENARIO_INPUTS_SPEC.md`, `docs/RUN_PROVENANCE_SPEC.md`; PR #31 (`2a881d28`, workflow `44856917595`, 391 passed, four mutation proofs) |
 | 5 — Decision records | Design contract for evidence links, approvals, and outcome separation | `docs/DECISION_RECORD_SPEC.md` (PR #26) |
 | 6 — Security architecture | Design contract for identity, policy, audit, erasure, and breach controls; runtime controls are not implemented | `docs/SECURITY_ARCHITECTURE.md` (PR #27) |
 
 ## Gaps, in required order
 
-1. **Finish the scenario-input bridge.** Merge PR #31 only after its CI and
-   privacy mutation proofs pass. The adapter must remain limited to `context`
-   and `scenario_input`, require explicit property authorization, and redact
-   unlisted sensitive values without retaining raw values or reversible hashes.
+1. **Scenario-input bridge — complete.** PR #31 is merged at `2a881d28` after
+   workflow `44856917595` passed with 391 tests and four mutation proofs. The
+   adapter is limited to `context` and `scenario_input`, requires explicit
+   property authorization, and redacts unlisted sensitive values without raw
+   values or reversible hashes. Keep this as a regression gate for future work.
 
-   Exit test: the full suite passes; calibration, validation, and holdout roles
-   fail closed; authorized properties remain available; unlisted sensitive
-   properties are represented only by the fixed redaction marker and trace
-   metadata.
+   Exit test: satisfied on main; retain the full-suite, role, authorization,
+   and redaction mutation tests as the regression gate.
 
 2. **Implement run-record provenance.** The existing run store must persist the
    scenario-input manifest and `scenario_hash` append-only, verify tampering,
