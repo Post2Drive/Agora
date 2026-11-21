@@ -17,7 +17,7 @@ This guide documents the available components and their boundaries. It does not 
 | Pipeline stage | Status on merged main | What is actually available |
 |---|---|---|
 | Synthetic CSV import | **AVAILABLE — CLI** | `agora data import-csv`, snapshot listing/show/rejected-row commands; immutable local snapshot and manifest. |
-| Ontology binding | **AVAILABLE — Python API, partial governance** | `load_binding`, `validate_binding`, `materialize_instances`; policy callback still uses the legacy role-string enforcement contract. |
+| Ontology binding | **AVAILABLE — Python API, partial governance** | `load_binding`, `validate_binding`, `materialize_instances`; policy callback still uses the legacy role-string contract. #71 adds optional `audit=` threading for anchored denial events; protected mode does not require it and `policy=None` remains a no-op. |
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — limited synthetic slice** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58). This is not production identity; legacy role-string approval remains underneath the bridge and other call sites are not migrated. |
