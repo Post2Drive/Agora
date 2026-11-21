@@ -190,7 +190,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - **PR #63/#71/#74:** the local-sidecar primitive, writer factory, policy/data-boundary threading and lifecycle/outcome append boundaries are merged. Exact-head CI runs 201, 211 and 221 passed all four matrix jobs. `require_anchored=True` remains opt-in on the three Principal wrappers.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
-- **Principal migration:** #80 makes `approve_as()` principal-native; public role-string `approve()` remains callable and outcome wrappers still delegate to legacy role-string APIs. #79's `require_policy` is opt-in/default-false; no policy or anchor gate is enabled by default everywhere.
+- **Principal migration:** #80 makes `approve_as()` principal-native; #82 test-gates legacy role-string `approve()` behind `AGORA_TEST_ONLY_LEGACY_APPROVE=1`, while outcome wrappers still delegate to legacy role-string APIs. #79's `require_policy` is opt-in/default-false; no policy or anchor gate is enabled by default everywhere.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
