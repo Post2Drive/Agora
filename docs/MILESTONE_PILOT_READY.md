@@ -2,20 +2,20 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 21 November 2026  
-**Main base:** 98850910559d0e4d72be127d1412dddcc5326cb8  
+**Main base:** 19f51d84d3ecc8392eb8713e392f93cb58a736bf  
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
 The repository has a meaningful governed-data and decision-record foundation, but it is **not yet ready for an integrated data-to-simulation pilot or any live/production pilot**.
 
-Decision records, approval lifecycle, decision outcomes, report provenance and policy boundaries have merged implementation evidence. Important end-to-end gates remain incomplete: the scenario-input package is not wired into the simulation engine; the trusted-principal implementation is still an open draft; independent audit anchoring and cross-store reconciliation are not implemented; outcome dependency review markers do not exist; and the runbook/deployment-hardening documents are still draft PRs.
+Decision records, approval lifecycle, decision outcomes, report provenance and policy boundaries have merged implementation evidence. Important end-to-end gates remain incomplete: the scenario-input package is not wired into the simulation engine; the trusted-principal slice (#58, merged) is synthetic and covers approval only, with role-string call sites still on main; independent audit anchoring (implementation in review as #63) and cross-store reconciliation are not implemented; outcome dependency review markers do not exist. The hardening, runbook and reconciliation documents (#55-#57) are merged but are specifications/drafts of procedure, not executed evidence.
 
 This assessment does not authorise a simulation, calibration, backtest, forecast, study mutation, use of real data, credentials, network access or external write-back.
 
 ## 2. Evidence basis
 
-The assessment is based on main at 98850910559d0e4d72be127d1412dddcc5326cb8 and direct GitHub PR/CI metadata checked on 21 November 2026. Relevant merged evidence includes:
+The assessment is based on main at 19f51d84d3ecc8392eb8713e392f93cb58a736bf and direct GitHub PR/CI metadata checked on 21 November 2026. Relevant merged evidence includes:
 
 - #28 — local read-only snapshot CLI.
 - #31 and #41 — scenario-input adapter, binding and pilot data contract.
@@ -30,6 +30,10 @@ The assessment is based on main at 98850910559d0e4d72be127d1412dddcc5326cb8 and 
 - #52 — independent audit-anchor design specification.
 - #53 — append-only decision outcomes and review API.
 - #54 — binding purpose/retention propagation fix.
+- #55 — deployment hardening specification.
+- #56 — synthetic pilot runbook.
+- #57 — decision/audit reconciliation specification.
+- #58 — first synthetic trusted-principal slice (Principal, SyntheticFixtureAdapter, approve_as()).
 
 The identity and audit-anchor specifications (#51–#52) are design evidence, not proof of production identity or independent anchoring. The decision outcome implementation (#53) stores observed outcomes and review events, but it does not provide dependency review markers or a reconciliation worker.
 
@@ -43,39 +47,36 @@ The identity and audit-anchor specifications (#51–#52) are design evidence, no
 | Simulation engine integration | Not implemented | #49 is a proposal only. New runs do not prepare/persist the scenario-input envelope before population creation, and resume does not verify the input envelope before loading the world. |
 | Decision record and approval lifecycle | Demonstrated for local API slice | #37 and #42 provide immutable decision records and approval transitions with exact-version/fingerprint/scope/evidence checks. This is not an external action executor. |
 | Observed decision outcomes | Demonstrated for local API slice | #53 adds append-only outcome/review records with observed-source requirements. No CLI, dependency review-marker propagation or cross-store reconciliation queue. Simulated preferences/actions remain exploratory. |
-| Trusted identity | Partial | #51 is a merged design specification. PR #58 is an open draft implementation slice; caller-supplied role strings remain on main. No OIDC or production authentication. |
-| Audit chain | Partial | #38 and #47 provide the local append-only chain and lifecycle events. #52 is only the anchor specification; independent anchoring is not implemented. |
-| Decision/audit reconciliation | Not implemented | PR #57 is an open draft specification. No queue, worker, repair command or automatic reconciliation exists. |
+| Trusted identity | Partial | #51 design and #58 synthetic principal slice are merged. approve_as() derives the role from a Principal, but legacy role-string approve(), outcomes and policy-callback call sites remain. No OIDC or production authentication. |
+| Audit chain | Partial | #38 and #47 provide the local append-only chain and lifecycle events. #52 is only the anchor specification; an anchor implementation is an open draft (#63) and is not on main. |
+| Decision/audit reconciliation | Not implemented | #57 is a merged specification. No queue, worker, repair command or automatic reconciliation exists. |
 | Outcome dependency review markers | Not implemented | This specification is proposed separately; no marker store or downstream propagation exists on main. |
 | Report provenance | Demonstrated for current local report-export slice | #44 provides provenance export and fail-closed validated-prediction gate. Keep outputs labelled exploratory/simulated. |
 | Retention and erasure | Design only | #45 defines a design; operational erasure workflow and backup-expiry automation are not demonstrated. |
-| Deployment hardening | Design only / draft | PR #55 is an open draft specification. No hardened deployment platform or verified host/VM controls are claimed. |
-| Synthetic pilot runbook | Draft | PR #56 is open. Its current branch text reflects merged #53/#54, but the runbook is not yet merged or executed. |
+| Deployment hardening | Design only / draft | #55 is a merged specification. No hardened deployment platform or verified host/VM controls are claimed. |
+| Synthetic pilot runbook | Documented, not executed | #56 is merged and reflects #53/#54; the runbook has not been executed. |
 | Integrated pilot sign-off | Not ready | Multiple implementation and operational gates below remain open. |
 
-## 4. Open pull requests and exact-head CI snapshot
+## 4. Pull request status snapshot
 
-All four PRs below were open and draft when checked. None was marked ready or merged in this assessment.
+PRs #55, #56, #57 and #58 are merged on main 19f51d8; each had all four Ubuntu/Windows × Python 3.11/3.12 jobs green at its reviewed head. Open drafts at the time of writing:
 
-| PR | Scope and exact head | Base SHA | Exact-head workflow evidence at check time |
-|---|---|---|---|
-| #55 — deployment hardening | docs/DEPLOYMENT_HARDENING_SPEC.md; d3ece4659f7aab9e16d7df91accc53862335717e | 9c7a0a89cb5e4622a893152b0ffff588edea56c2 | Run 44902320266: Ubuntu 3.11 and 3.12 passed; Windows 3.11 and 3.12 were still running. |
-| #56 — synthetic pilot runbook | docs/PILOT_RUNBOOK.md; c0acccc263c9888a2cdc32ba4c179d4d882d4bb4 | 98850910559d0e4d72be127d1412dddcc5326cb8 | Run 44902292375: Ubuntu 3.11 and 3.12 passed; Windows 3.11 and 3.12 were still running. |
-| #57 — reconciliation specification | docs/RECONCILIATION_SPEC.md; 35adac8455755b677f47664d30297332306556b2 | 9c7a0a89cb5e4622a893152b0ffff588edea56c2 | Run 44902293651: Ubuntu 3.11 and 3.12 passed; Windows 3.11 and 3.12 were still running. |
-| #58 — principal implementation slice | agora/principal.py, agora/decisions/approval.py and tests/test_principal.py; 84d6805ec8023a16ef139bf8af04253e0c6f8193 | 98850910559d0e4d72be127d1412dddcc5326cb8 | Run 44902246519: all four Ubuntu/Windows × Python 3.11/3.12 jobs passed. PR remains draft and unmerged. |
+| PR | Scope | State |
+|---|---|---|
+| #63 — audit anchor implementation | agora/audit_anchor.py, tests/test_audit_anchor.py | Draft, owner review pending; not on main. |
+| #62 — rung status refresh | docs/RUNG_STATUS.md | Docs draft. |
+| #59, #60 | principal migration plan, outcome review markers spec | Docs drafts. |
 
-At this snapshot, #55 and #57 still recorded the earlier base 9c7a0a89, while #56 and #58 were based on current main 9885091. Do not silently treat the older-base branches as current-main branches. The latest collaboration instruction was not to edit #55–#57 further unless a defect is found; any base refresh must follow the agreed owner/Claude workflow.
-
-No PR comments were returned by the checked PR discussion timelines. CI status is a point-in-time observation; re-fetch the exact head and run before making any later merge/readiness claim. No local tests were run in this assessment.
+CI status is a point-in-time observation; re-fetch the exact head before any later readiness claim.
 
 ## 5. Required exit gates before a controlled synthetic pilot
 
 - [ ] The owner confirms the precise pilot scope, operators, data directory, stop conditions and permitted commands.
-- [ ] The pilot runbook (#56) is reviewed, corrected against current main and merged.
-- [ ] The deployment-hardening controls (#55) are reviewed and the required local host/VM, permissions, backup and restore checks are evidenced.
-- [ ] The trusted-principal implementation is merged and reviewed; all governed operations use adapter-issued principals rather than caller-supplied role strings.
+- [x] The pilot runbook (#56) is reviewed, corrected against main and merged (Done; execution still requires approval).
+- [ ] The deployment-hardening specification (#55) is merged (Done); the required local host/VM, permissions, backup and restore checks are evidenced.
+- [ ] The synthetic principal slice (#58) is merged (Partial); all governed operations use adapter-issued principals rather than caller-supplied role strings.
 - [ ] The audit-anchor implementation is built and independently verified against crash, restore and tamper cases. A local sidecar is not represented as protection against an attacker who can rewrite both local stores.
-- [ ] Decision-store/audit-chain reconciliation is implemented or a documented manual recovery procedure is approved and tested.
+- [ ] Decision-store/audit-chain reconciliation (specified in #57; Not started as code) is implemented or a documented manual recovery procedure is approved and tested.
 - [ ] Outcome dependency review markers are implemented or a documented manual hold/review process is approved; disputed/corrected outcomes cannot silently continue to support dependent reports or decisions.
 - [ ] The exact scenario-input-to-engine integration has separate Claude written approval and separate owner approval before any change to agora/sim/**. New-run and resume paths must both be covered.
 - [ ] Exact-head CI is green on the final reviewed implementation heads; required mutation proofs and clean-checkout review evidence are recorded.
@@ -85,11 +86,9 @@ No PR comments were returned by the checked PR discussion timelines. CI status i
 
 Passing these gates means only that a scoped synthetic rehearsal may be considered. It does not establish predictive validity, real demand, sales performance, production security or permission for external actions.
 
-## 6. Deferred documentation refresh
+## 6. Documentation refresh
 
-docs/RUNG_STATUS.md on main still has an older assessment base (cd28916ae9d2ba4408205ac70c1b6e082ebe1af5) and predates the merged outcome (#53) and purpose/retention (#54) changes. The collaboration log explicitly defers its refresh until PRs #55, #56 and #57 have actually merged. Therefore this task does not edit RUNG_STATUS.md or claim it is current.
-
-After those PRs are confirmed merged, refresh RUNG_STATUS.md against the then-current main SHA, reconcile every rung with merged evidence, and keep PR #58 marked in-review until its actual merge is verified.
+docs/RUNG_STATUS.md is being refreshed against current main in draft PR #62. Until it merges, main's copy predates #53-#58.
 
 ## 7. Permanent safety boundaries
 
