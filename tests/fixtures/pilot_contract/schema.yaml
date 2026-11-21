@@ -1,0 +1,22 @@
+schema_id: pilot-contract-v1
+schema_version: 1.0.0
+dataset_name: pilot_requests
+header: true
+row_policy:
+  malformed: fail
+  unknown_columns: reject
+  missing_columns: reject
+columns:
+  - name: record_id
+    type: string
+    nullable: false
+    primary_key: true
+    sensitivity: internal
+  - name: category
+    type: string
+    nullable: false
+    sensitivity: public
+  - name: score
+    type: integer
+    nullable: false
+    sensitivity: internal

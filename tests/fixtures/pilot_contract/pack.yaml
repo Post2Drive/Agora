@@ -1,0 +1,36 @@
+pack_id: pilot-contract-pack
+schema_version: 1.0.0
+object_types:
+  - type_id: pilot:Request
+    version: 1.0.0
+    name: Pilot request
+    description: Clean-room synthetic request.
+    properties:
+      - pilot:Request.record_id
+      - pilot:Request.category
+      - pilot:Request.score
+    identity_strategy: record_key
+property_types:
+  - property_id: pilot:Request.record_id
+    version: 1.0.0
+    name: Record identifier
+    data_type: identifier
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: pilot:Request.category
+    version: 1.0.0
+    name: Category
+    data_type: string
+    required: true
+    nullable: false
+    sensitivity: public
+  - property_id: pilot:Request.score
+    version: 1.0.0
+    name: Score
+    data_type: integer
+    required: true
+    nullable: false
+    sensitivity: internal
+link_types: []
+action_types: []
