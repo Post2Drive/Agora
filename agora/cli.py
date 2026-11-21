@@ -9,9 +9,18 @@ import time
 from pathlib import Path
 
 from . import __version__, hardware, scenario as scenario_mod, settings
-from .sim.engine import DB_FILE, SCENARIO_FILE, Simulation
 from .store import Store
 from .summary import summarise
+
+# Mirrors agora.sim.engine constants; kept local so non-simulation commands
+# (e.g. `agora pilot`) never import the simulation engine. A test pins equality.
+SCENARIO_FILE = "scenario.yaml"
+DB_FILE = "agora.db"
+
+
+def _simulation():
+    from .sim.engine import Simulation
+    return Simulation
 
 
 def _llm_override(args) -> dict:
@@ -63,7 +72,7 @@ def cmd_check(args) -> int:
     print(f"Scenario OK: {sc.name} - {len(sc.segments)} segments, {len(sc.accounts)} accounts, "
           f"{len(sc.spaces)} groups/communities, {len(sc.events)} events, "
           f"{len(sc.conversions)} conversions")
-    sim = Simulation(proj, _llm_override(args))
+    sim = _simulation()(proj, _llm_override(args))
     ok, msg = sim.llm.status()
     print(("Model OK: " if ok else "Model problem: ") + msg)
     prof = hardware.detect()
@@ -79,7 +88,7 @@ def cmd_check(args) -> int:
 
 def cmd_run(args) -> int:
     proj = Path(args.project)
-    sim = Simulation(proj, _llm_override(args))
+    sim = _simulation()(proj, _llm_override(args))
     ok, msg = sim.llm.status()
     if not ok:
         print(msg, file=sys.stderr)
