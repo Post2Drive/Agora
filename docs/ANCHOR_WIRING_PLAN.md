@@ -3,7 +3,7 @@
 **Status:** Stage A and D writer plumbing implemented by #71; Stage B/C append wiring and opt-in protected gates implemented by #74; #80 makes `approve_as()` principal-native. Universal protected mode remains incomplete because policy/anchor requirements are still optional and legacy paths remain. This document is a wiring plan, not deployment or rehearsal approval.  
 **Assessment base:** `main` at `25231d68b6f9d5684b76b6204265cd225cc29449` (21 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
-**Implementation evidence:** PR #63 (local-sidecar primitive) and PR #71 (anchored writer factory plus policy-denial/data-boundary wiring). PR #71 exact head `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; exact-head Actions run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 ## 1. Purpose and non-claims
 
@@ -27,7 +27,7 @@ The following inventory was checked against current main at `25231d68b6f9d5684b7
 
 ### 2.2 Decision lifecycle
 
-`agora/decisions/approval.py` accepts an optional `audit: AuditChainStore | None` in:
+`agora/decisions/approval.py` accepts an optional `audit: AuditAppender | None` in:
 
 - `propose()`
 - `approve()`
@@ -36,16 +36,16 @@ The following inventory was checked against current main at `25231d68b6f9d5684b7
 - `expire()`
 - `supersede()`
 
-The shared `_audit()` helper calls `audit.append(event)` after the decision transition has been stored. If the append fails, it raises `ApprovalTransitionError`; it does not roll back the already committed decision transition. If `audit=None`, the shared audit append is skipped. The current type annotation names `AuditChainStore`; the wrapper is duck-compatible for `append()` but is not a subclass.
+The shared `_audit()` helper calls `audit.append(event)` after the decision transition has been stored. If the append fails, it raises `ApprovalTransitionError`; it does not roll back the already committed decision transition. If `audit=None`, the shared audit append is skipped. PR #75 introduces the structural `AuditAppender` protocol, so `AnchoredAuditChain` satisfies the declared writer contract. The parameter remains optional; this is not a protected-mode requirement.
 
 ### 2.3 Decision outcomes and reviews
 
-`agora/decisions/outcomes.py` accepts an optional `audit: AuditChainStore | None` in:
+`agora/decisions/outcomes.py` accepts an optional `audit: AuditAppender | None` in:
 
 - `record_outcome()`
 - `review_outcome()`
 
-The outcome or review row is committed to the decision store before the shared audit append. If the append fails, `OutcomeError` is raised while the outcome/review row remains stored. If `audit=None`, the shared audit append is skipped. This is another non-atomic boundary; do not report the operation as fully audited after an anchor failure.
+The outcome or review row is committed to the decision store before the shared audit append. If the append fails, `OutcomeError` is raised while the outcome/review row remains stored. If `audit=None`, the shared audit append is skipped. This is another non-atomic boundary; do not report the operation as fully audited after an anchor failure. PR #75 changes the type contract to `AuditAppender`; it does not make the writer mandatory.
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
