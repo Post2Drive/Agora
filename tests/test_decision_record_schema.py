@@ -56,6 +56,14 @@ def test_empty_refs_timestamps_and_approval_are_rejected():
         load_decision_record(approved)
 
 
+def test_approved_record_rejects_self_approval():
+    approved = record()
+    approved["status"] = "approved"
+    approved["approver"] = approved["proposer"]
+    with pytest.raises(DecisionRecordError, match="approver must differ"):
+        load_decision_record(approved)
+
+
 def test_evidence_kind_fields_and_exploratory_mode_are_enforced():
     bad_kind = record(); bad_kind["evidence_refs"][0] = {"kind": "snapshot", "ref": "x"}
     with pytest.raises(DecisionRecordError, match="kind"):
