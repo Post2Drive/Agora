@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `7afa1414` | Evidence / missing item |
+| M2 requirement | Mainline status at `87c7cc95` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
@@ -32,7 +32,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **AVAILABLE — Python APIs:** ontology binding/materialization, scenario-input construction, decision records, principal-native `approve_as()`, outcome/review APIs and local anchored-audit primitives.
 - **PARTIAL — protected policy:** #89 makes the three data-boundary defaults True; direct `enforce_policy()` still defaults off and its `audit=None` path is unanchored. Explicit False remains possible.
 - **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #82 default-denies legacy role-string `approve()` behind an environment-variable switch, which is not structurally test-only.
-- **PARTIAL — anchored audit:** #71/#74 wire append points and opt-in gates; legacy optional-audit paths remain.
+- **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #89 defaults the three Principal write wrappers to anchored audit, but explicit `require_anchored=False`, legacy optional-audit APIs and unanchored policy-denial `audit=None` remain.
 - **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages, stops on first denial and never calls the engine; it is not M2 complete.
 - **NOT YET — reconciliation/held outcomes:** no implementation beyond #57/#60 specifications.
 
@@ -45,7 +45,7 @@ The following headings reserve the runbook structure. Each step must be replaced
 1. **Preflight and installation — NOT YET:** verify supported Python/runtime, one-command install/start, clean local workspace and explicit synthetic-only mode.
 2. **Fixture selection — NOT YET:** select the checked-in synthetic dataset and record exact immutable fixture/schema/binding IDs and hashes.
 3. **Policy and anchor verification — NOT YET:** verify principal, scope, required policy, anchored writer, chain ID and anchor state before any protected read or write.
-4. **Guided import/bind/scenario-input — NOT YET:** run each stage with exact IDs, per-step results and fail-closed stop codes; no simulation engine call.
+4. **Guided import/bind/scenario-input — PARTIAL:** #88 guides import and binding with per-step results and first-denial stop, but does not call `build_scenario_input()`; no simulation-engine call is in scope.
 5. **Decision and principal approval — DEFAULT-ON PRINCIPAL PATH:** #89 makes `approve_as()` default to `require_anchored=True`; explicit False remains accepted, and legacy `approve()` is still runtime-enableable by environment variable.
 6. **Audit timeline and verification — NOT YET:** show event sequence, chain verification and anchor comparison in plain language without exposing raw values.
 7. **Reconciliation and held outcomes — NOT YET:** list unmatched/held records; no automatic repair without explicit independent approval.
