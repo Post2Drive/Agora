@@ -1,0 +1,38 @@
+schema_id: retail-customers-v1
+schema_version: 1.0.0
+dataset_name: retail_customers
+header: true
+row_policy:
+  malformed: fail
+  unknown_columns: reject
+  missing_columns: reject
+columns:
+  - name: customer_id
+    type: string
+    nullable: false
+    primary_key: true
+    sensitivity: personal
+    purpose: synthetic customer identity resolution
+    retention: 30 days in test fixtures
+  - name: age
+    type: integer
+    nullable: false
+    sensitivity: internal
+  - name: spend
+    type: decimal
+    nullable: false
+    precision: 10
+    scale: 2
+    sensitivity: internal
+  - name: joined_on
+    type: date
+    nullable: false
+    sensitivity: internal
+  - name: opted_in
+    type: boolean
+    nullable: false
+    sensitivity: internal
+  - name: email
+    type: string
+    nullable: false
+    sensitivity: sensitive
