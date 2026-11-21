@@ -16,6 +16,8 @@ from typing import Any, Mapping
 
 from .ontology.binding import DataBinding, materialize_instances
 from .ontology.registry import OntologyError, OntologyPack
+from .ontology.binding import load_binding
+from .policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 
 
 class ScenarioInputError(ValueError):
@@ -110,11 +112,48 @@ def build_scenario_input(
     *,
     scenario_parameters: Mapping[str, Any] | None = None,
     transformation_policy: Mapping[str, Any] | None = None,
+    policy: PolicyCallable | None = None,
 ) -> dict[str, Any]:
-    """Build a deterministic scenario-input package from one explicit snapshot."""
+    """Build a deterministic scenario-input package from one explicit snapshot.
+
+    When supplied, policy is called as policy("simulation_input", resource)
+    before the snapshot database is opened. None preserves legacy behaviour.
+    """
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
     project = Path(project)
+    if policy is not None:
+        try:
+            policy_binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
+            properties = {item.property_id: item for item in pack.property_types}
+            sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+            source_sensitivity = max(
+                (policy_binding.property_sensitivity.get(
+                    property_id, properties[property_id].sensitivity
+                 ) for property_id in policy_binding.column_map.values()),
+                key=lambda value: sensitivity_rank[value],
+            )
+            enforce_policy(
+                policy,
+                project=project,
+                operation="simulation_input",
+                resource={
+                    "project_id": project.name or str(project),
+                    "resource_ids": [import_id, policy_binding.binding_id],
+                    "import_id": import_id,
+                    "binding_id": policy_binding.binding_id,
+                    "dataset_id": policy_binding.dataset_id,
+                    "source_role": "scenario_input",
+                    "source_sensitivity": source_sensitivity,
+                    "target_sensitivity": source_sensitivity,
+                    "purpose": transformation_policy.get("purpose") if isinstance(transformation_policy, Mapping) else None,
+                    "retention": transformation_policy.get("retention") if isinstance(transformation_policy, Mapping) else None,
+                },
+            )
+        except PolicyEnforcementError as exc:
+            raise ScenarioInputError("Policy denied scenario-input construction.") from exc
+        except (OntologyError, ValueError) as exc:
+            raise ScenarioInputError(str(exc)) from exc
     snapshot = _read_snapshot_metadata(project, import_id)
     role = snapshot.get("data_role")
     if role == "sealed_holdout":

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from agora.ontology import parse_domain_pack
+from agora.audit_chain import AuditChainStore
 from agora.ontology.binding import load_binding
 from agora.scenario_inputs import ScenarioInputError, build_scenario_input
 from agora.tabular import ingest_csv
@@ -173,3 +174,57 @@ def test_hash_payload_contains_snapshot_manifest_hash(tmp_path):
     result = _import(tmp_path)
     built = build_scenario_input(_binding(), _pack(), tmp_path, result["import_id"], transformation_policy=_policy())
     assert built["manifest"]["snapshot_manifest_hash"].startswith("sha256:")
+
+
+
+def test_policy_denial_is_audited_before_snapshot_database_is_read(tmp_path):
+    def deny(operation, resource):
+        assert operation == "simulation_input"
+        assert resource["import_id"] == "exact-import-1"
+        return {
+            "decision": "deny", "reason": "scope_missing",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": ["exact-import-1", "scenario.customer.v1"],
+        }
+
+    with pytest.raises(ScenarioInputError, match="Policy denied"):
+        build_scenario_input(
+            _binding(), _pack(), tmp_path / "missing-project",
+            "exact-import-1", transformation_policy=_policy(), policy=deny,
+        )
+    audit = AuditChainStore(
+        tmp_path / "missing-project" / "data" / "audit_chain.sqlite3"
+    )
+    try:
+        assert audit.verify()["valid"] is True
+        event = json.loads(
+            audit.db.execute("SELECT event_json FROM audit_events").fetchone()[0]
+        )
+        assert event["operation"] == "simulation_input"
+        assert event["decision"] == "deny"
+        assert event["reason"] == "scope_missing"
+        assert event["resource_ids"] == ["exact-import-1", "scenario.customer.v1"]
+    finally:
+        audit.close()
+
+
+def test_policy_allow_preserves_scenario_input_construction(tmp_path):
+    imported = _import(tmp_path)
+    seen = {}
+
+    def allow(operation, resource):
+        seen["operation"] = operation
+        seen["resource"] = dict(resource)
+        return {
+            "decision": "allow", "reason": "policy_allow",
+            "subject_id": "operator-1", "policy_version": "test-v1",
+            "resource_ids": [imported["import_id"], "scenario.customer.v1"],
+        }
+
+    built = build_scenario_input(
+        _binding(), _pack(), tmp_path, imported["import_id"],
+        transformation_policy=_policy(), policy=allow,
+    )
+    assert built["scenario_hash"]
+    assert seen["operation"] == "simulation_input"
+    assert seen["resource"]["import_id"] == imported["import_id"]
