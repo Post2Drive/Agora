@@ -201,6 +201,13 @@ class AnchoredAuditChain:
         return verify_anchored(self.chain, self.anchors)
 
 
+def require_anchored(audit: Any) -> "AnchoredAuditChain":
+    """Fail closed unless ``audit`` is an anchored writer (protected-mode gate)."""
+    if not isinstance(audit, AnchoredAuditChain):
+        raise AnchorRequiredError("protected operation requires an anchored audit writer")
+    return audit
+
+
 @contextmanager
 def open_anchored_audit(chain_path: str | Path, anchor_path: str | Path, chain_id: str):
     """Open an anchored writer from explicit paths; always closes the chain.
@@ -224,4 +231,4 @@ def open_anchored_audit(chain_path: str | Path, anchor_path: str | Path, chain_i
 
 
 __all__ = ["AnchorError", "AnchorRequiredError", "AnchorStore", "AnchorWriteError", "AnchoredAuditChain",
-           "bootstrap_anchor", "open_anchored_audit", "verify_anchored"]
+           "bootstrap_anchor", "open_anchored_audit", "require_anchored", "verify_anchored"]
