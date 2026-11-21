@@ -81,3 +81,10 @@ def test_decision_approval_is_reserved_for_approver_role():
         assert result["reason"] == "role_not_permitted"
     allowed = decide(_subject(), "approver", "decision_approval", resource)
     assert allowed["decision"] == "allow"
+
+
+def test_decision_outcome_operation_role_matrix():
+    resource = {"project_id": "project-a", "resource_ids": ["d1"], "source_sensitivity": "internal"}
+    for role, expected in (("operator", "allow"), ("reviewer", "allow"),
+                           ("approver", "deny"), ("reader", "deny")):
+        assert decide(_subject(), role, "decision_outcome", resource)["decision"] == expected
