@@ -1,9 +1,7 @@
 # Audit Anchor Wiring Plan
 
-> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
-
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), principal-native approval (#80/#84), guided pilot (#88), default-True policy/anchor parameters (#89), public outcome-API retirement (#92) and CLI lazy-engine-import isolation (#94) are merged. Explicit opt-outs and the unanchored policy-denial path remain. This is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026).  
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), and legacy approval / unanchored-denial hardening (#97) are merged. The direct `enforce_policy(..., require_policy=False)` bypass remains on main. This is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `a191b587876e5a26a73b716098c8f36eb561ea37` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -17,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `810f33b1a89dc227f9d54764e324488e20a64817`, after PRs #91, #92 and #94 merged.
+The following inventory was checked against main at `a191b587876e5a26a73b716098c8f36eb561ea37`, after PRs #94–#97 merged.
 
 ### 2.1 Audit primitives
 
@@ -48,7 +46,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py::enforce_policy()` accepts optional `audit=`. When supplied, denial events use that writer; when `audit=None`, the function creates an unanchored project-local `AuditChainStore`. #89 makes the three data-boundary callers default `require_policy=True`, but explicit `False` remains accepted and no anchored writer is required for policy-denial events. Preserve policy-before-source-read ordering.
+`agora/policy_enforcement.py::enforce_policy()` accepts optional `audit=`. When supplied, denial events use that writer. #97 changes `require_policy` to default from `POLICY_REQUIRED=True` and, when anchoring is required, refuses to write denials to an unanchored local chain if `audit=None`. However, the signature still accepts explicit `require_policy=False`; with a missing policy that branch returns `None` before denial/audit. Remove or reject that explicit bypass and prove it with a negative test/mutation. Preserve policy-before-source-read ordering.
 
 The shared `enforce_policy()` boundary is called by:
 
@@ -186,10 +184,10 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63/#71/#74/#75/#88/#89:** local-sidecar primitive, writer factory, policy/data-boundary threading, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot and default-True policy/anchor parameters are merged. Explicit opt-outs and the unanchored policy-denial path remain.
+- **PR #63/#71/#74/#75/#88/#89/#94/#96/#97:** local-sidecar primitive, writer factory, policy/data-boundary threading, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval and fail-closed unanchored-denial handling are merged. Direct `enforce_policy(..., require_policy=False)` remains a bypass.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
-- **Principal migration:** #89 defaults the three Principal write wrappers to anchored audit, and #92 retires the public role-string outcome exports. Explicit `require_anchored=False` remains; #82 retains the runtime-enableable legacy approval switch; direct policy-denial `audit=None` remains unanchored.
+- **Principal migration:** #96 removes public `require_anchored=False` kwargs and #97 removes the legacy approval env switch; only the test-only module flag remains. Direct policy enforcement still accepts explicit `require_policy=False`.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
@@ -201,22 +199,21 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
-
-## 10. Current mainline status after PR #94
+## 10. Current mainline status after PR #97
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
-**Stage D — policy-denial and data-boundary threading: DEFAULT-ON POLICY, ANCHOR GAP REMAINS.** #89 makes `require_policy=True` the default on `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. Explicit `False` remains accepted. `enforce_policy()` still defaults off when called directly, and when `audit=None` it creates a legacy unanchored project-local `AuditChainStore`; no configured anchored writer is mandatory for missing-policy denial.
+**Stage D — policy-denial and data-boundary threading: DEFAULT-ON WITH ONE DIRECT-HELPER BYPASS.** #96 removes `require_policy` kwargs from `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and rejects unanchored denial writes, but the helper still accepts explicit `require_policy=False`, which makes a missing policy a no-op. Add a negative test and mutation proof.
 
-**Stage B — decision lifecycle: DEFAULT-ON PRINCIPAL ANCHOR.** #89 makes `approve_as(..., require_anchored=True)` the default. Explicit `False` remains accepted. Legacy `approve()` is default-deny but can still be enabled by `AGORA_TEST_ONLY_LEGACY_APPROVE=1`.
+**Stage B — decision lifecycle: PRINCIPAL ANCHOR REQUIRED BY PUBLIC API.** #96 removes the `require_anchored` kwarg from `approve_as()`. #97 removes the `AGORA_TEST_ONLY_LEGACY_APPROVE` env switch; legacy `approve()` is disabled by default and enabled only by the test-only `LEGACY_APPROVE_ENABLED` module flag.
 
-**Stage C — outcome recording/review: PUBLIC PRINCIPAL ROUTES ONLY.** #92 removes public `record_outcome()` / `review_outcome()` exports; `record_outcome_as()` / `review_outcome_as()` are the public routes. Their default anchor gate is on, but explicit `require_anchored=False` still bypasses it; private helpers and audit-optional internals are not a substitute for enforcing the gate at every protected boundary.
+**Stage C — outcome recording/review: PUBLIC PRINCIPAL ROUTES ONLY.** #92 removes public role-string `record_outcome()` / `review_outcome()` exports; #96 removes public `require_anchored` opt-out kwargs from `record_outcome_as()` / `review_outcome_as()`. Private helpers and audit-optional internals remain implementation details, not public governed routes.
 
 **Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never calls the simulation engine. #94 removes the module-level `.sim.engine` import from `agora.cli`; engine imports are lazy inside simulation-dependent handlers. It does not make lower-level APIs universally non-bypassable.
 
-**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945` and #94 run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553` and #97 run `44958568446` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-**Remaining acceptance gates:** require the same configured anchored writer for policy-denial/data-boundary paths; remove unanchored `audit=None` fallback and explicit opt-outs in production paths; remove the runtime legacy approval switch; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** remove the direct `enforce_policy(..., require_policy=False)` bypass with a negative test/mutation proof; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, plain-language verification, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
