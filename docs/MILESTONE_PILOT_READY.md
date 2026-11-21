@@ -29,6 +29,7 @@ Confirmed merged documentation PRs:
 - #64 — audit-anchor wiring and recovery plan.
 - #65 — callable-pipeline capability guide.
 - #77 — five-document readiness refresh, merged after rebasing on #78; exact-head docs CI run 235 passed all four matrix jobs.
+- #83 — M1/M2 readiness refresh, synthetic fixture specification and provisional operator runbook; merged after exact-head docs CI passed all four matrix jobs.
 
 Confirmed merged implementation PRs:
 - #53 — append-only observed outcomes and review API.
