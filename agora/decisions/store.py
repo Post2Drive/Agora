@@ -49,10 +49,11 @@ class DecisionRecordStore:
         self.db.commit()
 
     def append(self, record: DecisionRecord | dict) -> DecisionRecord:
-        """Append a non-approved record version.
+        """Append only the first version-1 draft for a new decision.
 
-        Approved versions must use append_transition(), which verifies the
-        prior proposed version and persists its policy decision and audit event.
+        Replaying the exact original draft is idempotent. All lifecycle changes
+        must use append_transition(), which verifies the preceding version and
+        persists its policy decision and audit event.
         """
         record = record if isinstance(record, DecisionRecord) else load_decision_record(record)
         if record.status == "approved":
@@ -60,20 +61,45 @@ class DecisionRecordStore:
                 "approved records must be appended through a valid approval transition"
             )
         payload = record.as_dict()
-        existing = self.db.execute(
-            "SELECT payload_json FROM decision_records WHERE decision_id=? AND version=?",
-            (record.decision_id, record.version),
-        ).fetchone()
-        if existing is not None:
-            if json.loads(existing[0]) != payload:
-                raise DecisionRecordError("decision version already exists with different content")
-            return record
-        self.db.execute(
-            "INSERT INTO decision_records VALUES (?,?,?,?)",
-            (record.decision_id, record.version, record.fingerprint,
-             json.dumps(payload, sort_keys=True, separators=(",", ":"))),
-        )
-        self.db.commit()
+        payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+        try:
+            self.db.execute("BEGIN IMMEDIATE")
+            existing_rows = self.db.execute(
+                "SELECT version, payload_json FROM decision_records "
+                "WHERE decision_id=? ORDER BY version",
+                (record.decision_id,),
+            ).fetchall()
+            if existing_rows:
+                original = next(
+                    (row for row in existing_rows if row[0] == 1), None
+                )
+                if (
+                    record.version == 1
+                    and record.status == "draft"
+                    and original is not None
+                    and json.loads(original[1]) == payload
+                ):
+                    self.db.commit()
+                    return record
+                raise DecisionRecordError(
+                    "decision already exists; lifecycle changes must use append_transition"
+                )
+
+            if record.version != 1 or record.status != "draft":
+                raise DecisionRecordError(
+                    "new decisions must start at version 1 with status 'draft'; "
+                    "lifecycle changes must use append_transition"
+                )
+
+            self.db.execute(
+                "INSERT INTO decision_records VALUES (?,?,?,?)",
+                (record.decision_id, record.version, record.fingerprint, payload_json),
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         return record
 
     def append_transition(
