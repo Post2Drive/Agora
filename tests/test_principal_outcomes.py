@@ -98,3 +98,67 @@ def test_denial_is_audited_with_identifiers_only(tmp_path):
     assert events[0]["subject_id"] == "reader-1" and events[0]["decision"] == "deny"
     assert "people" not in json.dumps(events) and audit.verify()["valid"] is True
     audit.close()
+
+
+# --- slice 3d: caller resource ignored; anchored writer required when asked ---
+import agora.decisions.outcomes as outcomes_mod
+from agora.audit_anchor import AnchorRequiredError
+
+FORGED = [
+    {"source_sensitivity": "public"}, {"sensitivity": "public"},
+    {"target_sensitivity": "public"}, {"source_sensitivity": "sensitive"},
+    {"purpose": "marketing", "retention": "forever", "project_id": "other"},
+]
+
+
+@pytest.fixture
+def seen(monkeypatch):
+    captured = []
+    real = outcomes_mod.decide_principal
+
+    def spy(principal, op, resource, **kw):
+        captured.append(dict(resource))
+        return real(principal, op, resource, **kw)
+    monkeypatch.setattr(outcomes_mod, "decide_principal", spy)
+    return captured
+
+
+@pytest.mark.parametrize("forged", FORGED)
+def test_record_outcome_as_ignores_caller_resource(tmp_path, seen, forged):
+    _, store, approved = approved_store(tmp_path)
+    out = record_outcome_as(store, principal=ADAPTER.issue("op"), resource=forged, **_rec_args(approved))
+    assert out["recorder"] == "recorder-1"
+    assert seen[-1]["source_sensitivity"] == "internal"
+    assert set(seen[-1]) == set(approved.project_scope) | {"resource_ids", "source_sensitivity"}
+    assert not {"target_sensitivity", "purpose", "retention", "sensitivity"} & set(seen[-1])
+
+
+@pytest.mark.parametrize("forged", FORGED)
+def test_review_outcome_as_ignores_caller_resource(tmp_path, seen, forged):
+    _, store, approved = approved_store(tmp_path)
+    out = record_outcome_as(store, principal=ADAPTER.issue("op"), **_rec_args(approved))
+    r = review_outcome_as(store, approved.decision_id, approved.version, out["outcome_id"],
+                          principal=ADAPTER.issue("rev"), resource=forged, **REV)
+    assert r["new_state"] == "reviewed"
+    assert seen[-1]["source_sensitivity"] == "internal"
+    assert not {"target_sensitivity", "purpose", "retention", "sensitivity"} & set(seen[-1])
+    assert seen[-1]["project_id"] == approved.project_scope["project_id"]
+
+
+def test_outcome_as_require_anchored_fails_closed_without_state_change(tmp_path):
+    _, store, approved = approved_store(tmp_path)
+    plain = AuditChainStore(tmp_path / "audit.sqlite3")
+    for audit in (None, plain):
+        with pytest.raises(AnchorRequiredError):
+            record_outcome_as(store, principal=ADAPTER.issue("op"), audit=audit,
+                              require_anchored=True, **_rec_args(approved))
+    assert store.outcomes(approved.decision_id, approved.version) == []
+    out = record_outcome_as(store, principal=ADAPTER.issue("op"), **_rec_args(approved))
+    for audit in (None, plain):
+        with pytest.raises(AnchorRequiredError):
+            review_outcome_as(store, approved.decision_id, approved.version, out["outcome_id"],
+                              principal=ADAPTER.issue("rev"), audit=audit,
+                              require_anchored=True, **REV)
+    assert store.reviews(approved.decision_id, approved.version, out["outcome_id"]) == []
+    assert [e for e in plain.db.execute("SELECT 1 FROM audit_events")] == []
+    plain.close()
