@@ -7,7 +7,7 @@
 
 ## 1. Executive assessment
 
-The documentation and implementation queue is now merged through PR #70. Main includes the local-sidecar audit-anchor implementation (#63), the Windows audit-log lock fix (#66), the status/manual-procedure documentation (#67–#69), and the first principal-first outcome record/review slice (#70). This is meaningful implementation progress, **not** evidence that the callable synthetic governed pipeline is complete.
+The documentation and implementation queue is now merged through PR #70. Main includes the local-sidecar audit-anchor implementation (#63), the Windows audit-log lock fix (#66), the status/manual-procedure documentation (#67–#69), and the first principal-first outcome record/review slice (#70). This is meaningful implementation progress, **not** evidence that the callable synthetic governed pipeline is complete. A separate draft implementation PR #71 proposes anchor-writer factory and policy-denial wiring (Stages A/D), but it is not merged and is not part of this mainline assessment.
 
 Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. #70 adds principal-gated `record_outcome_as()` and `review_outcome_as()` wrappers, but they delegate to the legacy role-string outcome functions after principal checks; the broader decision/PDP/policy-enforcement paths are not fully migrated.
 
@@ -86,8 +86,10 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | #68 | Reconciliation manual procedure proposal | Merged |
 | #69 | Outcome hold/review manual procedure proposal | Merged |
 | #70 | Principal-first outcome record/review slice | Merged |
+| #71 | Anchor writer factory and policy-denial wiring (Stages A/D) | Open, draft, unmerged; not on main |
+| #72 | This documentation refresh | Open, draft, unmerged |
 
-Main is `0a00ef189fb63b4361c406fcfa665662ae03e15a`. The repository open-PR search returned no open PRs at this check.
+Main is `0a00ef189fb63b4361c406fcfa665662ae03e15a`. At this check, #71 is an open draft implementation PR and #72 is this open draft documentation PR; neither is merged or part of main.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
