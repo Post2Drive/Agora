@@ -8,8 +8,10 @@ computed, never written by the model.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import sqlite3
 import time
 from pathlib import Path
 from typing import Callable
@@ -487,21 +489,23 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
 
 
 def _report_provenance(project: Path) -> dict:
-    """Read verified run provenance without changing the run store.
-
-    A project directory contains one run; its directory name is the stable
-    display identifier when older stores do not carry an explicit run_id.
-    """
-    from ..store import Store
-
-    store = Store(project / "agora.db")
+    """Read and verify run provenance without modifying the run database."""
+    db_path = (project / "agora.db").resolve()
+    db_uri = f"{db_path.as_uri()}?mode=ro"
+    db = sqlite3.connect(db_uri, uri=True)
     try:
-        run_id = store.get_meta("run_id") or project.name or project.resolve().name
-        envelope = store.get_input_provenance()
-    finally:
-        store.close()
+        row = db.execute("SELECT value FROM meta WHERE key=?", ("run_id",)).fetchone()
+        run_id = json.loads(row[0]) if row else None
+        run_id = run_id or project.name or project.resolve().name
 
-    if envelope.get("provenance_status") == "legacy_missing":
+        row = db.execute(
+            "SELECT value FROM meta WHERE key=?", ("input_provenance",)
+        ).fetchone()
+        envelope = json.loads(row[0]) if row else None
+    finally:
+        db.close()
+
+    if envelope is None:
         return {
             "run_id": str(run_id),
             "provenance_status": "legacy_missing",
@@ -509,10 +513,21 @@ def _report_provenance(project: Path) -> dict:
             "mode": "exploratory",
             "simulated": True,
         }
-
+    if not isinstance(envelope, dict):
+        raise ValueError("report input provenance envelope is malformed")
     manifest = envelope.get("input_manifest")
     if not isinstance(manifest, dict):
         raise ValueError("report input provenance manifest is malformed")
+    canonical = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    )
+    expected_hash = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if envelope.get("manifest_hash") != expected_hash:
+        raise ValueError("input provenance manifest hash mismatch")
+    if envelope.get("scenario_hash") != manifest.get("scenario_hash"):
+        raise ValueError("input provenance scenario hash mismatch")
+
     required = {
         "scenario_hash", "import_id", "dataset_id", "schema_id", "schema_version",
         "schema_fingerprint", "binding_id", "binding_version", "binding_fingerprint",
@@ -559,7 +574,6 @@ def _report_provenance(project: Path) -> dict:
         "source_registry_id": manifest["source_registry_id"],
         "file_sha256": manifest["file_sha256"],
     }
-
 
 def write_report(project: str | Path, llm: LLMBackend | None,
                  say: Callable[[str], None] = lambda m: None,
