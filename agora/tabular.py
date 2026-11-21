@@ -297,7 +297,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                max_rows: int = DEFAULT_MAX_ROWS,
                policy: PolicyCallable | None = None,
                audit: Any | None = None,
-               require_policy: bool = False) -> dict[str, Any]:
+               require_policy: bool = True) -> dict[str, Any]:
     """Import a local CSV as an immutable, typed, provenance-registered snapshot.
 
     When supplied, policy is called as policy("import", resource) before the

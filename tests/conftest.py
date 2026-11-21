@@ -30,3 +30,34 @@ def project(tmp_path):
 def _legacy_approve_test_only(monkeypatch):
     """Legacy role-string approve() is test-only; tests may opt out via delenv."""
     monkeypatch.setenv("AGORA_TEST_ONLY_LEGACY_APPROVE", "1")
+
+
+_PROTECTED_DEFAULTS = (
+    ("agora.tabular", "ingest_csv", "require_policy"),
+    ("agora.ontology.binding", "materialize_instances", "require_policy"),
+    ("agora.scenario_inputs", "build_scenario_input", "require_policy"),
+    ("agora.decisions.approval", "approve_as", "require_anchored"),
+    ("agora.decisions.outcomes", "record_outcome_as", "require_anchored"),
+    ("agora.decisions.outcomes", "review_outcome_as", "require_anchored"),
+)
+
+
+@pytest.fixture(autouse=True)
+def _unprotected_fixture_defaults(request):
+    """Legacy fixtures build state without policy/anchor. Production defaults are
+    protected (on); this fixture relaxes them for tests only. Tests that prove the
+    protected defaults use @pytest.mark.protected_defaults to keep them intact."""
+    if request.node.get_closest_marker("protected_defaults"):
+        yield
+        return
+    import importlib
+    saved = []
+    for mod, fn, kw in _PROTECTED_DEFAULTS:
+        f = getattr(importlib.import_module(mod), fn)
+        saved.append((f, kw, f.__kwdefaults__[kw]))
+        f.__kwdefaults__[kw] = False
+    try:
+        yield
+    finally:
+        for f, kw, old in saved:
+            f.__kwdefaults__[kw] = old

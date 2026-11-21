@@ -284,7 +284,7 @@ def approve_as(
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
     audit: AuditAppender | None = None,
-    require_anchored: bool = False,
+    require_anchored: bool = True,
 ) -> DecisionRecord:
     """Approve using a trusted principal; role, scope and actor come from it.
 
