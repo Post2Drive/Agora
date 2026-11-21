@@ -216,3 +216,23 @@ def test_policy_allow_preserves_read_only_materialization(tmp_path):
     assert len(instances) == 1
     assert seen["operation"] == "binding"
     assert seen["resource"]["dataset_id"] == "customers"
+
+
+def test_binding_policy_receives_declared_purpose_and_retention(tmp_path):
+    seen = {}
+
+    def spy(operation, resource):
+        seen.update(resource)
+        return {"decision": "allow", "reason": "policy_allow", "subject_id": "u", "policy_version": "t"}
+
+    source = tmp_path / "customers.csv"
+    source.write_text("customer_id,email\nC001,a@example.test\n", encoding="utf-8")
+    imported = ingest_csv(tmp_path, source, schema(), data_role="context")
+    materialize_instances(
+        binding(), pack(), tmp_path, imported["import_id"], policy=spy,
+        purpose="declared purpose", retention="declared retention",
+    )
+    assert seen["purpose"] == "declared purpose" and seen["retention"] == "declared retention"
+    seen.clear()
+    materialize_instances(binding(), pack(), tmp_path, imported["import_id"], policy=spy)
+    assert seen["purpose"] is None and seen["retention"] is None

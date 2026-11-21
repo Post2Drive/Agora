@@ -70,16 +70,12 @@ def _transformation_policy():
             "authorized_property_ids": ["e2e:Customer.id"]}
 
 
-def _policy(role, *, with_purpose=True):
-    """Real central PDP as the enforcement callable."""
+def _policy(role):
+    """Real central PDP as the enforcement callable, with no help from the test."""
     subject = {"subject_id": "operator-1", "project_id": PROJECT_ID}
 
     def call(operation, resource):
-        resource = dict(resource)
-        if with_purpose:
-            resource.setdefault("purpose", "synthetic e2e transformation")
-            resource.setdefault("retention", "one day")
-        return decide(subject, role, operation, resource)
+        return decide(subject, role, operation, dict(resource))
 
     return call
 
@@ -122,7 +118,10 @@ def test_governed_pipeline_happy_path_then_audit_and_provenance(tmp_path):
     operator = _policy("operator")
 
     imported = ingest_csv(project, _csv(tmp_path), _schema(), data_role="scenario_input", policy=operator)
-    instances = materialize_instances(_binding(), _pack(), project, imported["import_id"], policy=operator)
+    instances = materialize_instances(
+        _binding(), _pack(), project, imported["import_id"], policy=operator,
+        purpose="synthetic e2e transformation", retention="one day",
+    )
     assert instances and all("record_key" in item for item in instances)
     built = build_scenario_input(
         _binding(), _pack(), project, imported["import_id"],
@@ -178,11 +177,9 @@ def test_every_stage_denies_and_the_shared_audit_chain_verifies(tmp_path):
     # Stage 2 binding: reader denied.
     with pytest.raises(OntologyError, match="Policy denied"):
         materialize_instances(_binding(), _pack(), project, imported["import_id"], policy=reader)
-    # The real PDP also denies personal data that carries no purpose/retention.
+    # The real PDP also denies personal data when the caller declares no purpose/retention.
     with pytest.raises(OntologyError, match="Policy denied"):
-        materialize_instances(
-            _binding(), _pack(), project, imported["import_id"], policy=_policy("operator", with_purpose=False),
-        )
+        materialize_instances(_binding(), _pack(), project, imported["import_id"], policy=operator)
 
     # Stage 3 scenario input: reader denied.
     with pytest.raises(ScenarioInputError, match="Policy denied"):
