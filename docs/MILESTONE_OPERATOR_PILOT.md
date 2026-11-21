@@ -1,7 +1,7 @@
 # M2 — Operator-Usable Synthetic Pilot
 
-**Status:** Draft for Claude and owner review; not owner-approved, not an execution authorisation, and not a readiness declaration.  
-**Assessment base:** `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
+**Status:** M2 scope approved by the owner; this checklist remains a planning contract, not an execution authorisation or readiness declaration.  
+**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
 **Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
@@ -25,7 +25,7 @@ This milestone demonstrates governance and operator usability only. It does not 
 | Backup/restore and tamper drill | Documented local backup/restore preserves chain/anchor continuity; tampering is detected and protected operations stop. | Tests exercise backup, restore, missing/corrupt backup and tamper cases; rehearsal log records outcomes. |
 | Minimal reconciliation | Cross-store mismatches are listed and classified without rewriting decision or audit history. | Deterministic report/test for unmatched decision/outcome/audit references; no automatic repair. |
 | Held-outcome listing | Outcomes requiring source/dependency review are surfaced as held, with stable reason codes and no silent approval. | Tests for changed/missing source evidence, reviewer holds and listing filters. |
-| Run records | Persist and verify the immutable envelope defined by `docs/RUN_PROVENANCE_SPEC.md`; do not call the simulation engine. | Tests assert exact import ID, fixture/schema/binding/manifest hashes, ontology and policy fingerprints, repository SHA and synthetic/exploratory label. |
+| Run records | Persist and verify the immutable envelope defined by `docs/RUN_PROVENANCE_SPEC.md`; do not call the simulation engine. | Tests assert exact import ID, fixture/schema/binding/manifest hashes, ontology and policy fingerprints, repository SHA and synthetic/exploratory label. The operator-specific field mapping is specified in `docs/PILOT_RUN_RECORD_FIELDS.md`. |
 | Operator runbook | Every command and expected output/stop condition in `docs/OPERATOR_RUNBOOK.md` is exercised by an automated test. | Test loads or validates the runbook command inventory and executes each safe local synthetic command. |
 | Logged dress rehearsal | A separately owner-approved local synthetic rehearsal records command, SHA, fixture hashes, stage results, denial stops, audit verification, backup/restore/tamper outcomes and operator sign-off. | Verified Notion log entry with exact evidence and Claude's milestone confirmation. |
 
@@ -46,7 +46,7 @@ Keep `VALIDATED_PREDICTION_ENABLED=False`. Do not infer owner approval from a dr
 2. Add and verify the synthetic fixture set using `docs/SYNTHETIC_PILOT_FIXTURE_SPEC.md`.
 3. Complete default-on principal/policy and anchored-writer enforcement across the protected local path; retire runtime-enableable role-string compatibility.
 4. Implement the local orchestrator and one-command guided stages without calling the simulation engine.
-5. Complete run-record persistence, reconciliation listing, held-outcome markers, audit timeline and plain-language verification.
+5. Complete run-record persistence using `docs/PILOT_RUN_RECORD_FIELDS.md`, reconciliation listing, held-outcome markers, audit timeline and plain-language verification.
 6. Add backup/restore and tamper tests; make the operator runbook command inventory executable by tests.
 7. Obtain separate owner approval for the local synthetic dress rehearsal; record the rehearsal and exact evidence in Notion.
 
