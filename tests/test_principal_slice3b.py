@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from agora.audit_anchor import AnchorRequiredError
 from agora.audit_chain import AuditChainStore
 from agora.decisions.approval import ApprovalTransitionError, approve_as
 from agora.decisions.permissions import (
@@ -98,7 +99,7 @@ def test_separation_of_duties_still_enforced_for_valid_approver(tmp_path):
 
 def test_require_anchored_without_anchored_writer_fails_closed_no_state_change(tmp_path):
     store, proposed, args = _setup(tmp_path)
-    with pytest.raises(Exception):
+    with pytest.raises(AnchorRequiredError):
         approve_as(store, proposed.decision_id, proposed.version,
                    principal=_adapter().issue("approver"), audit=None,
                    require_anchored=True, **args)
@@ -110,3 +111,47 @@ def test_approve_as_has_no_role_or_subject_parameter():
     import inspect
     params = inspect.signature(approve_as).parameters
     assert not {"role", "subject", "actor"} & set(params)
+
+
+def test_unanchored_plain_chain_also_fails_closed_with_anchor_error(tmp_path):
+    audit = AuditChainStore(tmp_path / "a.sqlite3")
+    store, proposed, args = _setup(tmp_path)
+    with pytest.raises(AnchorRequiredError):
+        approve_as(store, proposed.decision_id, proposed.version,
+                   principal=_adapter().issue("approver"), audit=audit,
+                   require_anchored=True, **args)
+    assert store.versions(proposed.decision_id)[-1].status == "proposed"
+    assert _events(audit) == []
+    store.close(); audit.close()
+
+
+@pytest.mark.parametrize("forged", [
+    {"source_sensitivity": "public"},
+    {"sensitivity": "public"},
+    {"target_sensitivity": "public"},
+    {"source_sensitivity": "personal", "purpose": "x", "retention": "y"},
+    {"source_sensitivity": "personal"},
+    {"source_role": "sealed_holdout"},
+])
+def test_caller_resource_cannot_alter_policy_inputs(tmp_path, forged):
+    from agora.decisions import approval
+    seen = {}
+    real = approval.authorize_decision_approval_principal
+
+    def spy(principal, resource, **kw):
+        seen.update(resource)
+        return real(principal, resource, **kw)
+
+    store, proposed, args = _setup(tmp_path)
+    args["now"] = NOW
+    approval.authorize_decision_approval_principal = spy
+    try:
+        out = approve_as(store, proposed.decision_id, proposed.version,
+                         principal=_adapter().issue("approver"), resource=forged, **args)
+    finally:
+        approval.authorize_decision_approval_principal = real
+    assert out.status == "approved"
+    assert seen["source_sensitivity"] == "internal"
+    assert not ({"sensitivity", "target_sensitivity", "purpose", "retention", "source_role"} & set(seen))
+    assert seen["resource_ids"] == [proposed.decision_id]
+    store.close()
