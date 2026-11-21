@@ -98,10 +98,12 @@ class DecisionRecordStore:
             raise DecisionRecordError("transition audit event fields must be non-empty text")
         if event["decision_fingerprint"] != record.fingerprint or occurred_at != record.updated_at:
             raise DecisionRecordError("transition audit event does not match the record version")
-        if transition == "approved" and record.status != "approved":
-            raise DecisionRecordError("approved event requires an approved record")
-        if record.status == "approved" and transition != "approved":
-            raise DecisionRecordError("approved record requires an approved transition event")
+        transition_status = {
+            "proposed": "proposed", "approved": "approved", "rejected": "rejected",
+            "expired": "rejected", "superseded": "superseded",
+        }
+        if transition_status.get(transition) != record.status:
+            raise DecisionRecordError("transition event does not match the record status")
         if record.status == "approved":
             if not isinstance(policy_decision, Mapping) or policy_decision.get("decision") != "allow":
                 raise DecisionRecordError("approved transition requires an allow policy decision")
