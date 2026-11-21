@@ -59,6 +59,18 @@ def test_legacy_report_provenance_is_explicit_and_not_resumable(tmp_path):
     assert "not eligible for scenario-input resume" in rendered
 
 
+def test_missing_database_is_legacy_without_creating_file(tmp_path):
+    db_path = tmp_path / "agora.db"
+    assert not db_path.exists()
+
+    provenance = _report_provenance(tmp_path)
+
+    assert provenance["provenance_status"] == "legacy_missing"
+    assert provenance["legacy"] is True
+    assert provenance["run_id"] == tmp_path.name
+    assert not db_path.exists()
+
+
 def test_verified_report_provenance_contains_required_fields_only(tmp_path):
     store = Store(tmp_path / "agora.db")
     store.set_input_provenance(_manifest())
