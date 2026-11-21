@@ -1,8 +1,8 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
-**Milestone dependency:** this docs PR adds a draft `docs/MILESTONE_OPERATOR_PILOT.md` and fixture specification for Claude/owner review. Neither is merged or owner-approved yet. This file remains a provisional status map, not an executable runbook.
+**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
+**Milestone dependency:** docs PR #83 merged the draft `docs/MILESTONE_OPERATOR_PILOT.md` and fixture specification into main. They remain drafts for Claude/owner review and are not owner-approved. This file remains a provisional status map, not an executable runbook.
 
 ## 1. Scope and safety
 
@@ -12,13 +12,13 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `c9cfdc94` | Evidence / missing item |
+| M2 requirement | Mainline status at `7afa1414` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | No single operator install/start command is documented or verified. |
 | Checked-in synthetic dataset | **NOT YET VERIFIED** | The older how-to references `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml`; those exact paths are absent on main. No replacement checked-in dataset has been verified in this review. |
 | Guided end-to-end run with per-step results and clear gate-denial stops | **NOT YET** | No single pilot orchestrator/CLI exists. Import, binding, scenario-input, approval and report components remain separate. |
 | Anchor and policy checks enabled by default everywhere | **NOT YET** | `require_policy=False` and `require_anchored=False` remain defaults; legacy `policy=None` and optional audit paths remain. |
-| Legacy paths removed or test-only | **PARTIAL** | #82 makes role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; outcome wrappers still delegate to legacy role-string functions; other optional policy/audit paths remain. |
+| Legacy paths removed or test-only | **PARTIAL** | #82 makes role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; the switch is still a runtime environment variable. #84 closes caller-controlled approval resource fields. Outcome wrappers still delegate to legacy role-string functions; other optional policy/audit paths remain. |
 | Readable audit timeline and plain-language chain/anchor verification | **PARTIAL / NOT OPERATOR-READY** | Hash-chain and local-sidecar verification APIs exist; no integrated operator timeline/verification command has been verified. Trust is `local_sidecar`, not independent external anchoring. |
 | Backup/restore and tamper drill | **NOT YET** | Design guidance exists; no operator commands, tested procedure or logged drill is evidenced. |
 | Minimal reconciliation and held-outcome listing | **NOT YET** | Decision/audit reconciliation (#57) and outcome dependency markers (#60) are specifications only; no queue, worker or held-outcome listing exists. |
@@ -31,7 +31,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **AVAILABLE — local CSV import CLI:** `agora data import-csv`, `agora data snapshots`, `agora data show` and `agora data rejected`.
 - **AVAILABLE — Python APIs:** ontology binding/materialization, scenario-input construction, decision records, principal-native `approve_as()`, outcome/review APIs and local anchored-audit primitives.
 - **PARTIAL — protected policy:** #78/#79 provide a Principal-bound callback and opt-in missing-policy denial; data-boundary defaults remain unprotected.
-- **PARTIAL — principal approval:** #80 provides `approve_as()`; #82 test-gates the legacy role-string function, but the compatibility switch remains an environment variable.
+- **PARTIAL — principal approval:** #80 provides `approve_as()`; #84 ignores caller-supplied policy resource fields and uses stored project scope/decision ID plus a fixed `internal` sensitivity baseline. #82 retains a runtime environment-variable gate for legacy role-string `approve()`; outcome wrappers still delegate to legacy APIs.
 - **PARTIAL — anchored audit:** #71/#74 wire append points and opt-in gates; legacy optional-audit paths remain.
 - **NOT YET — single orchestrator:** no `agora pilot` or governed-pipeline command is present.
 - **NOT YET — reconciliation/held outcomes:** no implementation beyond #57/#60 specifications.
@@ -46,7 +46,7 @@ The following headings reserve the runbook structure. Each step must be replaced
 2. **Fixture selection — NOT YET:** select the checked-in synthetic dataset and record exact immutable fixture/schema/binding IDs and hashes.
 3. **Policy and anchor verification — NOT YET:** verify principal, scope, required policy, anchored writer, chain ID and anchor state before any protected read or write.
 4. **Guided import/bind/scenario-input — NOT YET:** run each stage with exact IDs, per-step results and fail-closed stop codes; no simulation engine call.
-5. **Decision and principal approval — PARTIAL API ONLY:** use principal-native `approve_as()`; #82 test-gates legacy role-string `approve()`, but the compatibility switch must remain test-only and the anchor requirement is not default-on.
+5. **Decision and principal approval — PARTIAL API ONLY:** use principal-native `approve_as()`; #84 makes it ignore caller-supplied policy resource fields. #82 gates legacy role-string `approve()` with a runtime environment variable, not a structural test-only boundary; the anchor requirement is not default-on.
 6. **Audit timeline and verification — NOT YET:** show event sequence, chain verification and anchor comparison in plain language without exposing raw values.
 7. **Reconciliation and held outcomes — NOT YET:** list unmatched/held records; no automatic repair without explicit independent approval.
 8. **Backup/restore and tamper drill — NOT YET:** document and test copy/restore, anchor continuity, tamper detection and fail-closed recovery.
