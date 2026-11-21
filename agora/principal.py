@@ -139,4 +139,21 @@ def decide_principal(
     return (last or deny("role_not_permitted", sid)[0]), None
 
 
-__all__ = ["Assurance", "IdentityError", "Principal", "SyntheticFixtureAdapter", "decide_principal"]
+def principal_policy(
+    principal: Principal | None, *, required_role: str | None = None,
+    now: datetime | None = None,
+    trusted_issuers: frozenset[str] = frozenset({SyntheticFixtureAdapter.ISSUER}),
+):
+    """Bind a Principal into a PolicyCallable for enforce_policy().
+
+    The callback takes only (operation, resource): authority comes from the bound,
+    adapter-issued principal, never from resource fields or caller roles.
+    """
+    def policy(operation: str, resource: Mapping[str, Any]) -> dict[str, Any]:
+        decision, _ = decide_principal(principal, operation, resource, now=now,
+                                       required_role=required_role, trusted_issuers=trusted_issuers)
+        return decision
+    return policy
+
+
+__all__ = ["principal_policy", "Assurance", "IdentityError", "Principal", "SyntheticFixtureAdapter", "decide_principal"]
