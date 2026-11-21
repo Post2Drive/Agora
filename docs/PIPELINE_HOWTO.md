@@ -22,7 +22,7 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89/#96 make `approve_as()` Principal-native with stored-decision-derived policy input and no public anchor opt-out kwarg. #97 removes the legacy env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89/#96/#97 provide writer, factory, append wiring and protected Principal wrappers without public anchor opt-out kwargs; #97 refuses unanchored policy-denial writes. Trust is `local_sidecar`. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89/#96/#97 provide writer, factory, append wiring and protected Principal wrappers without public anchor opt-out kwargs; #97 refuses the `audit=None` fallback, but `enforce_policy()` still accepts a supplied plain `AuditChainStore` without anchor validation. Trust is `local_sidecar`. |
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected mode partial** | #92 retires public role-string exports and #96 removes public `require_anchored=False` kwargs. Private helper audit can still be omitted internally; direct `enforce_policy(..., require_policy=False)` remains a separate gap. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
@@ -153,7 +153,7 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 - #96 removes the `require_anchored` opt-out kwargs from `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; public callers cannot pass `False`. #92 retires the public role-string outcome exports.
 - #92 removes public `record_outcome()` / `review_outcome()` exports. `record_outcome_as()` / `review_outcome_as()` are the public routes; #96 removes their public `require_anchored=False` opt-out kwargs.
 - `approve()` remains default-deny; #97 removes the environment switch and permits enablement only through the test-only `agora.protection.LEGACY_APPROVE_ENABLED` flag.
-- Direct `enforce_policy()` now defaults `require_policy` from `POLICY_REQUIRED=True`; when `audit=None` and anchoring is required, denial raises rather than writing an unanchored chain. Explicit `require_policy=False` is still accepted and bypasses missing-policy denial.
+- Direct `enforce_policy()` now defaults `require_policy` from `POLICY_REQUIRED=True`; when `audit=None` and anchoring is required, denial raises rather than writing an unanchored chain. Explicit `require_policy=False` is still accepted, and any supplied append-capable writer—including a plain `AuditChainStore`—is accepted without anchor validation.
 - No standalone audit timeline or plain-language verification command exists; only the pilot's `audit_verify` stage is available.
 
 ## 9. Step F — record and review an observed outcome
@@ -186,8 +186,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 The following gaps remain after the #88 guided pilot command:
 
-1. #96 removes public policy/anchor opt-out kwargs and #97 makes direct policy enforcement default-on with no unanchored denial fallback. Close the remaining direct `enforce_policy(..., require_policy=False)` bypass with a negative test/mutation proof.
-2. #97 removes the runtime-enableable legacy `approve()` environment switch; retain its test-only module flag boundary and prove the environment variable remains inert.
+1. Remove both direct policy-helper bypasses: explicit `enforce_policy(..., require_policy=False)` and acceptance of a supplied plain `AuditChainStore`. Require an `AnchoredAuditChain` for protected denial events and add negative tests/mutation proofs.
 3. Require the same configured `AnchoredAuditChain` for policy-denial/data-boundary paths; #97 fails closed when `audit=None`, but a supplied plain `AuditChainStore` is still accepted. Also remove the direct `require_policy=False` bypass.
 4. Implement decision/audit reconciliation (#57) and outcome dependency markers/held-outcome listing (#60); both remain specifications only.
 5. Persist and verify the immutable operator run record in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
