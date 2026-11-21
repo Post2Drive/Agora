@@ -1,7 +1,7 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026)  
+**Assessment base:** `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026)  
 **Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
@@ -12,13 +12,13 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `87c7cc95` | Evidence / missing item |
+| M2 requirement | Mainline status at `1fbde112` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
 | Guided end-to-end run with per-step results and clear gate-denial stops | **AVAILABLE — partial M2 evidence** | #88 merges `agora pilot --workdir`; it reports nine stages, stops at the first denial/failure and marks later stages skipped. Exact-head CI run `44945307064` passed 4/4. It does not persist the M2 run record or use a checked-in fixture set. |
-| Anchor and policy checks enabled by default everywhere | **DEFAULTS ON, UNIVERSAL GATE NOT COMPLETE** | #89 makes the six named API defaults True. Explicit `False` overrides remain, public role-string outcome functions still accept optional audit, and policy-denial `audit=None` remains unanchored. |
-| Legacy paths removed or test-only | **PARTIAL** | #82 keeps legacy `approve()` default-deny but runtime-enableable by environment variable. #86 Principal outcome wrappers still delegate to public role-string `record_outcome()` / `review_outcome()`; #89 does not retire them. |
+| Anchor and policy checks enabled by default everywhere | **DEFAULTS ON, UNIVERSAL GATE NOT COMPLETE** | #89 makes six named API defaults True, but explicit `False` overrides, direct `enforce_policy()` default-off and policy-denial `audit=None` unanchored fallback remain. |
+| Legacy paths removed or test-only | **PARTIAL** | #92 retires public role-string outcome exports. #82 still leaves legacy `approve()` runtime-enableable by environment variable; this is not structurally test-only. |
 | Readable audit timeline and plain-language chain/anchor verification | **PARTIAL / NOT OPERATOR-READY** | #88 includes an `audit_verify` stage in the guided run, but there is no standalone timeline/verification command. Trust remains `local_sidecar`. |
 | Backup/restore and tamper drill | **NOT YET** | Design guidance exists; no operator commands, tested procedure or logged drill is evidenced. |
 | Minimal reconciliation and held-outcome listing | **NOT YET** | Decision/audit reconciliation (#57) and outcome dependency markers (#60) are specifications only; no queue, worker or held-outcome listing exists. |
@@ -32,8 +32,8 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **AVAILABLE — Python APIs:** ontology binding/materialization, scenario-input construction, decision records, principal-native `approve_as()`, outcome/review APIs and local anchored-audit primitives.
 - **PARTIAL — protected policy:** #89 makes the three data-boundary defaults True; direct `enforce_policy()` still defaults off and its `audit=None` path is unanchored. Explicit False remains possible.
 - **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #82 default-denies legacy role-string `approve()` behind an environment-variable switch, which is not structurally test-only.
-- **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #89 defaults the three Principal write wrappers to anchored audit, but explicit `require_anchored=False`, legacy optional-audit APIs and unanchored policy-denial `audit=None` remain.
-- **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages, stops on first denial and never calls the engine; it is not M2 complete.
+- **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #89 defaults the three Principal write wrappers to anchored audit, #92 retires public role-string outcome exports, but explicit `require_anchored=False` and unanchored policy-denial `audit=None` remain.
+- **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages, stops on first denial and does not invoke the engine. However `agora.cli` imports `.sim.engine` at module scope before dispatch; M2 import isolation remains outstanding.
 - **NOT YET — reconciliation/held outcomes:** no implementation beyond #57/#60 specifications.
 
 Do not execute a component command as though it were the full M2 workflow.
