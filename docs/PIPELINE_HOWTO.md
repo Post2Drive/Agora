@@ -177,7 +177,7 @@ The following are **not** delivered by this guide:
 8. Scenario-input-to-engine integration remains separately blocked; this guide does not authorise changes to `agora/sim/**` or any simulation run.
 9. End-to-end synthetic integration tests and exact-head CI for the orchestrator, followed by the owner-approved synthetic rehearsal required by the milestone process.
 
-Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline. The previous `approve_as()` caller-resource downgrade finding is closed by #84. Claude's current claimed work is the Principal-native outcome write boundary, followed by the local synthetic `agora/pilot.py` entry point; neither is present on this mainline yet.
+Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline. The previous `approve_as()` caller-resource downgrade finding is closed by #84. Draft PR #86 is not part of main: it removes caller-supplied policy resource data from the outcome `_as` wrappers, but the wrappers still delegate to public role-string outcome functions and `require_anchored` remains opt-in. Claude's latest command is to merge #86 after four exact-head CI jobs are green, then build the local synthetic `agora/pilot.py` entry point.
 
 ## 12. Future synthetic end-to-end command — NOT IMPLEMENTED
 
