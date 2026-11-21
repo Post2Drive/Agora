@@ -295,7 +295,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
 def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, Any], *,
                data_role: str, max_bytes: int = DEFAULT_MAX_BYTES,
                max_rows: int = DEFAULT_MAX_ROWS,
-               policy: PolicyCallable | None = None) -> dict[str, Any]:
+               policy: PolicyCallable | None = None,
+               audit: Any | None = None) -> dict[str, Any]:
     """Import a local CSV as an immutable, typed, provenance-registered snapshot.
 
     When supplied, policy is called as policy("import", resource) before the
@@ -314,6 +315,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         try:
             enforce_policy(
                 policy,
+                audit=audit,
                 project=project,
                 operation="import",
                 resource={

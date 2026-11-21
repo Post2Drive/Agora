@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -200,5 +201,27 @@ class AnchoredAuditChain:
         return verify_anchored(self.chain, self.anchors)
 
 
+@contextmanager
+def open_anchored_audit(chain_path: str | Path, anchor_path: str | Path, chain_id: str):
+    """Open an anchored writer from explicit paths; always closes the chain.
+
+    Never bootstraps: a missing or invalid anchor, or a chain that is not cleanly
+    anchored at open time, raises AnchorRequiredError (fail closed).
+    """
+    chain_path, anchor_path = Path(chain_path), Path(anchor_path)
+    if chain_path.resolve() == anchor_path.resolve():
+        raise AnchorError("anchor must be a separate file from the audit chain")
+    anchors = AnchorStore(anchor_path, chain_id)
+    chain = AuditChainStore(chain_path)
+    try:
+        writer = AnchoredAuditChain(chain, anchors)
+        state = writer.verify()
+        if not state["valid"]:
+            raise AnchorRequiredError(f"audit chain is not cleanly anchored: {state['status']}")
+        yield writer
+    finally:
+        chain.close()
+
+
 __all__ = ["AnchorError", "AnchorRequiredError", "AnchorStore", "AnchorWriteError", "AnchoredAuditChain",
-           "bootstrap_anchor", "verify_anchored"]
+           "bootstrap_anchor", "open_anchored_audit", "verify_anchored"]
