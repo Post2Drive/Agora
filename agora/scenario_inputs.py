@@ -114,6 +114,7 @@ def build_scenario_input(
     transformation_policy: Mapping[str, Any] | None = None,
     policy: PolicyCallable | None = None,
     audit: Any | None = None,
+    require_policy: bool = False,
 ) -> dict[str, Any]:
     """Build a deterministic scenario-input package from one explicit snapshot.
 
@@ -123,7 +124,7 @@ def build_scenario_input(
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
     project = Path(project)
-    if policy is not None:
+    if policy is not None or require_policy:
         try:
             policy_binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
             properties = {item.property_id: item for item in pack.property_types}
@@ -139,6 +140,7 @@ def build_scenario_input(
                 audit=audit,
                 project=project,
                 operation="simulation_input",
+                require_policy=require_policy,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [import_id, policy_binding.binding_id],

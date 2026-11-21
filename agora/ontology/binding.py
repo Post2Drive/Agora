@@ -226,6 +226,7 @@ def materialize_instances(
     audit: Any | None = None,
     purpose: str | None = None,
     retention: str | None = None,
+    require_policy: bool = False,
 ) -> list[dict[str, Any]]:
     """Read one explicit snapshot and return provenance-rich ontology instances.
 
@@ -239,7 +240,7 @@ def materialize_instances(
     """
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
-    if policy is not None:
+    if policy is not None or require_policy:
         _object, properties = _properties(pack, binding)
         sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
         source_sensitivity = max(
@@ -253,6 +254,7 @@ def materialize_instances(
                 audit=audit,
                 project=project,
                 operation="binding",
+                require_policy=require_policy,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [binding.binding_id, binding.dataset_id],
