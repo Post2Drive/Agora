@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `90789ccfd866c038ce67753645b5e258134b9af3` (21 November 2026)  
+**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 There is **no single CLI/API entry point** on this mainline that executes import → bind → decision → principal approval → anchored audit → observed outcome → simulated-labelled report as one governed workflow.
 
-The repository provides several separate CLI commands and Python APIs. Some stages are only partially governed and some use legacy caller-supplied role strings. The local-sidecar audit-anchor implementation (#63) is now on main, but it is not wired into decision, outcome or policy call sites. The scenario-input package is not connected to the simulation engine.
+The repository provides several separate CLI commands and Python APIs. #71 adds the explicit anchored-writer factory and threads an optional writer through policy denial, CSV import, ontology materialization and scenario-input construction (Stages A/D). Decision lifecycle and outcome/review append paths are not yet wired (Stages B/C); protected mode does not yet require a writer. #70's outcome Principal wrappers still bridge to legacy role-string functions. The scenario-input package remains disconnected from the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -21,8 +21,8 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — limited synthetic slice** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58). This is not production identity; legacy role-string approval remains underneath the bridge and other call sites are not migrated. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API, not wired** | #63 adds `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()` and `verify_anchored()`. It is merged on main but not wired into decision, outcome or policy call sites; trust is `local_sidecar`, not external anchoring. |
-| Observed outcome recording/review | **AVAILABLE — Python API, partial governance** | `DecisionOutcomeStore`, `record_outcome()`, `review_outcome()` (#53). Current APIs still accept caller-supplied role/subject values; no CLI. Simulated data is rejected as observed evidence. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partially wired** | #63 supplies the local-sidecar writer; #71 adds `open_anchored_audit()` and optional `audit=` threading through policy-denial/import/binding/scenario-input paths. Decision lifecycle and outcome/review paths remain unwired; writer remains optional. Trust is `local_sidecar`, not external anchoring. |
+| Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #53 supplies append-only observed outcomes/reviews; #70 adds Principal-gated `record_outcome_as()` / `review_outcome_as()` requiring operator/reviewer. Wrappers still delegate to legacy role-string APIs and accept optional audit; no anchored outcome wiring or CLI. Simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
@@ -134,7 +134,7 @@ Main contains the local append-only hash chain from #38/#47 and the merged local
 
 The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-**Integration gap:** the wrapper is not wired into decision lifecycle, outcome/review or policy-denial append boundaries. The wiring plan (#64) is documentation only. Do not claim that approvals, outcomes or policy denials are anchored until every protected call site uses the wrapper and failure behaviour is verified. Do not treat the local anchor as external anchoring or full protection against coordinated rollback.
+**Integration status after #71:** policy-denial/import/binding/scenario-input paths accept an optional anchored writer. Decision lifecycle and outcome/review append boundaries remain unwired. `audit=None` is still possible and protected mode does not yet require a writer. Do not claim approvals or outcomes are anchored. Trust remains local-sidecar; this is not external anchoring or protection against coordinated rollback.
 
 ## 9. Step F — record and review an observed outcome
 
@@ -142,7 +142,7 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
-There is no CLI. The current API still accepts caller-supplied role and subject inputs; principal-based outcome recording/review is not implemented. A synthetic fixture may demonstrate schema and denial behaviour only, but **simulated preferences, agent actions, conversions and reports must never be entered as observed outcomes**. Use a genuinely observed source only in a separately authorised real-world workflow, which is outside this guide.
+There is no CLI. PR #70 adds `record_outcome_as()` and `review_outcome_as()` wrappers that derive recorder/reviewer and role from Principal and require `operator` / `reviewer`. They reject caller-supplied recorder/reviewer, role and subject fields, then delegate to the legacy role-string functions. This is partial principal migration, not removal of legacy APIs. The audit parameter remains optional and #71 does not wire the anchored writer into outcomes. A synthetic fixture may demonstrate schema and denial behaviour only, but **simulated preferences, agent actions, conversions and reports must never be entered as observed outcomes**. Use a genuinely observed source only in a separately authorised real-world workflow, which is outside this guide.
 
 Outcome dependency review markers are not implemented. Reconciliation between decision and audit stores is not implemented.
 
@@ -150,7 +150,7 @@ Outcome dependency review markers are not implemented. Reconciliation between de
 
 **Status: AVAILABLE — separate exploratory/mock path**
 
-The existing engine/report path is separate from Steps A–F. A standalone mock smoke test can use:
+The existing engine/report path is separate from Steps A–F. The scenario-input package is not consumed by the engine. Do not run the following smoke commands as part of this documentation task; they describe the separate exploratory/mock path only. A standalone mock smoke test can use:
 
 ```bash
 agora new ./engine-smoke --from demo
@@ -176,7 +176,18 @@ The following are **not** delivered by this guide:
 
 Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline.
 
-## 12. Evidence and stop conditions
+## 12. Future synthetic end-to-end command — NOT IMPLEMENTED
+
+**This is a proposed interface sketch only. No such command exists on main; do not execute it or treat it as an operator instruction.**
+
+```bash
+# PROPOSED ONLY — not implemented
+agora governed-pipeline run --project ./tmp-governed-pilot --fixture-set ./fixtures/governed-synthetic
+```
+
+A future implementation must orchestrate exact immutable import IDs, ontology binding, scenario-input construction, decision creation, principal approval, anchored audit, observed-only outcome/review and a separately simulated-labelled report. It must stop on missing policy, Principal, scope, anchor, provenance, exact ID or reviewer separation. It must not start a simulation or call `agora/sim/**` until Claude's written approval and separate owner approval are recorded. This guide does not authorise such implementation or rehearsal.
+
+## 13. Evidence and stop conditions
 
 Record the Git SHA, operator, fixture IDs, schema/import hashes, binding fingerprint, scenario-input hash, decision ID/version/fingerprint, synthetic actor labels, audit verification result, report run ID/mode and all stable denial/stop codes. Keep raw rows and sensitive values out of logs.
 
