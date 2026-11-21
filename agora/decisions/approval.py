@@ -90,6 +90,9 @@ def _event(record: DecisionRecord, transition: str, actor: str, method: str,
     }
 
 
+from agora.audit_anchor import require_anchored as _require_anchored  # noqa: E402
+
+
 def _audit(
     audit: AuditChainStore | None,
     record: DecisionRecord,
@@ -240,12 +243,15 @@ def approve_as(
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
     audit: AuditChainStore | None = None,
+    require_anchored: bool = False,
 ) -> DecisionRecord:
     """Approve using a trusted principal; role, scope and actor come from it.
 
     There is no role parameter: authority is derived from the adapter-issued
     principal, so callers cannot self-assert approver rights.
     """
+    if require_anchored:
+        _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     policy_resource = dict(resource or {})
     policy_resource.update(current.project_scope)

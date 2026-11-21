@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
+from agora.audit_anchor import require_anchored
 from agora.audit_chain import AuditChainStore
 from agora.policy import decide
 from agora.principal import Principal, decide_principal
@@ -369,6 +370,8 @@ def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | Non
     for banned in ("recorder", "role", "subject"):
         if banned in kwargs:
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
+    if kwargs.pop("require_anchored", False):
+        require_anchored(kwargs.get("audit"))
     _principal_gate(principal, "operator", kwargs.get("audit"), store, kwargs["decision_id"],
                     kwargs["decision_version"], kwargs.get("outcome_id"), kwargs.get("resource"),
                     kwargs.get("now"))
@@ -382,6 +385,8 @@ def review_outcome_as(store: DecisionOutcomeStore, decision_id: str, decision_ve
     for banned in ("reviewer", "role", "subject"):
         if banned in kwargs:
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
+    if kwargs.pop("require_anchored", False):
+        require_anchored(kwargs.get("audit"))
     _principal_gate(principal, "reviewer", kwargs.get("audit"), store, decision_id,
                     decision_version, outcome_id, kwargs.get("resource"), kwargs.get("now"))
     return review_outcome(store, decision_id, decision_version, outcome_id,
