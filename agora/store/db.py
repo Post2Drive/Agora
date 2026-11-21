@@ -7,8 +7,10 @@ mid-round, the half-finished round simply never happened and is replayed on resu
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from pathlib import Path
+from typing import Any, Mapping
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -68,6 +70,18 @@ class Store:
             raise RuntimeError(f"{self.path} was made by an older Agora version. "
                                "Delete agora.db to start the run again.")
         self.db.executescript(SCHEMA)
+        self.db.executescript(
+            """
+            CREATE TRIGGER IF NOT EXISTS protect_input_provenance_update
+            BEFORE UPDATE OF value ON meta
+            WHEN OLD.key = 'input_provenance'
+            BEGIN SELECT RAISE(ABORT, 'input provenance is append-only'); END;
+            CREATE TRIGGER IF NOT EXISTS protect_input_provenance_delete
+            BEFORE DELETE ON meta
+            WHEN OLD.key = 'input_provenance'
+            BEGIN SELECT RAISE(ABORT, 'input provenance is append-only'); END;
+            """
+        )
         self.db.commit()
 
     # ------------------------------------------------------------------ meta
@@ -76,7 +90,68 @@ class Store:
         return json.loads(row[0]) if row else default
 
     def set_meta(self, key: str, value) -> None:
+        if key == "input_provenance":
+            raise ValueError("input_provenance is reserved; use set_input_provenance")
         self.db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, json.dumps(value)))
+
+    # ------------------------------------------------------ input provenance
+    @staticmethod
+    def _canonical(value: Any) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+    @classmethod
+    def _manifest_hash(cls, manifest: Mapping[str, Any]) -> str:
+        return "sha256:" + hashlib.sha256(cls._canonical(dict(manifest)).encode("utf-8")).hexdigest()
+
+    def set_input_provenance(self, manifest: Mapping[str, Any], *, scenario_hash: str | None = None) -> dict[str, Any]:
+        """Append an immutable scenario-input provenance envelope to this run store."""
+        if not isinstance(manifest, Mapping) or not manifest:
+            raise ValueError("input provenance manifest must be a non-empty mapping")
+        payload = dict(manifest)
+        declared_hash = scenario_hash or payload.get("scenario_hash")
+        if not isinstance(declared_hash, str) or not declared_hash.strip():
+            raise ValueError("input provenance requires a scenario_hash")
+        if payload.get("scenario_hash") not in (None, declared_hash):
+            raise ValueError("manifest scenario_hash does not match the envelope")
+        payload["scenario_hash"] = declared_hash
+        envelope = {
+            "provenance_version": 1,
+            "scenario_hash": declared_hash,
+            "input_manifest": payload,
+            "manifest_hash": self._manifest_hash(payload),
+        }
+        existing = self.get_meta("input_provenance")
+        if existing is not None:
+            if existing != envelope:
+                raise RuntimeError("input provenance is append-once and cannot be replaced")
+            return existing
+        self.db.execute("INSERT INTO meta(key,value) VALUES (?,?)", ("input_provenance", self._canonical(envelope)))
+        self.db.commit()
+        return envelope
+
+    def get_input_provenance(self) -> dict[str, Any]:
+        """Return verified provenance, or mark pre-contract runs as legacy."""
+        envelope = self.get_meta("input_provenance")
+        if envelope is None:
+            return {"provenance_status": "legacy_missing"}
+        if not isinstance(envelope, Mapping):
+            raise RuntimeError("input provenance envelope is malformed")
+        manifest = envelope.get("input_manifest")
+        if not isinstance(manifest, Mapping):
+            raise RuntimeError("input provenance manifest is malformed")
+        if envelope.get("manifest_hash") != self._manifest_hash(manifest):
+            raise RuntimeError("input provenance manifest hash mismatch")
+        if envelope.get("scenario_hash") != manifest.get("scenario_hash"):
+            raise RuntimeError("input provenance scenario hash mismatch")
+        return {**dict(envelope), "provenance_status": "verified"}
+
+    def assert_resume_input(self, scenario_hash: str) -> None:
+        """Fail closed unless the stored run has the exact same scenario hash."""
+        provenance = self.get_input_provenance()
+        if provenance.get("provenance_status") == "legacy_missing":
+            raise RuntimeError("legacy run has no input provenance and cannot resume this path")
+        if provenance.get("scenario_hash") != scenario_hash:
+            raise RuntimeError("scenario hash changed; resume requires a new run")
 
     def last_round(self) -> int:
         """Last fully completed round, or -1 if the run has not started."""
