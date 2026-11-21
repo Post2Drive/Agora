@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stages A and D implemented on main by merged PR #71; Stages B and C remain planned/not implemented. This document is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026).  
+**Status:** Stages A/D implemented by #71; Stage B/C append wiring and protected gates on three principal entry points implemented by #74; universal protected mode remains incomplete. This document is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `7778b37ddd1b115f3a15ad35673e430ba22ac869` (21 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive) and PR #71 (anchored writer factory plus policy-denial/data-boundary wiring). PR #71 exact head `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; exact-head Actions run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against current main at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`, after PR #71 merged.
+The following inventory was checked against current main at `7778b37ddd1b115f3a15ad35673e430ba22ac869`, after PR #71 merged.
 
 ### 2.1 Audit primitives
 
@@ -209,10 +209,15 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage D — policy-denial and data-boundary threading: IMPLEMENTED, BUT OPTIONAL.** `enforce_policy(..., audit=)` accepts an injected writer. When supplied, denial events use the anchored writer and do not fall back to a plain chain append. `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` accept and thread `audit=`. Important remaining limitation: `audit=None` preserves legacy behaviour, and `policy=None` remains a no-op. The new wiring does not make the policy hook principal-native or require an anchored writer in protected mode.
 
-**Stage B — decision lifecycle: NOT IMPLEMENTED.** `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()` and `supersede()` still accept optional audit appenders and have not been migrated to require the anchored writer in protected mode.
+**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74).** `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()` and `supersede()` still accept optional audit appenders and have not been migrated to require the anchored writer in protected mode.
 
-**Stage C — outcome recording/review: NOT IMPLEMENTED.** #70 adds Principal-gated `record_outcome_as()` and `review_outcome_as()`, but these delegate to legacy role-string functions. Outcome APIs still accept optional audit appenders; no anchored outcome writer is wired by #71.
+**Stage C — outcome recording/review: PARTIALLY IMPLEMENTED (#74).** #70 adds Principal-gated `record_outcome_as()` and `review_outcome_as()`, but these delegate to legacy role-string functions. Outcome APIs still accept optional audit appenders; no anchored outcome writer is wired by #71.
 
 **Next acceptance gates:** complete Stage B/C with the same configured anchored writer, preserve committed-but-unanchored partial-failure state, require the writer on protected paths, retain no-bootstrap and local-sidecar trust limitations, and add deterministic mutation/concurrency proofs. Do not claim complete anchoring until decision and outcome append boundaries are included.
 
 PR #71 changed `agora/audit_anchor.py`, `agora/ontology/binding.py`, `agora/policy_enforcement.py`, `agora/scenario_inputs.py`, `agora/tabular.py` and `tests/test_anchor_wiring.py`. Its exact-head CI run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is CI evidence, not a local test run in this documentation cycle.
+
+
+## Current mainline correction — Stage B/C (#74)
+
+Main `7778b37ddd1b115f3a15ad35673e430ba22ac869` includes #74. `require_anchored()` accepts only `AnchoredAuditChain`. `approve_as(..., require_anchored=True)`, `record_outcome_as(..., require_anchored=True)` and `review_outcome_as(..., require_anchored=True)` fail closed before state mutation without that writer. Lifecycle/outcome append helpers use the supplied writer and surface typed partial failures. This is partial: other lifecycle APIs still allow optional audit, and Principal wrappers still bridge to legacy role-string functions. #74 exact-head run 221 (`44928837108`) passed all four matrix jobs. Open #75 is unmerged and adds only a structural `AuditAppender` protocol/type refactor plus repeated tests.
