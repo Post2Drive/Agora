@@ -33,7 +33,7 @@ Confirmed merged implementation PRs:
 - #53 — append-only observed outcomes and review API.
 - #54 — binding purpose/retention propagation into the policy hook.
 - #58 — first synthetic principal approval slice; remaining call sites are not migrated.
-- #63 — local-sidecar audit-anchor implementation; not wired into protected call sites.
+- #63 — local-sidecar audit-anchor primitive; #71 adds the writer factory and policy-denial/data-boundary wiring (Stages A/D). Decision lifecycle and outcomes remain unwired.
 - #66 — Windows audit-log lock fix.
 
 Earlier merged design/runbook documents remain:
