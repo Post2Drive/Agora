@@ -1,17 +1,17 @@
 # Governed Synthetic Pilot — Milestone Readiness
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
-**Assessment date:** 21 November 2026  
-**Main base:** `25231d68b6f9d5684b76b6204265cd225cc29449`
+**Assessment date:** 22 November 2026  
+**Main base:** `c9cfdc94734920e64f858cb718275d1931af9537`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Main is at `25231d68b6f9d5684b76b6204265cd225cc29449` (21 November 2026). It includes #78's principal-bound `principal_policy()` helper and fail-closed `require_policy=True` option, #79's opt-in `require_policy` threading through CSV import, ontology binding and scenario-input construction, and #80's principal-native approval gate. These are meaningful slices, not completion of principal migration: `require_policy` still defaults to `False`, the shared hook remains operation/resource based, the public role-string `approve()` remains callable, and outcome wrappers still delegate to legacy role-string functions.
+Main is at `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026). It includes #78's principal-bound `principal_policy()` helper, #79's opt-in `require_policy` threading through import/binding/scenario-input, #80's principal-native `approve_as()` gate, and #82's fail-closed test gate around legacy role-string `approve()`. Principal migration is still incomplete: `require_policy` defaults to `False`, the shared hook remains operation/resource based, outcome wrappers still delegate to legacy role-string functions, and protected anchor requirements remain opt-in.
 
-Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. `approve_as()` is now principal-native (#80), but the legacy `approve()` remains public; #70 outcome wrappers still bridge to legacy role-string APIs. The #79 `require_policy` option is opt-in and defaults to `False`.
+Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. `approve_as()` is principal-native (#80); legacy `approve()` now fails closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` (#82), while #70 outcome wrappers still bridge to legacy role-string APIs. The #79 `require_policy` option is opt-in and defaults to `False`.
 
-The anchor implementation provides a local JSONL sidecar and fail-closed append wrapper. #71 adds `open_anchored_audit()` and optional writer threading through policy denial, CSV import, ontology materialization and scenario-input construction. #74 wires decision lifecycle and outcome/review append boundaries and adds opt-in `require_anchored=True` gates on three principal entry points; #80 makes `approve_as()` principal-native but does not make its anchor gate default-on. Legacy/unprotected paths remain. Trust remains `local_sidecar`: coordinated rollback of both local stores is not detected. The Linux lock-removal mutation gap remains.
+The anchor implementation provides a local JSONL sidecar and fail-closed append wrapper. #71 adds `open_anchored_audit()` and optional writer threading through policy denial, CSV import, ontology materialization and scenario-input construction. #74 wires decision lifecycle and outcome/review append boundaries and adds opt-in `require_anchored=True` gates on three principal entry points; #80 makes `approve_as()` principal-native and #82 gates legacy `approve()` behind a test-only environment switch. The anchor gate still defaults off; legacy/unprotected paths remain. Trust remains `local_sidecar`: coordinated rollback of both local stores is not detected. The Linux lock-removal mutation gap remains.
 
 Decision/audit reconciliation (#57) and outcome dependency review markers (#60) remain specifications only. The manual procedures being prepared are proposals for owner approval and rehearsal; they are not approved, tested or implemented features.
 
@@ -19,7 +19,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `25231d68b6f9d5684b76b6204265cd225cc29449`.
+Assessment base: `c9cfdc94734920e64f858cb718275d1931af9537`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -40,7 +40,8 @@ Confirmed merged implementation PRs:
 - #66 — Windows audit-log lock fix.
 - #78 — `principal_policy(principal, required_role)` and `enforce_policy(..., require_policy=True)`; exact-head CI run 233 (`44930549886`) passed all four matrix jobs.
 - #79 — opt-in `require_policy` on `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`; exact-head CI run 236 (`44931670540`) passed all four matrix jobs after one Windows 3.11 database-lock failure was rerun successfully.
-- #80 — principal-native `authorize_decision_approval_principal()` and `approve_as()`; exact-head CI run 239 (`44934473818`) passed all four matrix jobs. Legacy `approve()` remains public and role-string based.
+- #80 — principal-native `authorize_decision_approval_principal()` and `approve_as()`; exact-head CI run 239 (`44934473818`) passed all four matrix jobs.
+- #82 — legacy role-string `approve()` fails closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; exact-head CI run `44937162200` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 Earlier merged design/runbook documents remain:
 - #51 identity adapter specification; #52 audit-anchor specification.
@@ -97,7 +98,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #79 | Opt-in policy requirement on import/binding/scenario-input | Merged |
 | #80 | Principal-native decision approval gate | Merged |
 
-Main is `25231d68b6f9d5684b76b6204265cd225cc29449` (merge of #80). PRs #77 (docs), #78 (principal policy helper), #79 (opt-in data-boundary policy gate) and #80 (principal-native approval) are merged. No open PRs were returned at this inspection; #72 and #76 remain closed superseded docs drafts.
+Main is `c9cfdc94734920e64f858cb718275d1931af9537` (merge of #82). PRs #77 (docs), #78 (principal policy helper), #79 (opt-in data-boundary policy gate), #80 (principal-native approval) and #82 (test-gated legacy approval) are merged. No open PRs were returned at this inspection; #72 and #76 remain closed superseded docs drafts.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -109,9 +110,9 @@ Main is `25231d68b6f9d5684b76b6204265cd225cc29449` (merge of #80). PRs #77 (docs
 - [x] Anchored writer factory and policy-denial/import/binding/scenario-input wiring merged (#71, Stages A/D), with all four exact-head CI jobs green.
 - [x] Lifecycle/outcome append wiring added by #74; protected gates fail closed on the three named principal entry points. Universal protected-mode coverage remains open.
 - [x] Principal-native decision approval path merged in #80: `approve_as()` uses the adapter-issued Principal and no caller role/subject parameter.
-- [ ] Gate or remove the still-public role-string `approve()` path; complete principal-native policy enforcement and outcome recording/review migration.
+- [x] Legacy role-string `approve()` now fails closed unless the explicit test-only environment switch is set (#82); remove the compatibility path after all test callers migrate and ensure no non-test runtime sets the switch.
 - [ ] Make protected policy and anchor requirements default-on at governed boundaries; #79's `require_policy` and #74/#80's `require_anchored` remain opt-in, and legacy `audit=None` paths remain.
-- [ ] Principal-first migration completed for all decision/PDP/shared policy enforcement and outcome call sites; #80 covers `approve_as()` only, `approve()` remains role-string, and #70 outcome wrappers still bridge to legacy functions.
+- [ ] Principal-first migration completed for all decision/PDP/shared policy enforcement and outcome call sites; #80 covers `approve_as()` and #82 test-gates legacy `approve()`, but #70 outcome wrappers still bridge to legacy functions.
 - [ ] Decision/audit reconciliation implemented, or a documented manual recovery procedure approved and rehearsed. The manual procedure draft is not approval or evidence of a tested repair path.
 - [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. The manual procedure draft is not an implemented marker/propagation system.
 - [ ] A callable CLI/API entry point runs the synthetic example end to end: import, bind, decision, principal approval, anchored audit, observed outcome/review and simulated-labelled report, using exact immutable IDs.
@@ -123,7 +124,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `25231d68b6f9d5684b76b6204265cd225cc29449`, after #78, #79 and #80 merged.
+This assessment is refreshed against main `c9cfdc94734920e64f858cb718275d1931af9537`, after #78, #79, #80 and #82 merged.
 
 ## 7. Permanent safety boundaries
 

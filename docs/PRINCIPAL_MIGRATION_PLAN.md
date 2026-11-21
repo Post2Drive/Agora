@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 25231d68b6f9d5684b76b6204265cd225cc29449 (21 November 2026), including merged #58, #70, #71, #74, #78, #79 and #80  
+**Assessment base:** main at c9cfdc94734920e64f858cb718275d1931af9537 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80 and #82  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -28,7 +28,7 @@ The following inventory was checked against main at the assessment SHA:
 
 ### 2.1 Principal implementation status
 
-PR #58 established the synthetic Principal/PDP foundation. #70 added principal-gated outcome wrappers, but they still delegate to legacy role-string outcome functions. #78 added `principal_policy(principal, required_role)`, which binds a Principal into the existing operation/resource callback, and `require_policy=True` denial in `enforce_policy()`. #79 threaded `require_policy` through import, binding and scenario-input boundaries, but all three defaults remain `False`; `policy=None` is still a no-op unless a caller opts in. #80 added `authorize_decision_approval_principal(principal, resource)` and made `approve_as()` use it once, deriving the actor from the Principal. The public role-string `approve()` remains callable. #74's anchor gates remain opt-in. These are partial synthetic migration slices, not a completed identity boundary.
+PR #58 established the synthetic Principal/PDP foundation. #70 added principal-gated outcome wrappers, but they still delegate to legacy role-string outcome functions. #78 added `principal_policy(principal, required_role)`, which binds a Principal into the existing operation/resource callback, and `require_policy=True` denial in `enforce_policy()`. #79 threaded `require_policy` through import, binding and scenario-input boundaries, but all three defaults remain `False`; `policy=None` is still a no-op unless a caller opts in. #80 added `authorize_decision_approval_principal(principal, resource)` and made `approve_as()` use it once, deriving the actor from the Principal. #82 now makes legacy role-string `approve()` fail closed unless the explicit test-only environment switch is set. #74's anchor gates remain opt-in. These are partial synthetic migration slices, not a completed identity boundary.
 
 Before each stage, re-read agora/principal.py and its tests on current main; do not assume APIs beyond what is merged.
 
@@ -141,7 +141,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 |---|---|---|
 | G0 — principal foundation | Merged/reviewed principal slice, exact-head CI, mutation proofs | Met by merged #58 (synthetic slice only); do not proceed if principal.py changes without re-review. |
 | G1 — PDP | Principal-only authorization tests and mutation proofs | Any request field can elevate role, scope or assurance. |
-| G2 — approval | Exact version/fingerprint/scope/evidence and separation tests | Legacy approve() remains reachable from an untrusted path. |
+| G2 — approval | Exact version/fingerprint/scope/evidence and separation tests; no production-capable caller role assertion | `approve()` is disabled by default but remains in source behind the runtime environment variable `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; prove non-test runtimes cannot enable it, or remove the compatibility path. |
 | G3 — data boundaries | Early-denial tests for import, binding and scenario input | policy=None or a missing principal bypasses a governed path. |
 | G4 — outcomes | Observed-only, exact-source and independent-review tests | Recorder/reviewer identity or role is caller-supplied. |
 | G5 — retirement | Repository-wide call-site inventory and no production legacy callers | Any unresolved production-capable role-string call site remains. |
@@ -159,20 +159,23 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
 
-## Current migration status — main 25231d68b6f9d5684b76b6204265cd225cc29449
+## Current migration status — main c9cfdc94734920e64f858cb718275d1931af9537 (22 November 2026)
 
 Main includes the following verified slices:
 
 - **#78:** `principal_policy(principal, required_role)` binds a synthetic Principal into a policy callback; `enforce_policy(..., require_policy=True)` denies and audits a missing policy.
-- **#79:** `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` accept `require_policy`; the default remains `False`, so this does not make the boundaries protected by default.
-- **#80:** `authorize_decision_approval_principal(principal, resource)` requires the approver role; `approve_as()` uses this principal-native gate and derives the actor from the Principal. The public `approve()` role-string API remains callable.
+- **#79:** `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` accept `require_policy`; the default remains `False`, so these boundaries are not protected by default.
+- **#80:** `authorize_decision_approval_principal(principal, resource)` requires the approver role; `approve_as()` uses this principal-native gate and derives the actor from the Principal.
+- **#82:** legacy role-string `approve()` now raises `ApprovalTransitionError` unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; the autouse test fixture sets this for tests. The function remains in source, so the environment switch must never be enabled by a non-test runtime.
 - **#74:** anchor requirements are opt-in on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; other lifecycle/outcome APIs still accept optional audit writers.
-- **#70:** outcome wrappers still delegate to the legacy role-string outcome functions.
+- **#70:** outcome wrappers still delegate to legacy role-string outcome functions.
 
-Exact-head GitHub Actions runs #78 (233 / 44930549886), #79 (236 / 44931670540) and #80 (239 / 44934473818) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #79's first Windows 3.11 attempt had a transient SQLite lock failure; its rerun passed.
+Exact-head GitHub Actions runs #78 (233 / 44930549886), #79 (236 / 44931670540), #80 (239 / 44934473818) and #82 (44937162200) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #79's first Windows 3.11 attempt had a transient SQLite lock failure; its rerun passed.
 
-**Current blockers:** public legacy `approve()` remains ungated; shared policy enforcement does not require a Principal or policy by default; the outcome write boundary remains role-string based; anchored-writer requirements remain opt-in. Caller-supplied `resource` fields other than the project scope/resource IDs overwritten from the stored decision (for example, sensitivity and purpose/retention metadata) must not be trusted as authoritative; derive/validate those fields from stored decision/evidence and add a focused downgrade-denial test.
+**Verified approval-policy risk still open:** `approve_as()` constructs `policy_resource = dict(resource or {})`, overwrites stored project scope and decision resource IDs, then uses `setdefault("source_sensitivity", "internal")`. A caller-provided `source_sensitivity="public"` therefore survives; `target_sensitivity`, `purpose` and `retention` can also remain caller-controlled. The PDP reads these fields. Claude's latest claimed slice is to derive/validate sensitivity, purpose and retention from the stored decision/evidence, deny when authoritative metadata is absent, and add a downgrade-denial test. Do not treat this path as fully hardened until that slice is merged and verified.
 
-Claude's latest logged command claims slice 3c (gate/remove legacy `approve()`) followed by the local synthetic pilot entry point. Do not duplicate those claimed slices. After that, the remaining M1 work includes the principal-native protected policy/data-boundary contract, outcome migration, default-on policy/anchor gates, reconciliation or an approved and rehearsed manual recovery path, and outcome dependency markers or an approved and rehearsed manual hold/review procedure.
+**Current blockers:** shared policy requirements still default off; anchored-writer requirements still default off; legacy role-string outcome wrappers remain; the outcome store boundary is not yet Principal-native; decision/audit reconciliation (#57) and outcome dependency markers (#60) remain specifications only; no single synthetic pilot command has been verified. The local-sidecar trust level is not independent external anchoring.
+
+Claude's latest logged command is the approval resource-downgrade fix plus a precise anchor-error/no-state-change test, then the principal-native outcome write boundary, then the local synthetic `agora/pilot.py` entry point. Do not duplicate those claimed slices. No M1 confirmation is present.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.

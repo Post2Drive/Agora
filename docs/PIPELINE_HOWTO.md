@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `25231d68b6f9d5684b76b6204265cd225cc29449` (21 November 2026)  
+**Assessment base:** `main` at `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 There is **no single CLI/API entry point** on this mainline that executes import → bind → decision → principal approval → anchored audit → observed outcome → simulated-labelled report as one governed workflow.
 
-The repository provides separate CLI commands and Python APIs. #71/#74 wire the anchored writer through data-boundary, lifecycle and outcome append paths, but writer requirements remain opt-in. #78 adds a Principal-bound policy callback and a `require_policy=True` missing-policy denial; #79 threads that flag through import, binding and scenario-input APIs, but defaults remain `False`. #80 makes `approve_as()` principal-native; the public role-string `approve()` remains, and #70 outcome wrappers still bridge to legacy role-string functions. The scenario-input package remains disconnected from the simulation engine.
+The repository provides separate CLI commands and Python APIs. #71/#74 wire the anchored writer through data-boundary, lifecycle and outcome append paths, but writer requirements remain opt-in. #78 adds a Principal-bound policy callback and a `require_policy=True` missing-policy denial; #79 threads that flag through import, binding and scenario-input APIs, but defaults remain `False`. #80 makes `approve_as()` principal-native; #82 makes legacy role-string `approve()` fail closed unless the explicit test-only environment switch is set. #70 outcome wrappers still bridge to legacy role-string functions. The scenario-input package remains disconnected from the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -21,7 +21,7 @@ This guide documents the available components and their boundaries. It does not 
 | Shared policy enforcement | **AVAILABLE — partial** | #78 adds `principal_policy()` and `require_policy=True`; #79 threads the flag through import, binding and scenario-input. `require_policy=False` remains default; the callback is still `(operation, resource)`, and `audit=None` falls back to an unanchored local chain. |
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
-| Principal-based approval | **AVAILABLE — partial synthetic migration** | #80 makes `approve_as()` call `authorize_decision_approval_principal()` and derive actor from Principal. Public legacy `approve(... actor, role, subject, ...)` remains callable. `SyntheticFixtureAdapter` is test-only, not production identity. |
+| Principal-based approval | **AVAILABLE — partial synthetic migration** | #80 makes `approve_as()` call `authorize_decision_approval_principal()` and derive actor from Principal. #82 gates legacy `approve(... actor, role, subject, ...)` behind `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; keep that switch test-only and migrate remaining callers. `SyntheticFixtureAdapter` is test-only, not production identity. |
 | Anchored audit chain | **AVAILABLE — local-sidecar API; partially wired** | #63/#71/#74 provide the writer, factory and append wiring. `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can opt into `require_anchored=True`, but the default is `False`; legacy lifecycle paths still accept optional audit. Trust is `local_sidecar`, not external anchoring. |
 | Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #53 supplies append-only outcomes/reviews; #70 wrappers require operator/reviewer from Principal but still delegate to legacy role-string functions. #74 adds opt-in anchor gates. Audit remains optional; no CLI. Simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
@@ -125,7 +125,7 @@ The decision schema/store and lifecycle are Python APIs; there is no single deci
 
 For a synthetic-only rehearsal, define fixture identities in code/configuration controlled by the test harness (not request fields), issue a predeclared approver fixture, and call `approve_as(store, decision_id, expected_version, principal=approver_principal, expected_fingerprint=..., expected_scope=..., expected_evidence_refs=..., audit=...)` after a separate proposer and reviewer have prepared/reviewed the exact proposal.
 
-The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. #80 makes `approve_as()` call `authorize_decision_approval_principal()` directly and derive the actor from `principal.subject_id`; it no longer delegates to legacy `approve()`. The separate public `approve()` role-string API remains callable. Shared policy enforcement and outcome writes are not fully migrated. `SyntheticFixtureAdapter` is not production authentication; do not use real credentials or OIDC.
+The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. #80 makes `approve_as()` call `authorize_decision_approval_principal()` directly and derive the actor from `principal.subject_id`; it no longer delegates to legacy `approve()`. #82 makes the legacy role-string `approve()` API fail closed unless the test-only environment switch is set. Shared policy enforcement and outcome writes are not fully migrated. `SyntheticFixtureAdapter` is not production authentication; do not use real credentials or OIDC.
 
 ## 8. Step E — audit evidence
 
@@ -135,7 +135,7 @@ Main contains the local append-only hash chain from #38/#47 and the merged local
 
 The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-**Integration status after #80:** policy-denial/import/binding/scenario-input paths accept an optional anchored writer; #79 adds opt-in `require_policy`, default `False`. Decision lifecycle and outcome/review append boundaries are wired by #74. `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can set `require_anchored=True`, but the default remains `False`; legacy paths and `audit=None` remain possible. Do not claim all approvals/outcomes are anchored. Trust remains local-sidecar; this is not external anchoring or protection against coordinated rollback.
+**Integration status after #82:** policy-denial/import/binding/scenario-input paths accept an optional anchored writer; #79 adds opt-in `require_policy`, default `False`. Decision lifecycle and outcome/review append boundaries are wired by #74. `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can set `require_anchored=True`, but the default remains `False`; legacy outcome paths and `audit=None` remain possible. #82 test-gates the legacy role-string `approve()` path, but does not complete principal migration for outcomes. Do not claim all approvals/outcomes are anchored. Trust remains local-sidecar; this is not external anchoring or protection against coordinated rollback.
 
 ## 9. Step F — record and review an observed outcome
 
@@ -168,7 +168,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 The following are **not** delivered by this guide:
 
 1. A single local CLI/API orchestrator with exact immutable IDs passed between stages and clear per-step results/deny stops.
-2. Retire or test-gate public role-string `approve()`; migrate the outcome store boundary to Principal rather than wrappers around legacy role-string functions.
+2. Keep the #82 legacy `approve()` switch test-only and retire the compatibility API after test migration; migrate the outcome store boundary to Principal rather than wrappers around legacy role-string functions.
 3. Make protected policy checks default-on: `require_policy=False` is still the default on import, binding and scenario-input; the shared callback does not accept a Principal directly.
 4. Require one configured anchored writer on every protected path by default: `require_anchored=False` and optional `audit=None` paths remain; `local_sidecar` is not an independent external anchor.
 5. Reconciliation implementation or an owner-approved and tested manual recovery procedure for decision/audit cross-store gaps. PR #57 remains a specification only.
@@ -177,7 +177,7 @@ The following are **not** delivered by this guide:
 8. Scenario-input-to-engine integration remains separately blocked; this guide does not authorise changes to `agora/sim/**` or any simulation run.
 9. End-to-end synthetic integration tests and exact-head CI for the orchestrator, followed by the owner-approved synthetic rehearsal required by the milestone process.
 
-Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline.
+Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline. The current mainline still has an approval-resource downgrade issue queued for Claude: caller-provided sensitivity/purpose/retention fields can survive into the PDP resource and must be derived from authoritative stored metadata.
 
 ## 12. Future synthetic end-to-end command — NOT IMPLEMENTED
 
