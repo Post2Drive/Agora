@@ -25,7 +25,7 @@ This guide documents the available components and their boundaries. It does not 
 | Observed outcome recording/review | **AVAILABLE — Python API, partial governance** | `DecisionOutcomeStore`, `record_outcome()`, `review_outcome()` (#53). Current APIs still accept caller-supplied role/subject values; no CLI. Simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
-| Simulated-labelled report | **AVAILABLE — separate exploratory path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
+| Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
 | One callable end-to-end entry point | **NOT AVAILABLE** | No command or API orchestrates all stages with the required principal and anchored-audit guarantees. |
 
 ## 3. Preconditions and fixture rules
@@ -42,7 +42,7 @@ Do not include names, emails, phone numbers, addresses, government identifiers, 
 
 ## 4. Step A — import the synthetic CSV snapshot
 
-<badge>AVAILABLE — CLI</badge>
+**Status: AVAILABLE — CLI**
 
 The merged CLI exposes:
 
@@ -59,7 +59,7 @@ Expected local artefacts include `data/tabular.sqlite3` and an immutable import 
 
 ## 5. Step B — validate and materialize the ontology binding
 
-<badge>AVAILABLE — Python API; governance is partial</badge>
+**Status: AVAILABLE — Python API; governance is partial**
 
 The available API surface is:
 
@@ -91,7 +91,7 @@ The result is an in-memory list of provenance-rich instances. This step does not
 
 ## 6. Step C — build the scenario-input package
 
-<badge>AVAILABLE — Python API; NOT wired to engine</badge>
+**Status: AVAILABLE — Python API; NOT wired to engine**
 
 ```python
 from agora.scenario_inputs import build_scenario_input
@@ -113,7 +113,7 @@ Use exact immutable IDs and a policy callable. The package contains a manifest, 
 
 ## 7. Step D — create a decision and use the principal approval slice
 
-<badge>AVAILABLE — Python APIs; partial migration</badge>
+**Status: AVAILABLE — Python APIs; partial migration**
 
 The decision schema/store and lifecycle are Python APIs; there is no single decision-record CLI workflow. The principal slice on main provides:
 
@@ -128,7 +128,7 @@ The API checks the exact current version, fingerprint, scope, evidence reference
 
 ## 8. Step E — audit evidence
 
-<badge>NOT AVAILABLE — anchored audit</badge>
+**Status: NOT AVAILABLE — anchored audit**
 
 Main contains `AuditChainStore` from #38/#47: a local append-only, redacted hash chain with `append()`, `verify()` and `close()`. It is **not independently anchored** and cannot detect a removed tail if the remaining chain is internally consistent.
 
@@ -138,7 +138,7 @@ Do not describe the current pipeline as anchored, externally anchored, or fully 
 
 ## 9. Step F — record and review an observed outcome
 
-<badge>AVAILABLE — Python API; principal migration pending</badge>
+**Status: AVAILABLE — Python API; principal migration pending**
 
 The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
@@ -148,7 +148,7 @@ Outcome dependency review markers are not implemented. Reconciliation between de
 
 ## 10. Step G — generate a separate simulated-labelled report
 
-<badge>AVAILABLE — separate exploratory/mock path</badge>
+**Status: AVAILABLE — separate exploratory/mock path**
 
 The existing engine/report path is separate from Steps A–F. A standalone mock smoke test can use:
 
