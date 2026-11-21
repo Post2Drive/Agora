@@ -30,7 +30,8 @@ def test_missing_scope_is_denied():
 
 def test_missing_or_unknown_sensitivity_is_denied_for_every_operation():
     for operation in OPERATIONS:
-        result = decide(_subject(), "operator", operation, _resource())
+        role = "approver" if operation == "decision_approval" else "operator"
+        result = decide(_subject(), role, operation, _resource())
         assert result["decision"] == "deny"
         assert result["reason"] == "sensitivity_missing"
     unknown = decide(_subject(), "operator", "binding", _resource(sensitivity="secret"))
@@ -39,7 +40,8 @@ def test_missing_or_unknown_sensitivity_is_denied_for_every_operation():
 
 def test_sealed_holdout_is_denied_for_every_operation():
     for operation in OPERATIONS:
-        result = decide(_subject(), "operator", operation, _resource(source_role="sealed_holdout"))
+        role = "approver" if operation == "decision_approval" else "operator"
+        result = decide(_subject(), role, operation, _resource(source_role="sealed_holdout"))
         assert result["decision"] == "deny"
         assert result["reason"] == "sealed_holdout_forbidden"
 
@@ -69,3 +71,13 @@ def test_cross_scope_is_denied_and_record_is_audit_safe():
     assert result["decision"] == "deny"
     assert result["reason"] == "cross_scope"
     assert set(result) == {"subject_id", "policy_version", "decision", "resource_ids", "reason"}
+
+
+def test_decision_approval_is_reserved_for_approver_role():
+    resource = _resource(source_sensitivity="internal")
+    for role in ("operator", "reader", "reviewer"):
+        result = decide(_subject(), role, "decision_approval", resource)
+        assert result["decision"] == "deny"
+        assert result["reason"] == "role_not_permitted"
+    allowed = decide(_subject(), "approver", "decision_approval", resource)
+    assert allowed["decision"] == "allow"
