@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 87c7cc95b3e7c231f52dca4924d6fc433c698462 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88 and #89; #91 is the open ChatGPT docs draft.
+**Assessment base:** main at 1fbde112d00fc4fc579e9be6385104d655a9ced4 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91 and #92; no ChatGPT docs PR is currently open.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -103,12 +103,12 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 4 — migrate outcome recording and review
 
-**Current status: PARTIALLY IMPLEMENTED by merged PRs #70/#86/#89; exit gate remains open. #86 ignores caller-supplied resource data and #89 defaults the Principal wrappers to anchored audit, but they still delegate to public role-string outcome functions.**
+**Current status: PUBLIC ROLE-STRING ROUTES RETIRED by merged PR #92; protected-mode exit gate remains open.** `record_outcome_as()` and `review_outcome_as()` are the only public outcome write/review routes and derive actor identity from Principal. The underlying `_record_outcome()` / `_review_outcome()` helpers remain private implementation details; explicit `require_anchored=False` can still bypass the wrapper guard.
 
 - `record_outcome_as(store, *, principal, **kwargs)` derives recorder/actor from Principal and calls `decide_principal(..., required_role="operator")`.
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
 - Both wrappers reject caller-supplied `recorder`/`reviewer`, `role` and `subject` authority fields.
-- Both wrappers delegate to the legacy `record_outcome()` / `review_outcome()` role-string functions internally. The legacy APIs have not been removed or made unreachable from production-capable paths.
+- #92 changes the internal calls to `_record_outcome()` / `_review_outcome()` and removes the public role-string names from module exports. The private helpers still receive Principal-derived role/subject values; do not treat Python underscore naming as an independent security boundary.
 - #74 wires outcome append helpers to the supplied audit writer; #89 makes `require_anchored=True` the default on the three Principal write wrappers. Explicit `False` remains accepted, and the public role-string APIs retain optional audit.
 
 **Remaining Stage 4 work:**
@@ -159,18 +159,18 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
 
-## Current migration status — main 87c7cc95b3e7c231f52dca4924d6fc433c698462 (22 November 2026)
+## Current migration status — main 1fbde112d00fc4fc579e9be6385104d655a9ced4 (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89:** `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` now default to `require_policy=True`. Explicit `False` remains accepted. `enforce_policy()` itself defaults off, and its `audit=None` denial path still writes to an unanchored local `AuditChainStore`.
 - **#80/#84/#89:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and now defaults to `require_anchored=True`; explicit `False` remains accepted.
 - **#82:** legacy role-string `approve()` remains in source and can be re-enabled by setting `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; this is default-deny, not structurally test-only.
-- **#86/#89:** Principal outcome wrappers ignore caller resource data and default to anchored audit, but still delegate to public role-string `record_outcome()` / `review_outcome()` APIs. Those legacy functions remain callable and accept optional audit.
+- **#86/#89/#92:** public outcome writes now route through `record_outcome_as()` / `review_outcome_as()`; #92 retires the public role-string exports. The wrappers still accept explicit `require_anchored=False`, and the private helpers can skip shared audit when audit is absent.
 - **#88:** `agora pilot --workdir <new-empty-directory>` runs a local synthetic sequence with explicit policy/anchor arguments, per-stage results, first-denial stop, audit verification and synthetic-labelled report. It does not persist the M2 run-record envelope or call `build_scenario_input()` / the simulation engine. Exact-head CI run `44945307064` passed 4/4.
 - **#89:** merged at `87c7cc95`; default-True policy/anchor parameters passed exact-head CI run `44948055801` (4/4).
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
-**Current blockers:** public role-string outcome APIs remain and the Principal wrappers still delegate to them; legacy `approve()` has a runtime environment escape; explicit False overrides remain; policy-denial `audit=None` is unanchored. Reconciliation (#57) and outcome dependency markers (#60) remain specifications only. No M1/M2 confirmation exists.
+**Current blockers:** legacy `approve()` has a runtime environment escape; explicit `require_policy=False` / `require_anchored=False` overrides remain; direct `enforce_policy()` defaults `require_policy=False`; policy-denial `audit=None` still writes to an unanchored local chain. The public role-string outcome exports are retired by #92. `agora.cli` still imports `.sim.engine` at module scope, so the M2 pilot CLI import-isolation slice remains queued. Reconciliation (#57) and outcome dependency markers (#60) remain specifications only. No M1/M2 confirmation exists. PR #91 is merged; no open ChatGPT docs PR existed at the start of this refresh.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.
