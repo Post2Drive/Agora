@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 3f8365c0c7920206c61ef01ec6c4d000b8cf0f92 (21 November 2026), including merged #58, #70 and #71  
+**Assessment base:** main at adacbd71726324de71cdbf9d20943701c553d252 (21 November 2026), including merged #58, #70 and #71  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -153,3 +153,8 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - Keep VALIDATED_PREDICTION_ENABLED=False.
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
+
+
+## Current migration status — main adacbd71726324de71cdbf9d20943701c553d252
+
+#74 added anchored appends and opt-in anchor gates on the principal approval/outcome wrappers; it did not complete principal migration. Shared `enforce_policy()` still uses the legacy `(operation, resource)` callback contract. Decision lifecycle methods other than `approve_as()` remain legacy role-string interfaces; outcome wrappers still bridge to legacy functions. Next slice: principal-native PDP/shared policy and decision call sites, rejecting missing/expired/untrusted/wrong-role/cross-project/cross-tenant/low-assurance principals before reads or mutations. Mutation proofs must show caller-supplied role/subject cannot elevate authority and removing any gate causes a focused test failure. No OIDC, real credentials or network identity.
