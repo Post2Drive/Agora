@@ -16,6 +16,7 @@ from typing import Any
 
 from agora.audit_chain import AuditChainStore
 from agora.policy import decide
+from agora.principal import Principal, decide_principal
 
 from .schema import DecisionRecordError
 from .store import DecisionRecordStore
@@ -335,7 +336,61 @@ def review_outcome(
             "reviewer": reviewer, "reviewed_at": stamp, "seq": seq}
 
 
+def _principal_gate(
+    principal: Principal | None, required_role: str, audit: AuditChainStore | None,
+    store: DecisionOutcomeStore, decision_id: str, decision_version: int,
+    outcome_id: str | None, resource: Mapping[str, Any] | None, now: Any,
+) -> None:
+    try:
+        record = store.decisions.get(decision_id, decision_version)
+    except DecisionRecordError as exc:
+        raise OutcomeError("decision version was not found") from exc
+    res = dict(resource or {})
+    res.update(record.project_scope)
+    res["resource_ids"] = [decision_id] + ([outcome_id] if outcome_id else [])
+    res.setdefault("source_sensitivity", "internal")
+    moment = _utc(now, "now") if now is not None else datetime.now(timezone.utc)
+    decision, role = decide_principal(principal, "decision_outcome", res, now=moment,
+                                      required_role=required_role)
+    if role is None:
+        _audit(audit, "decision_outcome_denied", decision["subject_id"], decision_id,
+               decision_version, outcome_id, decision="deny",
+               reason=str(decision.get("reason", "policy_denied")),
+               policy_version=decision.get("policy_version"))
+        raise OutcomePermissionError(decision)
+
+
+def _project(store: DecisionOutcomeStore, decision_id: str, version: int) -> str:
+    return store.decisions.get(decision_id, version).project_scope["project_id"]
+
+
+def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | None, **kwargs: Any) -> dict[str, Any]:
+    """record_outcome with recorder/role/subject derived from a trusted principal."""
+    for banned in ("recorder", "role", "subject"):
+        if banned in kwargs:
+            raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
+    _principal_gate(principal, "operator", kwargs.get("audit"), store, kwargs["decision_id"],
+                    kwargs["decision_version"], kwargs.get("outcome_id"), kwargs.get("resource"),
+                    kwargs.get("now"))
+    return record_outcome(store, recorder=principal.subject_id, role="operator",
+                          subject={"subject_id": principal.subject_id, "project_id": _project(store, kwargs["decision_id"], kwargs["decision_version"])}, **kwargs)
+
+
+def review_outcome_as(store: DecisionOutcomeStore, decision_id: str, decision_version: int,
+                      outcome_id: str, *, principal: Principal | None, **kwargs: Any) -> dict[str, Any]:
+    """review_outcome with reviewer/role/subject derived from a trusted principal."""
+    for banned in ("reviewer", "role", "subject"):
+        if banned in kwargs:
+            raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
+    _principal_gate(principal, "reviewer", kwargs.get("audit"), store, decision_id,
+                    decision_version, outcome_id, kwargs.get("resource"), kwargs.get("now"))
+    return review_outcome(store, decision_id, decision_version, outcome_id,
+                          reviewer=principal.subject_id, role="reviewer",
+                          subject={"subject_id": principal.subject_id, "project_id": _project(store, decision_id, decision_version)}, **kwargs)
+
+
 __all__ = [
+    "record_outcome_as", "review_outcome_as",
     "DecisionOutcomeStore", "OutcomeError", "OutcomePermissionError", "record_outcome",
     "review_outcome",
 ]
