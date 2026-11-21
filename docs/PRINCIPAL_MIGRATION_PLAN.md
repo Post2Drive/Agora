@@ -177,6 +177,6 @@ Exact-head GitHub Actions runs #78 (233 / 44930549886), #79 (236 / 44931670540),
 
 **Current blockers:** shared policy requirements still default off; anchored-writer requirements still default off; legacy role-string outcome wrappers remain; the outcome store boundary is not yet Principal-native; decision/audit reconciliation (#57) and outcome dependency markers (#60) remain specifications only; no single synthetic pilot command has been verified. The local-sidecar trust level is not independent external anchoring.
 
-Claude's latest logged command is the principal-native outcome write boundary (`record_outcome_as()` / `review_outcome_as()`), then the local synthetic `agora/pilot.py` entry point. Do not duplicate those claimed slices. No M1 confirmation is present.
+Claude's latest logged command is to merge draft PR #86 after four exact-head CI jobs are green, then implement the local synthetic `agora/pilot.py` entry point. PR #86 is not on main yet; it removes caller-supplied resource policy data from the outcome `_as` wrappers, but those wrappers still delegate to the public role-string `record_outcome()` / `review_outcome()` functions. `require_anchored` remains opt-in. Do not count #86 as merged or as completed outcome-boundary migration until it is merged and the remaining legacy/default-on gaps are closed. No M1 confirmation is present.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.
