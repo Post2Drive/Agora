@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 98850910559d0e4d72be127d1412dddcc5326cb8 (21 November 2026)  
+**Assessment base:** main at 19f51d84d3ecc8392eb8713e392f93cb58a736bf (21 November 2026), including merged #58  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -28,11 +28,11 @@ The following inventory was checked against main at the assessment SHA:
 
 ### 2.1 Principal implementation status
 
-PR #58, branch feat/identity-principal, is an open draft at head 84d6805ec8023a16ef139bf8af04253e0c6f8193. Its exact-head workflow run 44902246519 completed successfully across all four Ubuntu/Windows × Python 3.11/3.12 jobs. It is not merged and must not be described as mainline capability.
+PR #58 is merged (main 19f51d8). It adds agora/principal.py with an immutable Principal, Assurance, a test-only SyntheticFixtureAdapter (refuses production mode), decide_principal(), and agora/decisions/approval.py::approve_as(). Exact-head CI passed on all four Ubuntu/Windows × Python 3.11/3.12 jobs before merge.
 
-That draft adds agora/principal.py with an immutable Principal, Assurance, a test-only SyntheticFixtureAdapter, decide_principal(), and approve_as(). The synthetic adapter refuses production mode. The current approve_as() implementation is a bridge: it derives the role from the principal, then delegates to the existing role-string approve() implementation. It does not complete the migration of the public approval path or other call sites.
+approve_as() is a bridge: it derives the role from the principal, then delegates to the existing role-string approve(). The legacy approve(), decide(), authorize(), record_outcome(), review_outcome() and the policy-callback path remain role-string based on main. The migration of those call sites is not done.
 
-Do not build later steps on the assumption that PR #58 is merged. Re-read its final merged head and tests before implementation begins.
+Before each stage, re-read agora/principal.py and its tests on current main; do not assume APIs beyond what is merged.
 
 ## 3. Target contract
 
@@ -53,12 +53,12 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 0 — establish the trusted-principal foundation
 
-1. Independently review PR #58 at its final head; confirm the four exact-head CI jobs and the named mutation proofs.
-2. Merge only through the owner's review process. A green CI run alone is not approval.
+1. PR #58 is merged; its review, four exact-head CI jobs and mutation proofs are recorded on that PR.
+2. Re-read the merged agora/principal.py and tests/test_principal.py before starting Stage 1.
 3. Preserve the test-only boundary on SyntheticFixtureAdapter and its production-mode refusal.
-4. Reconcile this plan against the merged implementation; do not assume branch-only APIs exist on main.
+4. Keep this plan aligned with the merged implementation as later slices land.
 
-**Exit gate:** Principal contract and synthetic adapter are merged, reviewed and covered by exact-head CI. No OIDC or production adapter is implied.
+**Exit gate (met for the synthetic slice):** Principal contract and synthetic adapter are merged, reviewed and covered by exact-head CI. No OIDC or production adapter is implied.
 
 ### Stage 1 — make the PDP principal-first
 
@@ -127,7 +127,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 | Gate | Required evidence | Do not proceed if |
 |---|---|---|
-| G0 — principal foundation | Merged/reviewed principal slice, exact-head CI, mutation proofs | PR #58 is still draft or its head changed without re-verification. |
+| G0 — principal foundation | Merged/reviewed principal slice, exact-head CI, mutation proofs | Met by merged #58 (synthetic slice only); do not proceed if principal.py changes without re-review. |
 | G1 — PDP | Principal-only authorization tests and mutation proofs | Any request field can elevate role, scope or assurance. |
 | G2 — approval | Exact version/fingerprint/scope/evidence and separation tests | Legacy approve() remains reachable from an untrusted path. |
 | G3 — data boundaries | Early-denial tests for import, binding and scenario input | policy=None or a missing principal bypasses a governed path. |
