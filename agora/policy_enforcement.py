@@ -14,6 +14,7 @@ import re
 import uuid
 from typing import Any
 
+from . import protection as _protection
 from .audit_chain import AuditChainStore
 
 
@@ -31,7 +32,7 @@ def enforce_policy(
     operation: str,
     resource: Mapping[str, Any],
     audit: Any | None = None,
-    require_policy: bool = False,
+    require_policy: bool | None = None,
 ) -> Mapping[str, Any] | None:
     """Evaluate an optional decision callable and audit every denial.
 
@@ -40,12 +41,16 @@ def enforce_policy(
     reading source bytes or snapshot databases.
 
     audit, when given, is an object with append(event) (for example an
-    AnchoredAuditChain). The caller owns its lifecycle. Without it the legacy
-    unanchored project-local chain is used.
+    AnchoredAuditChain). The caller owns its lifecycle. Without it, a denial is
+    still raised but is NOT written to an unanchored chain when anchoring is
+    required (the default); the legacy unanchored project-local chain is used
+    only when agora.protection.ANCHOR_REQUIRED is relaxed (tests).
 
     require_policy=True marks a protected operation: a missing policy is denied
     (and the denial audited) instead of being a no-op.
     """
+    if require_policy is None:
+        require_policy = _protection.POLICY_REQUIRED
     if policy is None and not require_policy:
         return None
     if policy is None or not callable(policy):
@@ -104,6 +109,8 @@ def enforce_policy(
     try:
         if audit is not None:
             audit.append(event)
+        elif _protection.ANCHOR_REQUIRED:
+            raise PolicyEnforcementError("no anchored audit writer supplied")
         else:
             audit_path = Path(project) / "data" / "audit_chain.sqlite3"
             audit_path.parent.mkdir(parents=True, exist_ok=True)

@@ -47,6 +47,7 @@ def test_protection_flags_are_on_in_production():
     assert r.stdout.strip() == "True True", r.stderr
 
 
+@pytest.mark.protected_defaults
 def test_ingest_without_policy_is_denied_and_audited_before_read(tmp_path):
     source, schema = files(tmp_path, personal=False)
     import json
@@ -55,10 +56,15 @@ def test_ingest_without_policy_is_denied_and_audited_before_read(tmp_path):
     with pytest.raises(TabularIngestError) as e:
         ingest_csv(project, source, sch, data_role="context")
     assert e.value.code == "POLICY_DENIED"
-    chain = AuditChainStore(project / "data" / "audit_chain.sqlite3")
-    rows = chain.db.execute("SELECT event_json FROM audit_events").fetchall()
-    chain.close()
-    assert len(rows) == 1 and "policy_required" in rows[0][0]
+    assert not (project / "data" / "audit_chain.sqlite3").exists()
+
+
+def test_enforce_policy_direct_default_denies_missing_policy_without_unanchored_chain(tmp_path):
+    from agora.policy_enforcement import PolicyEnforcementError, enforce_policy
+    with pytest.raises(PolicyEnforcementError, match="could not be recorded") as e:
+        enforce_policy(None, project=tmp_path, operation="import", resource={})
+    assert "no anchored audit writer" in str(e.value.__cause__)
+    assert not (tmp_path / "data").exists()
 
 
 def test_data_cli_default_import_is_denied(tmp_path, capsys):
