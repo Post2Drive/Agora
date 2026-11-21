@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,12 +62,19 @@ def _exclusive_lock(lock_path: Path) -> Iterator[None]:
     with lock_path.open("a+b") as handle:
         if os.name == "nt":
             import msvcrt
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"\0")
-                handle.flush()
+            # Lock one byte at offset 0 without ever writing to the file: Windows
+            # byte-range locks are mandatory, so a racing "initialise" write by a
+            # second process hit the locked byte and raised PermissionError.
+            # Locking past EOF is permitted. LK_LOCK gives up after ~10 s, so retry.
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            deadline = time.monotonic() + 60.0
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise
             try:
                 yield
             finally:
