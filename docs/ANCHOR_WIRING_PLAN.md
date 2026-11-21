@@ -1,6 +1,6 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), and legacy approval / unanchored-denial hardening (#97) are merged. The direct `enforce_policy(..., require_policy=False)` bypass remains on main. This is a wiring plan, not deployment or rehearsal approval.  
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), and legacy approval / unanchored-denial hardening (#97) are merged. The direct `enforce_policy(..., require_policy=False)` bypass remains on main; it also accepts any supplied append-capable writer without checking that it is an `AnchoredAuditChain`. This is a wiring plan, not deployment or rehearsal approval.  
 **Assessment base:** `main` at `a191b587876e5a26a73b716098c8f36eb561ea37` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
@@ -46,7 +46,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py::enforce_policy()` accepts optional `audit=`. When supplied, denial events use that writer. #97 changes `require_policy` to default from `POLICY_REQUIRED=True` and, when anchoring is required, refuses to write denials to an unanchored local chain if `audit=None`. However, the signature still accepts explicit `require_policy=False`; with a missing policy that branch returns `None` before denial/audit. Remove or reject that explicit bypass and prove it with a negative test/mutation. Preserve policy-before-source-read ordering.
+`agora/policy_enforcement.py::enforce_policy()` accepts optional `audit=`. When supplied, denial events use that object without validating its type. #97 changes `require_policy` to default from `POLICY_REQUIRED=True` and refuses to create the unanchored local fallback when `audit=None`; however, a supplied plain `AuditChainStore` is still accepted because `require_anchored()` is not called. The signature also accepts explicit `require_policy=False`; with a missing policy that branch returns `None` before denial/audit. Remove the caller override and require an `AnchoredAuditChain` for protected denial writes. Add negative tests/mutations for explicit False, missing writer, plain writer, and successful anchored-writer append. Preserve policy-before-source-read ordering.
 
 The shared `enforce_policy()` boundary is called by:
 
