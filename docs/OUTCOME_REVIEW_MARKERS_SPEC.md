@@ -1,9 +1,9 @@
 # Outcome Dependency Review Markers Specification
 
 **Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented  
-**Assessment base:** main at 98850910559d0e4d72be127d1412dddcc5326cb8 (21 November 2026)  
+**Assessment base:** main at 19f51d84d3ecc8392eb8713e392f93cb58a736bf (21 November 2026)  
 **Related implementation:** decision outcomes and review events, merged PR #53  
-**Related draft:** decision/audit reconciliation specification, open draft PR #57
+**Related specification:** decision/audit reconciliation, merged PR #57 (specification only)
 
 ## 1. Purpose
 
@@ -23,7 +23,7 @@ Main includes the append-only outcome and review stores from PR #53:
 - review_outcome() requires a reviewer distinct from the recorder and records reviewed/disputed state changes.
 - Outcome audit events use allow-listed metadata.
 
-The current implementation does not create dependency review markers or propagate a disputed/corrected outcome to dependent reports or later decisions. The open draft PR #57 describes decision-store/audit-chain reconciliation; it is not merged and does not implement outcome dependency markers. This specification must not claim either capability already exists.
+The current implementation does not create dependency review markers or propagate a disputed/corrected outcome to dependent reports or later decisions. The merged PR #57 specifies decision-store/audit-chain reconciliation; it is a specification only and does not implement outcome dependency markers. This specification must not claim either capability already exists.
 
 ## 3. Trigger events
 
@@ -137,7 +137,7 @@ Opening a marker must not automatically approve a replacement decision, publish 
 - A person who proposed or approved the linked decision must not gain marker-resolution authority merely from that role.
 - Marker resolution must bind to the exact marker fingerprint, affected object reference and current event-history head.
 - Missing, expired, untrusted or out-of-scope principal denies.
-- Until principal migration is complete, caller-supplied role strings are not trusted identity and this design is not production-ready.
+- Until principal migration is complete (only the synthetic approve_as() slice from merged #58 exists), caller-supplied role strings are not trusted identity and this design is not production-ready.
 
 ## 9. Audit and reconciliation
 
@@ -147,7 +147,7 @@ Never include observed_value, unit, notes, raw source content, personal data, cr
 
 Marker storage and the audit chain may be separate SQLite stores. Do not claim a cross-store atomic transaction. If marker persistence succeeds but its audit append fails, or vice versa, surface a durable pending/reconciliation state and fail closed for protected reliance. Use a stable idempotency key so retry cannot create duplicate markers.
 
-The reconciliation specification in PR #57 is still an open draft and currently scopes itself to decision lifecycle/approval audit gaps. Marker/outcome reconciliation requires an explicit extension or separate approved design after that specification is merged. No queue, worker or automatic repair is claimed here.
+The reconciliation specification in merged PR #57 scopes itself to decision lifecycle/approval audit gaps. Marker/outcome reconciliation requires an explicit extension or separate approved design. No queue, worker or automatic repair is claimed here.
 
 ## 10. Retention and erasure
 
