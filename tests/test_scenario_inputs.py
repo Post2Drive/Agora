@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,9 @@ def test_sensitive_values_require_explicit_policy(tmp_path):
     assert built["manifest"]["transformation_policy_fingerprint"].startswith("sha256:")
     assert built["instances"][0]["property_values"]["scenario:Customer.email"] == "[REDACTED]"
     assert built["manifest"]["redactions"]
+    serialized = json.dumps(built, sort_keys=True)
+    assert "synthetic@example.test" not in serialized
+    assert "value_hash" not in serialized
 
 
 def test_calibration_and_validation_roles_are_rejected(tmp_path):

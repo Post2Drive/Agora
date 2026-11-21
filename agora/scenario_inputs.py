@@ -96,9 +96,8 @@ def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | N
         clone["property_values"] = dict(instance.get("property_values", {}))
         for property_id in sorted(sensitive - authorized):
             if property_id in clone["property_values"]:
-                value_hash = _sha256(clone["property_values"][property_id])
                 clone["property_values"][property_id] = "[REDACTED]"
-                redactions.append({"property_id": property_id, "row_id": instance.get("row_id"), "value_hash": value_hash})
+                redactions.append({"property_id": property_id, "row_id": instance.get("row_id")})
         sanitized.append(clone)
     return sanitized, redactions
 
