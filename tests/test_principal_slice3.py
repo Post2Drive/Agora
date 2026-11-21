@@ -48,14 +48,25 @@ class _Rec:
 
 
 @pytest.mark.protected_defaults
-def test_ingest_policy_denial_goes_to_supplied_writer(tmp_path):
+def test_ingest_policy_denial_rejects_unanchored_supplied_writer(tmp_path):
     src = tmp_path / "c.csv"
     src.write_text("customer_id,email\nC1,a@example.test\n", encoding="utf-8")
     rec = _Rec()
     with pytest.raises(TabularIngestError):
         ingest_csv(tmp_path / "p", src, _schema(), data_role="context", audit=rec)
-    assert rec.events[0]["event_type"] == "policy_denied"
-    assert rec.events[0]["reason"] == "policy_required"
+    assert rec.events == []  # a non-anchored writer never receives the denial
+
+
+@pytest.mark.protected_defaults
+def test_ingest_policy_denial_goes_to_anchored_writer(tmp_path):
+    from tests.test_protected_defaults import _anchored
+    src = tmp_path / "c.csv"
+    src.write_text("customer_id,email\nC1,a@example.test\n", encoding="utf-8")
+    with _anchored(tmp_path) as writer:
+        with pytest.raises(TabularIngestError):
+            ingest_csv(tmp_path / "p", src, _schema(), data_role="context", audit=writer)
+        evs = [r[0] for r in writer.chain.db.execute("SELECT event_json FROM audit_events")]
+    assert any('"policy_required"' in e for e in evs)
 
 
 def test_ingest_default_still_legacy_noop(tmp_path):

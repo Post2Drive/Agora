@@ -141,7 +141,6 @@ def build_scenario_input(
                 audit=audit,
                 project=project,
                 operation="simulation_input",
-                require_policy=_protection.POLICY_REQUIRED,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [import_id, policy_binding.binding_id],

@@ -320,7 +320,6 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                 audit=audit,
                 project=project,
                 operation="import",
-                require_policy=_protection.POLICY_REQUIRED,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [dataset_id],

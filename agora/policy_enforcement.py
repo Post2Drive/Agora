@@ -32,7 +32,6 @@ def enforce_policy(
     operation: str,
     resource: Mapping[str, Any],
     audit: Any | None = None,
-    require_policy: bool | None = None,
 ) -> Mapping[str, Any] | None:
     """Evaluate an optional decision callable and audit every denial.
 
@@ -46,12 +45,13 @@ def enforce_policy(
     required (the default); the legacy unanchored project-local chain is used
     only when agora.protection.ANCHOR_REQUIRED is relaxed (tests).
 
-    require_policy=True marks a protected operation: a missing policy is denied
-    (and the denial audited) instead of being a no-op.
+    There is no caller override: whether a missing policy is denied is decided
+    only by agora.protection.POLICY_REQUIRED (True in production). When
+    agora.protection.ANCHOR_REQUIRED is set, a denial is written only through an
+    AnchoredAuditChain (checked with require_anchored); None or a plain
+    AuditChainStore is refused and the denial is still raised.
     """
-    if require_policy is None:
-        require_policy = _protection.POLICY_REQUIRED
-    if policy is None and not require_policy:
+    if policy is None and not _protection.POLICY_REQUIRED:
         return None
     if policy is None or not callable(policy):
         decision: Mapping[str, Any] = {
@@ -107,10 +107,13 @@ def enforce_policy(
         "reason": reason,
     }
     try:
-        if audit is not None:
+        if _protection.ANCHOR_REQUIRED:
+            if audit is None:
+                raise PolicyEnforcementError("no anchored audit writer supplied")
+            from .audit_anchor import require_anchored
+            require_anchored(audit).append(event)
+        elif audit is not None:
             audit.append(event)
-        elif _protection.ANCHOR_REQUIRED:
-            raise PolicyEnforcementError("no anchored audit writer supplied")
         else:
             audit_path = Path(project) / "data" / "audit_chain.sqlite3"
             audit_path.parent.mkdir(parents=True, exist_ok=True)
