@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `1fbde112d00fc4fc579e9be6385104d655a9ced4`, after PR #89 merged.
+The following inventory was checked against main at `1fbde112d00fc4fc579e9be6385104d655a9ced4`, after PRs #91 and #92 merged.
 
 ### 2.1 Audit primitives
 
