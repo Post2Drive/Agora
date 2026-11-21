@@ -31,6 +31,11 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 - **#70:** principal-first outcome record/review slice merged at head `b159157958f39d797f557515bbaf441195028afd`; exact-head CI run 209 ([44923562288](https://github.com/Post2Drive/Agora/actions/runs/44923562288)) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The PR description reports 553 local tests and five mutation proofs; this is author-reported evidence, not a local run by ChatGPT.
 
+## In-flight implementation PRs — not part of main
+
+- **#71 — anchor writer factory and policy-denial wiring (Stages A/D):** open, draft and unmerged at head `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; changes `agora/audit_anchor.py`, `agora/ontology/binding.py`, `agora/policy_enforcement.py`, `agora/scenario_inputs.py`, `agora/tabular.py` and `tests/test_anchor_wiring.py`. Exact-head Actions run 211 ([44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220)) has Ubuntu Python 3.11/3.12 green; both Windows jobs are still running. Do not count this slice as implemented on main until merged.
+- **#72 — this documentation refresh:** open, draft and unmerged; docs-only changes to the milestone, rung status, pipeline how-to and anchor wiring plan.
+
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
 
 ## Open gaps to keep visible
@@ -46,7 +51,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Evidence and interpretation rules
 
-- Recent exact-head GitHub Actions evidence: #53 run 164, #54 run 165, #55 run 175, #56 run 173, #57 run 174, #58 run 172, #63 run 201 ([44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154)), #66 run 198 ([44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682)), and #70 run 209 ([44923562288](https://github.com/Post2Drive/Agora/actions/runs/44923562288)). Each completed successfully with all four Ubuntu/Windows × Python 3.11/3.12 jobs green.
+- Recent exact-head GitHub Actions evidence: #53 run 164, #54 run 165, #55 run 175, #56 run 173, #57 run 174, #58 run 172, #63 run 201 ([44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154)), #66 run 198 ([44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682)), and #70 run 209 ([44923562288](https://github.com/Post2Drive/Agora/actions/runs/44923562288)). Each completed successfully with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. PR #71 run 211 ([44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220)) is still in progress: two Ubuntu jobs green and both Windows jobs running.
 - The PR descriptions report clean-checkout test/mutation evidence for implementation slices #53 and #58. CI success is additional evidence, not a substitute for independent code review or owner approval.
 - The governed-pipeline tests use synthetic fixtures only. They prove integration boundaries and fail-closed paths; they do not run `agora/sim/**` or establish predictive validity.
 - Report provenance keeps exploratory outputs visibly simulated. `VALIDATED_PREDICTION_ENABLED` remains `False`.
