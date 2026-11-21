@@ -101,8 +101,10 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #80 | Principal-native decision approval gate | Merged |
 | #83 | M1/M2 readiness refresh, fixture specification and provisional operator runbook | Merged |
 | #84 | Approval policy-resource derivation and precise anchor-error regression tests | Merged |
+| #85 | Nine-document readiness refresh and operator run-record field map | Open draft; exact-head CI run `44942480339` is in progress |
+| #86 | Outcome `_as` resource derivation and anchored denial tests | Open draft; exact-head CI run `44942485500` is in progress |
 
-Main is `7afa1414acd9c2e68361faab81a5d246597a5919` (merge of #84). PRs #77, #81 and #83 (documentation refreshes), #78 (Principal-bound policy helper), #79 (opt-in data-boundary policy gate), #80 (principal-native approval), #82 (default-deny legacy approval gate) and #84 (stored-decision-only approval policy resource) are merged. No open PRs were returned at this inspection; #72 and #76 remain closed superseded docs drafts.
+Main is `7afa1414acd9c2e68361faab81a5d246597a5919` (merge of #84). PRs #77, #81 and #83 (documentation refreshes), #78 (Principal-bound policy helper), #79 (opt-in data-boundary policy gate), #80 (principal-native approval), #82 (default-deny legacy approval gate) and #84 (stored-decision-only approval policy resource) are merged. Open PRs #85 (ChatGPT docs) and #86 (Claude outcome `_as` slice 3d) are drafts and unmerged; their exact-head four-job CI runs are in progress. #72 and #76 remain closed superseded docs drafts.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
