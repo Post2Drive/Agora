@@ -40,12 +40,12 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#84:** `approve_as()` ignores caller-supplied policy resource data and derives its PDP resource from stored decision scope plus fixed baseline sensitivity `internal`; precise `AnchorRequiredError`/unchanged-state coverage was added. Exact-head CI run `44939812441` passed all four matrix jobs.
 - **#85:** ChatGPT documentation refresh and operator run-record field map merged; exact-head CI run `44945012741` passed all four jobs.
 - **#86:** outcome `_as` wrappers ignore caller resource data; exact-head CI run `44942485500` passed all four jobs.
-- **#92:** public role-string `record_outcome()` / `review_outcome()` exports were retired; `record_outcome_as()` / `review_outcome_as()` are the public routes. Exact-head run `44950576945` passed all four matrix jobs.
 - **#88:** guided synthetic `agora pilot --workdir` entry point merged; exact-head CI run `44945307064` passed all four jobs. It does not persist the M2 run-record envelope or invoke the scenario-input adapter/engine.
+- **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
+- **#92:** public role-string `record_outcome()` / `review_outcome()` exports were retired; `record_outcome_as()` / `review_outcome_as()` are the public routes. Exact-head run `44950576945` passed all four matrix jobs.
 - **#94:** `agora.cli` no longer imports `.sim.engine` at module scope; engine imports are lazy inside simulation handlers. Exact-head run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-- **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
-**Open PRs at this snapshot:** none. ChatGPT docs PRs #91 and #93 are merged; Claude's #92 and #94 are merged. This refresh is the single ChatGPT-owned draft docs PR.
+**At the assessed main snapshot, no PRs were open.** ChatGPT docs PRs #91 and #93 and Claude implementation PRs #92 and #94 are merged; this current ChatGPT-owned documentation refresh is draft PR #95.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
