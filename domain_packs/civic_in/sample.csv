@@ -1,0 +1,9 @@
+request_id,category,priority,opened_on,resolved
+REQ001,streetlight,2,2026-01-03,true
+REQ002,waste_collection,1,2026-01-04,false
+REQ003,water_supply,3,2026-01-05,false
+REQ004,road_repair,2,2026-01-06,true
+REQ005,parks,1,2026-01-07,true
+REQ006,streetlight,3,2026-01-08,false
+REQ007,waste_collection,2,2026-01-09,true
+REQ008,water_supply,1,2026-01-10,false

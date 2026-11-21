@@ -1,0 +1,18 @@
+binding_id: pilot.request.v1
+binding_version: 1.0.0
+object_type_id: pilot:Request
+object_type_version: 1.0.0
+dataset_id: pilot_requests
+schema_id: pilot-contract-v1
+schema_version: 1.0.0
+column_map:
+  record_id: pilot:Request.record_id
+  category: pilot:Request.category
+  score: pilot:Request.score
+identity:
+  strategy: record_key
+  primary_key_column: record_id
+property_sensitivity:
+  pilot:Request.record_id: internal
+  pilot:Request.category: public
+  pilot:Request.score: internal
