@@ -1,7 +1,7 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026)  
+**Assessment base:** `main` at `adacbd71726324de71cdbf9d20943701c553d252` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
@@ -194,3 +194,8 @@ Record the Git SHA, operator, fixture IDs, schema/import hashes, binding fingerp
 Stop immediately if real/personal/sensitive data, credentials, network access, external write-back, an unapproved simulation, a policy bypass, a non-exact identifier, an unaudited approval, or an output without simulated/exploratory labelling is encountered.
 
 Passing a component-level demonstration means only that the documented local synthetic component ran. It does not establish that the complete pipeline exists or is ready for a pilot.
+
+
+## Current mainline correction — PR #74
+
+Main `adacbd71726324de71cdbf9d20943701c553d252` includes #74: lifecycle/outcome appends use the supplied audit writer, and `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can require an anchored writer with `require_anchored=True`. The gate runs before state mutation. Legacy/unprotected paths remain; principal wrappers still bridge to role-string APIs. Exact-head run 221 (`44928837108`) passed all four matrix jobs. Reconciliation and outcome markers remain specifications only; the end-to-end command remains NOT IMPLEMENTED.
