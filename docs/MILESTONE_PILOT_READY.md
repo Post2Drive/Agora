@@ -2,16 +2,16 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 21 November 2026  
-**Main base:** `90789ccfd866c038ce67753645b5e258134b9af3`  
+**Main base:** `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`  
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-The documentation and implementation queue is now merged through PRs #59–#66. Main includes the local-sidecar audit-anchor implementation (#63) and the Windows audit-log lock fix (#66), alongside the earlier principal and outcome slices. This is meaningful implementation progress, **not** evidence that the callable synthetic governed pipeline is complete.
+The documentation and implementation queue is now merged through PR #71. Main includes the principal-first outcome bridge (#70) and the anchored-writer factory plus policy-denial wiring (#71, stages A and D), in addition to the earlier local-sidecar anchor (#63) and Windows lock fix (#66). These are meaningful implementation slices, **not** evidence that decision/outcome anchoring, complete principal migration or the callable synthetic governed pipeline is complete.
 
-Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. Principal approval remains a limited synthetic bridge and other policy/outcome call sites still use caller-supplied role strings.
+Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. #70 adds principal-gated outcome wrappers, but they bridge to legacy role-string APIs. #71 wires an anchored writer into policy-denial/import/binding/scenario-input paths only; decision lifecycle and outcome/review append paths remain unwired.
 
-The anchor implementation provides a local JSONL sidecar and a fail-closed append wrapper, but it is not wired into decision, outcome or policy call sites. Its trust level is `local_sidecar`: it cannot detect coordinated rollback of both local stores. PR #63's Linux mutation proof does not detect removal of the cross-process lock; lock coverage is therefore supported by implementation design and CI, not that mutation test.
+The anchor implementation provides a local JSONL sidecar and fail-closed append wrapper. #71 adds `open_anchored_audit()` and threads an optional anchored writer through policy denial, CSV import, ontology materialization and scenario-input construction. Decision lifecycle and outcome/review append boundaries are still not wired, and protected mode does not yet require a writer. Trust remains `local_sidecar`: coordinated rollback of both local stores is not detected. The Linux lock-removal mutation gap remains.
 
 Decision/audit reconciliation (#57) and outcome dependency review markers (#60) remain specifications only. The manual procedures being prepared are proposals for owner approval and rehearsal; they are not approved, tested or implemented features.
 
@@ -19,7 +19,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `90789ccfd866c038ce67753645b5e258134b9af3`.
+Assessment base: `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -55,10 +55,10 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | Ontology binding | **Available — Python API, partial governance** | #31/#43 and #54; policy callback still uses legacy role-string authority. |
 | Scenario-input package | **Available — Python API, disconnected** | #31/#41; exact import ID and provenance package, not consumed by `agora/sim/engine.py`. |
 | Decision record/store and lifecycle | **Available — Python API** | #37/#42 and audit events #47. No single end-to-end command. |
-| Principal-based approval | **Available — limited synthetic slice** | #58 adds immutable Principal, test-only SyntheticFixtureAdapter, decide_principal and approve_as(). The bridge still delegates to legacy role-string approval; other call sites remain unmigrated. No OIDC/production authentication. |
+| Principal-based approval and outcome wrappers | **Available — partial synthetic slices** | #58 adds `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal()` and `approve_as()`; #70 adds `required_role` and principal-gated `record_outcome_as()` / `review_outcome_as()`. The wrappers still bridge to legacy role-string APIs. Principal-first migration for shared policy enforcement and decision lifecycle is not complete. No OIDC/production authentication. |
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
-| Anchored audit chain | **Available — local-sidecar API, not wired** | #63 adds AnchorStore, AnchoredAuditChain, bootstrap_anchor() and verify_anchored(). It is local-sidecar trust only and is not connected to decision, outcome or policy append boundaries. |
-| Observed outcome recording/review | **Available — Python API, partial governance** | #53; observed-only source contract and independent review. Current role/subject arguments are caller supplied; no CLI. |
+| Anchored audit chain | **Available — local-sidecar API; policy-denial wiring partial** | #63 provides the local-sidecar writer; #71 adds `open_anchored_audit()` and optional `audit=` threading for `enforce_policy()`, `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. Decision lifecycle and outcome/review append boundaries are not yet wired; protected mode does not require the writer. Trust remains `local_sidecar`. |
+| Observed outcome recording/review | **Available — Python API, partial principal migration** | #53 provides append-only observed outcomes/reviews; #70 adds principal-gated `record_outcome_as()` / `review_outcome_as()` with operator/reviewer checks. These wrappers still delegate to legacy role-string functions and their audit parameter remains optional; no anchored outcome wiring or CLI. |
 | Outcome dependency review markers | **Not implemented** | #60 is a specification only; no marker store/propagation worker. |
 | Decision/audit reconciliation | **Not implemented** | #57 is a specification only; no queue, detector, worker or repair command. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
@@ -77,8 +77,12 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | #64 | Audit-anchor wiring plan | Merged |
 | #65 | Pipeline capability guide and readiness refresh | Merged |
 | #66 | Windows audit-log lock fix | Merged |
+| #67–#69 | Readiness and manual-procedure documentation | Merged |
+| #70 | Principal-first outcome record/review bridge | Merged |
+| #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
+| #72 | Earlier documentation refresh based on pre-#71 main | Open draft; superseded by this refresh |
 
-Main is `90789ccfd866c038ce67753645b5e258134b9af3`. The repository open-PR search returned no open PRs at this check.
+Main is `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`. PR #71 is merged; the open-PR search returns #72 only, an earlier documentation draft based on pre-#71 main and superseded by this refresh.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -87,8 +91,9 @@ Main is `90789ccfd866c038ce67753645b5e258134b9af3`. The repository open-PR searc
 - [x] First synthetic principal approval slice merged (#58); remaining call-site migration is still open.
 - [x] Local audit-anchor implementation merged (#63), with all four exact-head CI jobs green. Trust remains local-sidecar; the Linux lock-removal mutation proof did not detect the mutation.
 - [x] Windows audit-log lock fix merged (#66), with all four exact-head CI jobs green.
-- [ ] Anchored writer wired into decision lifecycle, outcomes/reviews and policy-denial append boundaries; protected operations fail closed when anchoring is unavailable.
-- [ ] Principal-first migration completed for decision/PDP/policy enforcement/outcome recording/review call sites; caller-supplied roles no longer confer authority.
+- [x] Anchored writer factory and policy-denial/import/binding/scenario-input wiring merged (#71, Stages A/D), with all four exact-head CI jobs green.
+- [ ] Anchored writer wired into decision lifecycle and outcome/review append boundaries (Stages B/C); protected operations must require it and fail closed when unavailable.
+- [ ] Principal-first migration completed for decision/PDP/shared policy enforcement and outcome recording/review call sites; #70 is only a principal-gated outcome bridge, and #71 does not yet make policy enforcement principal-native or require a principal.
 - [ ] Decision/audit reconciliation implemented, or a documented manual recovery procedure approved and rehearsed. The manual procedure draft is not approval or evidence of a tested repair path.
 - [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. The manual procedure draft is not an implemented marker/propagation system.
 - [ ] A callable CLI/API entry point runs the synthetic example end to end: import, bind, decision, principal approval, anchored audit, observed outcome/review and simulated-labelled report, using exact immutable IDs.
@@ -100,7 +105,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `90789ccfd866c038ce67753645b5e258134b9af3`, after #63 and #66 merged. `docs/PIPELINE_HOWTO.md` now distinguishes the merged local-sidecar anchor API from the still-missing protected call-site wiring and end-to-end orchestrator. The proposed reconciliation and outcome hold/review procedures are separate documentation drafts; they require owner approval and rehearsal before they can satisfy a milestone gate.
+This assessment is refreshed against main `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`, after #70 and #71 merged. Stages A/D of anchor wiring are implemented; Stages B/C, principal migration slice 2, protected-mode enforcement and the single callable orchestrator remain open. The reconciliation and outcome hold/review procedures are documentation proposals only and still require owner approval and rehearsal before they can satisfy a milestone gate.
 
 ## 7. Permanent safety boundaries
 
