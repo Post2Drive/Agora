@@ -1,0 +1,149 @@
+"""Fail-closed construction of provenance-rich scenario inputs.
+
+This adapter deliberately stops at an immutable, serialisable input package. It
+does not import or call the simulation engine and never resolves a moving
+``latest`` selector.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any, Mapping
+
+from .ontology.binding import DataBinding, materialize_instances
+from .ontology.registry import OntologyError, OntologyPack
+
+
+class ScenarioInputError(ValueError):
+    """Raised when a scenario input violates its provenance or privacy contract."""
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def _sha256(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
+
+
+def _read_snapshot_metadata(project: Path, import_id: str) -> dict[str, Any]:
+    if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
+        raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
+    database = project / "data" / "tabular.sqlite3"
+    if not database.is_file():
+        raise ScenarioInputError("snapshot database was not found")
+    try:
+        conn = sqlite3.connect(f"file:{database.resolve().as_posix()}?mode=ro", uri=True)
+        row = conn.execute(
+            "SELECT manifest_json FROM imports WHERE import_id=? AND status='committed'", (import_id,)
+        ).fetchone()
+    except sqlite3.Error as exc:
+        raise ScenarioInputError("snapshot metadata could not be read") from exc
+    finally:
+        try:
+            conn.close()
+        except UnboundLocalError:
+            pass
+    if row is None:
+        raise ScenarioInputError("explicit committed snapshot was not found")
+    manifest = json.loads(row[0])
+    if manifest.get("import_id") != import_id:
+        raise ScenarioInputError("snapshot import_id does not match the requested import")
+    if not manifest.get("schema_fingerprint") or not manifest.get("file_sha256"):
+        raise ScenarioInputError("snapshot manifest is missing required hashes")
+    return manifest
+
+
+def _policy_fingerprint(policy: Mapping[str, Any] | None) -> str | None:
+    return None if policy is None else _sha256(dict(policy))
+
+
+def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | None) -> None:
+    sensitive = {
+        property_id
+        for instance in instances
+        for property_id, level in instance.get("property_sensitivity", {}).items()
+        if level in {"personal", "sensitive"}
+    }
+    if not sensitive:
+        return
+    if not isinstance(policy, Mapping):
+        raise ScenarioInputError("personal or sensitive values require an explicit transformation policy")
+    required = {"policy_id", "purpose", "retention", "reviewer", "approved_at", "audit_reference"}
+    if not required.issubset(policy) or any(not isinstance(policy[key], str) or not policy[key].strip() for key in required):
+        raise ScenarioInputError("transformation policy is incomplete")
+    permitted = set(policy.get("permitted_sensitivities", ("personal", "sensitive")))
+    if not {"personal", "sensitive"}.issubset(permitted):
+        raise ScenarioInputError("transformation policy does not authorize all sensitive values")
+
+
+def build_scenario_input(
+    binding: DataBinding | Mapping[str, Any],
+    pack: OntologyPack,
+    project: str | Path,
+    import_id: str,
+    *,
+    scenario_parameters: Mapping[str, Any] | None = None,
+    transformation_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a deterministic scenario-input package from one explicit snapshot."""
+    if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
+        raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
+    project = Path(project)
+    snapshot = _read_snapshot_metadata(project, import_id)
+    role = snapshot.get("data_role")
+    if role == "sealed_holdout":
+        raise ScenarioInputError("sealed_holdout snapshots cannot feed scenario inputs")
+    if role not in {"context", "scenario_input", "calibration", "validation"}:
+        raise ScenarioInputError("snapshot data role is unsupported")
+    try:
+        instances = materialize_instances(binding, pack, project, import_id)
+    except (OntologyError, ValueError) as exc:
+        raise ScenarioInputError(str(exc)) from exc
+    _check_policy(instances, transformation_policy)
+    parameters = dict(scenario_parameters or {})
+    policy_fp = _policy_fingerprint(transformation_policy)
+    binding_fingerprint = binding.fingerprint if isinstance(binding, DataBinding) else _sha256(binding)
+    payload = {
+        "import_id": import_id,
+        "snapshot_manifest_hash": _sha256(snapshot),
+        "schema_fingerprint": snapshot["schema_fingerprint"],
+        "binding_fingerprint": binding_fingerprint,
+        "ontology_pack_fingerprint": pack.fingerprint,
+        "transformation_policy_fingerprint": policy_fp,
+        "scenario_parameters": parameters,
+    }
+    scenario_hash = _sha256({"domain": "agora-scenario-input-v1", "payload": payload})
+    created_at = datetime.now(timezone.utc).isoformat()
+    manifest = {
+        **payload,
+        "dataset_id": snapshot["dataset_id"],
+        "schema_id": snapshot["schema_id"],
+        "schema_version": snapshot["schema_version"],
+        "file_sha256": snapshot["file_sha256"],
+        "source_registry_id": snapshot.get("source_registry_id"),
+        "data_role": role,
+        "binding_id": binding.binding_id if isinstance(binding, DataBinding) else binding.get("binding_id"),
+        "binding_version": binding.binding_version if isinstance(binding, DataBinding) else binding.get("binding_version"),
+        "ontology_pack_id": pack.pack_id,
+        "ontology_schema_version": pack.schema_version,
+        "engine_application_version": "0.3.0",
+        "created_at": created_at,
+        "scenario_hash": scenario_hash,
+        "run_provenance_reference": f"scenario:{scenario_hash}",
+    }
+    return {
+        "manifest": manifest,
+        "scenario_hash": scenario_hash,
+        "import_id": import_id,
+        "instances": instances,
+        "run_record": {"import_id": import_id, "scenario_hash": scenario_hash, "input_manifest": manifest},
+        "validated_prediction_enabled": False,
+    }
+
+
+__all__ = ["ScenarioInputError", "build_scenario_input"]
