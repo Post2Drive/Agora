@@ -24,3 +24,9 @@ def make_project(tmp: Path, name: str = "proj", **overrides) -> Path:
 @pytest.fixture
 def project(tmp_path):
     return make_project(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _legacy_approve_test_only(monkeypatch):
+    """Legacy role-string approve() is test-only; tests may opt out via delenv."""
+    monkeypatch.setenv("AGORA_TEST_ONLY_LEGACY_APPROVE", "1")
