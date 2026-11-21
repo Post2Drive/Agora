@@ -2,16 +2,16 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `7afa1414acd9c2e68361faab81a5d246597a5919`
+**Main base:** `6e2d76623fae909c062ee950781e9ed673416f3f`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Main is at `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026). It includes #78's Principal-bound `principal_policy()` helper, #79's opt-in `require_policy` threading, #80's principal-native `approve_as()`, #82's default-deny legacy role-string approval gate, and #84's stored-decision-only approval policy resource. #84 closes the caller-resource downgrade finding for `approve_as()`. Principal migration remains incomplete: `require_policy` and `require_anchored` still default to `False`, outcome wrappers still delegate to legacy role-string functions, and the approval compatibility switch remains runtime-enableable by environment variable.
+Main is at `6e2d76623fae909c062ee950781e9ed673416f3f` (22 November 2026). Merged PR #88 adds `agora pilot --workdir <new-empty-directory>` through `agora.cli.main()` and `agora.pilot.run_pilot()`: per-stage results, first-denial stop, explicit policy/anchor requirements inside the pilot, anchored audit verification and a synthetic-labelled report. Exact-head Actions run `44945307064` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The pilot uses an in-module synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the immutable operator run record required by the M2 field map.
 
-Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. `approve_as()` is principal-native (#80) and now ignores caller-supplied policy resource fields (#84); legacy `approve()` fails closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` (#82), while #70 outcome wrappers still bridge to legacy role-string APIs. The #79 `require_policy` option remains opt-in and defaults to `False`.
+The `agora pilot` command is now a single guided local entry point, but lower-level APIs on main still default `require_policy=False` and `require_anchored=False`. Legacy `approve()` remains runtime-enableable through `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; public `record_outcome()` / `review_outcome()` remain role-string APIs and the Principal wrappers still delegate to them. The scenario-input package remains disconnected from the simulation engine. PR #89 proposes default-True policy/anchor parameters but is still open/draft, not on main; its exact-head Actions run `44948055801` passed all four jobs. The PR still accepts explicit `False` overrides and does not remove the unanchored `audit=None` policy-denial fallback.
 
-The anchor implementation provides a local JSONL sidecar and fail-closed append wrapper. #71 adds `open_anchored_audit()` and optional writer threading through policy denial, CSV import, ontology materialization and scenario-input construction. #74 wires decision lifecycle and outcome/review append boundaries and adds opt-in `require_anchored=True` gates on three principal entry points. #84 adds a precise `AnchorRequiredError` test for `approve_as()` when an anchored writer is absent or a plain chain is supplied; the public default is still `require_anchored=False`. Trust remains `local_sidecar`: coordinated rollback of both local stores is not detected. The Linux lock-removal mutation gap remains.
+The anchor remains a local JSONL sidecar with `local_sidecar` trust; coordinated rollback of both local stores is not detected, and the Linux lock-removal mutation gap remains. Main's data-boundary policy-denial path still permits `audit=None` and creates an unanchored project-local chain. PR #89 proposes default-on checks for the six named policy/Principal entry points, but it is not merged and does not make the data-boundary denial writer mandatory or remove explicit opt-outs.
 
 Decision/audit reconciliation (#57) and outcome dependency review markers (#60) remain specifications only. The manual procedures being prepared are proposals for owner approval and rehearsal; they are not approved, tested or implemented features.
 
@@ -19,7 +19,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `7afa1414acd9c2e68361faab81a5d246597a5919`.
+Assessment base: `6e2d76623fae909c062ee950781e9ed673416f3f`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -44,6 +44,10 @@ Confirmed merged implementation PRs:
 - #80 — principal-native `authorize_decision_approval_principal()` and `approve_as()`; exact-head CI run 239 (`44934473818`) passed all four matrix jobs.
 - #82 — legacy role-string `approve()` fails closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; exact-head CI run `44937162200` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 - #84 — `approve_as()` ignores the caller-supplied resource and builds PDP inputs from the stored decision scope plus fixed baseline sensitivity `internal`; precise `AnchorRequiredError` tests replace the broad exception assertion. Exact-head CI run `44939812441` passed all four matrix jobs.
+- #88 — adds the `agora pilot --workdir <new-empty-directory>` guided synthetic workflow, with per-stage results, first-denial stop, anchored audit verification and synthetic-labelled report; exact-head CI run `44945307064` passed all four jobs.
+
+Open draft implementation PR (not counted as merged mainline evidence):
+- #89 — proposes default-True policy/anchor parameters on six protected entry points. Exact head `543f3b49dbb5617e73102db876231e824358999d`; run `44948055801` passed all four jobs. It remains open/draft; explicit `False` overrides and unanchored policy-denial fallback remain review gaps.
 
 Earlier merged design/runbook documents remain:
 - #51 identity adapter specification; #52 audit-anchor specification.
@@ -63,18 +67,18 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Capability | Status | Evidence and limitation |
 |---|---|---|
 | Local structured CSV snapshot import | **Available — CLI** | #28 and later provenance/policy work. Local only; no external connectors/write-back. |
-| Ontology binding | **Available — Python API, partial governance** | #31/#43/#54; #79 adds opt-in `require_policy=True`, but the default remains `False` and `policy=None` is still a no-op on legacy calls. The callback can be principal-bound with #78's `principal_policy()`, but a principal is not required by default. |
-| Shared policy enforcement | **Available — partial** | #78 adds principal-bound `principal_policy()` and a missing-policy denial when `require_policy=True`; #79 threads that flag through three data boundaries. `require_policy=False` remains the default, and `audit=None` uses the legacy unanchored project-local chain. |
+| Ontology binding | **Available — Python API, partial governance** | Main still defaults `require_policy=False`; #89 proposes `True` but is open/draft and not merged. The policy callback can be Principal-bound with #78; `audit=None` remains an unanchored denial path. |
+| Shared policy enforcement | **Available — partial** | On main, data-boundary `require_policy=False` remains the default. #89 proposes default-on at three callers but is unmerged; explicit opt-out and `audit=None` fallback remain. |
 | Scenario-input package | **Available — Python API, disconnected** | #31/#41; exact import ID and provenance package, not consumed by `agora/sim/engine.py`. |
 | Decision record/store and lifecycle | **Available — Python API** | #37/#42 and audit events #47. No single end-to-end command. |
-| Principal-based approval and outcome wrappers | **Available — partial synthetic migration** | #80 makes `approve_as()` use the principal-native gate; #84 ignores caller-supplied resource policy fields and fixes baseline sensitivity to `internal`. Legacy `approve()` still exists and can be re-enabled by `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; #70 outcome wrappers still delegate to legacy role-string APIs. No OIDC/production authentication. |
+| Principal-based approval and outcome wrappers | **Available — partial synthetic migration** | #80/#84 provide principal-native `approve_as()` with stored-decision-derived policy input; #82 still has a runtime-enableable legacy approval switch. #86 removes caller resource influence from outcome wrappers, but they still delegate to public role-string outcome APIs. |
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
-| Anchored audit chain | **Available — local-sidecar API; partial wiring** | #63 local-sidecar writer; #71 policy/data-boundary injection; #74 lifecycle/outcome append wiring; #75 structural `AuditAppender` protocol; opt-in `require_anchored=True` on three principal entry points. The anchor gate remains opt-in; legacy optional-audit paths remain. Trust remains `local_sidecar`. |
-| Observed outcome recording/review | **Available — Python API, partial principal migration** | #53 append-only store; #70 principal wrappers require operator/reviewer but still delegate to legacy role-string functions; #74 adds opt-in anchor gates. The underlying API and audit writer remain optional; no CLI. |
+| Anchored audit chain | **Available — local-sidecar API; partial protected mode** | Main still defaults `require_anchored=False` on the three Principal write paths. #89 proposes `True` but remains open/draft; explicit `False` is still accepted, and policy-denial `audit=None` still falls back to an unanchored chain. Trust remains `local_sidecar`. |
+| Observed outcome recording/review | **Available — Python API, partial principal migration** | #86 ignores caller resource data, but Principal wrappers still delegate to public role-string `record_outcome()` / `review_outcome()`. Main's anchor default remains off; #89 proposes default-on but is unmerged. |
 | Outcome dependency review markers | **Not implemented** | #60 is a specification only; no marker store/propagation worker. |
 | Decision/audit reconciliation | **Not implemented** | #57 is a specification only; no queue, detector, worker or repair command. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
-| Single callable end-to-end pipeline | **Not implemented** | No orchestrator joins all required stages with principal-first authorization and anchored audit. |
+| Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results, first-denial stop, explicit policy/anchor calls and a synthetic report. It does not persist the M2 run-record envelope or call `build_scenario_input()`/the engine. |
 | Integrated pilot readiness | **Not ready** | Implementation, wiring, operational and approval gates remain open. |
 
 ## 4. Pull request status snapshot
@@ -101,10 +105,12 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #80 | Principal-native decision approval gate | Merged |
 | #83 | M1/M2 readiness refresh, fixture specification and provisional operator runbook | Merged |
 | #84 | Approval policy-resource derivation and precise anchor-error regression tests | Merged |
-| #85 | Nine-document readiness refresh and operator run-record field map | Open draft; exact-head CI is pending on the current head |
+| #85 | Nine-document readiness refresh and operator run-record field map | Merged; exact-head CI run `44945012741` passed four jobs |
 | #86 | Outcome `_as` resource derivation and anchored denial tests | Merged (`a0777c1`); four exact-head jobs green, run `44942485500` |
+| #88 | Guided synthetic `agora pilot --workdir` entry point | Merged (`6e2d766`); four exact-head jobs green, run `44945307064` |
+| #89 | Default-on policy/anchor parameter proposal | Open draft; exact-head CI run `44948055801` passed 4/4, but changes are not on main |
 
-Main is `a0777c1` (merge of #86; #86 merged after this assessment base `7afa1414`). PRs #77, #81 and #83 (documentation refreshes), #78 (Principal-bound policy helper), #79 (opt-in data-boundary policy gate), #80 (principal-native approval), #82 (default-deny legacy approval gate) and #84 (stored-decision-only approval policy resource) are merged. #86 (Claude outcome `_as` slice 3d) is merged; #85 (ChatGPT docs) is the open docs draft. #72 and #76 remain closed superseded docs drafts.
+Main is `6e2d76623fae909c062ee950781e9ed673416f3f` (merge of #88). #85 and #86 are merged; #88 adds the guided pilot entry point. #89 is the only open implementation PR and remains draft despite four green exact-head CI jobs. There is no open ChatGPT docs PR at this assessment point; this refresh is proposed separately.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -118,11 +124,11 @@ Main is `a0777c1` (merge of #86; #86 merged after this assessment base `7afa1414
 - [x] Principal-native decision approval path merged in #80: `approve_as()` uses the adapter-issued Principal and no caller role/subject parameter.
 - [x] Legacy role-string `approve()` fails closed by default behind `AGORA_TEST_ONLY_LEGACY_APPROVE=1` (#82); this is still an environment-variable escape hatch, not a structural test-only boundary, so remove it after test callers migrate.
 - [x] #84 closes the `approve_as()` caller-resource downgrade path by ignoring the supplied resource and using stored decision scope plus fixed baseline sensitivity; its precise anchor-error/no-state-change coverage passed exact-head CI.
-- [ ] Make protected policy and anchor requirements default-on at governed boundaries; #79's `require_policy` and #74/#80's `require_anchored` remain opt-in, and legacy `audit=None` paths remain.
+- [ ] Make protected policy and anchor requirements default-on at governed boundaries; main still has False defaults, while #89 proposes True defaults but is unmerged, permits explicit False overrides, and leaves policy-denial `audit=None` unanchored.
 - [ ] Principal-first migration completed for all decision/PDP/shared policy enforcement and outcome call sites; #80 covers `approve_as()` and #82 test-gates legacy `approve()`, but #70 outcome wrappers still bridge to legacy functions.
 - [ ] Decision/audit reconciliation implemented, or a documented manual recovery procedure approved and rehearsed. The manual procedure draft is not approval or evidence of a tested repair path.
 - [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. The manual procedure draft is not an implemented marker/propagation system.
-- [ ] A callable CLI/API entry point runs the synthetic example end to end: import, bind, decision, principal approval, anchored audit, observed outcome/review and simulated-labelled report, using exact immutable IDs.
+- [x] A callable CLI/API entry point runs the synthetic example end to end: PR #88 provides `agora pilot --workdir <new-empty-directory>` with import, bind, decision, principal approval, anchored audit, observed outcome/review and a synthetic-labelled report; it does not call the engine.
 - [ ] Exact-head CI is green on final reviewed implementation heads; required mutation proofs and clean-checkout review evidence are recorded.
 - [ ] Claude logs the exact milestone confirmation with main SHA, four green CI jobs, merged implementation PR numbers, exact end-to-end command/example, and all readiness rows Done except simulation wiring and owner-only items.
 - [ ] Only after that confirmation, the owner separately approves any synthetic rehearsal. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval.
@@ -131,7 +137,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `7afa1414acd9c2e68361faab81a5d246597a5919`, after #78, #79, #80, #82, #83 and #84 merged.
+This assessment is refreshed against main `6e2d76623fae909c062ee950781e9ed673416f3f`, after #85/#86/#88 merged; #89 remains an open draft and is not counted as implemented.
 
 ## 7. Permanent safety boundaries
 
