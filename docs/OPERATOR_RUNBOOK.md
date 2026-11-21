@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `25231d68` | Evidence / missing item |
+| M2 requirement | Mainline status at `c9cfdc94` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | No single operator install/start command is documented or verified. |
 | Checked-in synthetic dataset | **NOT YET VERIFIED** | The older how-to references `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml`; those exact paths are absent on main. No replacement checked-in dataset has been verified in this review. |
