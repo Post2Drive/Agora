@@ -18,7 +18,7 @@ The following inventory was checked against main at the assessment SHA:
 
 | Boundary | Current mainline interface | Migration concern |
 |---|---|---|
-| PDP | `decide(subject, role, operation, resource)` / `authorize(...)` remain role-string APIs; #78 adds `principal_policy(principal, required_role)`. #97 makes `enforce_policy()` default to `POLICY_REQUIRED=True`, but the signature still accepts explicit `require_policy=False`, which bypasses a missing-policy denial. |
+| PDP | `decide(subject, role, operation, resource)` / `authorize(...)` remain role-string APIs; #78 adds `principal_policy(principal, required_role)`. #97 makes `enforce_policy()` default to `POLICY_REQUIRED=True`, but the signature still accepts explicit `require_policy=False`, which bypasses a missing-policy denial; it also accepts a supplied plain `AuditChainStore` without anchored-writer validation. |
 | Approval permission adapter | `authorize_decision_approval(subject, role, resource)` remains legacy; #80 adds `authorize_decision_approval_principal(principal, resource)` requiring the `approver` role. | Both adapters exist; the role-string adapter remains callable and the principal-native path is used by `approve_as()`. |
 | Decision approval | `approve_as(..., principal=...)` is principal-native after #80/#84; legacy `approve(... actor, role, subject, ...)` remains in source. | #96 removes anchor opt-out kwargs from `approve_as()` and public outcome wrappers. #97 removes the env switch; legacy `approve()` is enabled only through the test-only `LEGACY_APPROVE_ENABLED` module flag. |
 | Outcome recording | `record_outcome_as(..., principal=...)` is the only public route (#70/#86/#89/#92/#96). | #92 removes the public role-string export; #96 removes the public `require_anchored` opt-out kwarg. The wrapper derives actor and scope from Principal/stored decision. |
@@ -161,7 +161,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 ## Current migration status — main `a191b587876e5a26a73b716098c8f36eb561ea37` (22 November 2026)
 
 Verified on main:
-- **#78/#79/#89/#96:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and removes unanchored denial writes, but explicit `require_policy=False` is still accepted by the helper.
+- **#78/#79/#89/#96:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and refuses the local fallback when `audit=None`, but explicit `require_policy=False` is still accepted and a supplied plain `AuditChainStore` is not validated as anchored.
 - **#80/#84/#89/#96:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and no longer accepts a public `require_anchored` opt-out kwarg.
 - **#82/#97:** legacy role-string `approve()` remains in source but the environment switch is removed; only the test-only `LEGACY_APPROVE_ENABLED` module flag enables it.
 - **#70/#86/#89/#92/#96:** public outcome writes route through `record_outcome_as()` / `review_outcome_as()`; #92 retires role-string exports and #96 removes public anchor opt-out kwargs. Private helpers still accept optional audit internally.
