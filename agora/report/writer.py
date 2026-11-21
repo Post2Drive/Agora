@@ -217,8 +217,7 @@ SECTIONS = [
      _decisions, "approve committee association decision"),
     ("range", "Range of outcomes",
      "Explain the likely range of results and the probabilities (win chances, targets), and which "
-     "assumptions move the result most.",
-     _range, ""),
+     "assumptions move the result most.",     _range, ""),
     ("risks", "How far to trust this",
      "Explain the main uncertainties: which inputs are assumptions, how many people actually wrote with "
      "the model, and what real data would make the prediction sharper. Be honest and specific.",
@@ -437,8 +436,7 @@ def plan_outline(llm, a: dict) -> list[dict]:
         out.append({"key": key, "title": title,
                     "goal": str(x.get("goal") or (LIBRARY[key][1] if key in LIBRARY else ""))[:300]})
     if not out:
-        return default
-    if out[0]["key"] != "summary":
+        return default    if out[0]["key"] != "summary":
         out = [s for s in default if s["key"] == "summary"] + [s for s in out if s["key"] != "summary"]
     if "risks" not in seen:
         out.append(next(s for s in default if s["key"] == "risks"))
@@ -491,6 +489,14 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
 def _report_provenance(project: Path) -> dict:
     """Read and verify run provenance without modifying the run database."""
     db_path = (project / "agora.db").resolve()
+    if not db_path.is_file():
+        return {
+            "run_id": str(project.name or project.resolve().name),
+            "provenance_status": "legacy_missing",
+            "legacy": True,
+            "mode": "exploratory",
+            "simulated": True,
+        }
     db_uri = f"{db_path.as_uri()}?mode=ro"
     db = sqlite3.connect(db_uri, uri=True)
     try:
@@ -583,7 +589,6 @@ def write_report(project: str | Path, llm: LLMBackend | None,
     if mode not in {'exploratory', 'validated_prediction'}:
         raise ValueError('Unknown report mode')
     project = Path(project)
-    provenance = _report_provenance(project)
     approval = None
     if mode == 'validated_prediction':
         if not registry_id:
@@ -600,6 +605,9 @@ def write_report(project: str | Path, llm: LLMBackend | None,
         )
         if not VALIDATED_PREDICTION_ENABLED:
             raise PermissionError('Approval checks passed, but Validated Prediction output remains disabled pending separate owner approval. Use exploratory mode.')
+    # Preserve the validated-prediction gate as the first operation that can fail.
+    # Missing databases are legacy runs; this read must never create one.
+    provenance = _report_provenance(project)
     an = Analysis(project)
     try:
         a = an.everything()
