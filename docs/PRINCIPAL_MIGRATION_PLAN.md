@@ -18,7 +18,7 @@ The following inventory was checked against main at the assessment SHA:
 
 | Boundary | Current mainline interface | Migration concern |
 |---|---|---|
-| PDP | `decide(subject, role, operation, resource)` / `authorize(...)` remain role-string APIs; #78 adds `principal_policy(principal, required_role)` to bind a Principal into the operation/resource callback. | The callback can derive authority from a bound Principal, but `PolicyCallable` still receives only operation/resource and `require_policy=False` remains the default. |
+| PDP | `decide(subject, role, operation, resource)` / `authorize(...)` remain role-string APIs; #78 adds `principal_policy(principal, required_role)` to bind a Principal into the operation/resource callback. | The callback can derive authority from a bound Principal, but `PolicyCallable` still receives only operation/resource; direct `enforce_policy()` still defaults `require_policy=False`, while the three data-boundary callers default to `True`. |
 | Approval permission adapter | `authorize_decision_approval(subject, role, resource)` remains legacy; #80 adds `authorize_decision_approval_principal(principal, resource)` requiring the `approver` role. | Both adapters exist; the role-string adapter remains callable and the principal-native path is used by `approve_as()`. |
 | Decision approval | `approve_as(..., principal=...)` is principal-native after #80/#84; `approve(... actor, role, subject, ...)` remains a compatibility API. | #89 makes `require_anchored=True` the default on `approve_as()`, but explicit `False` remains accepted. Legacy `approve()` still has the runtime-enableable `AGORA_TEST_ONLY_LEGACY_APPROVE=1` switch (#82). |
 | Outcome recording | `record_outcome()` legacy API plus `record_outcome_as(..., principal=...)` (#70/#86/#89) | The wrapper ignores caller resource data and defaults to anchored audit, but still delegates to the public role-string function. Explicit `require_anchored=False` remains accepted. |
@@ -109,7 +109,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
 - Both wrappers reject caller-supplied `recorder`/`reviewer`, `role` and `subject` authority fields.
 - Both wrappers delegate to the legacy `record_outcome()` / `review_outcome()` role-string functions internally. The legacy APIs have not been removed or made unreachable from production-capable paths.
-- #74 wires outcome append helpers to the supplied audit writer and adds an opt-in `require_anchored=True` gate on principal outcome wrappers; other legacy paths remain optional.
+- #74 wires outcome append helpers to the supplied audit writer; #89 makes `require_anchored=True` the default on the three Principal write wrappers. Explicit `False` remains accepted, and the public role-string APIs retain optional audit.
 
 **Remaining Stage 4 work:**
 
