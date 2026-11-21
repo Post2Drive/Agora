@@ -44,8 +44,6 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#88:** guided synthetic `agora pilot --workdir` entry point merged; exact-head CI run `44945307064` passed all four jobs. It does not persist the M2 run-record envelope or invoke the scenario-input adapter/engine.
 
 - **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
-- **#92:** outcome role-string public exports retired; exact-head CI run `44950576945` passed all four jobs.
-
 **Open PRs at this snapshot:** none. ChatGPT docs PR #91 merged; Claude's #92 merged. The next ChatGPT documentation refresh is being prepared on a new docs branch.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
@@ -56,7 +54,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 1. **Simulation wiring:** scenario-input provenance is not connected to `agora/sim/**`. No edit to that path is authorised by this document; implementation requires Claude's written approval and a separate owner-approved execution step.
 2. **Identity migration:** #80/#84 make `approve_as()` principal-native; #82 still leaves a runtime-enableable legacy approval switch. #86/#89 made the Principal outcome wrappers derive resource/actor data and default to anchored audit; #92 then retired the public role-string outcome exports. Explicit anchor opt-out remains. OIDC remains a later, separately approved integration.
 3. **Outcome dependency review:** #53 records and reviews outcomes, but source-change/erasure dependency review markers remain unimplemented.
-4. **Audit anchoring:** #89 defaults the three Principal write wrappers to anchored audit. Explicit `False` remains accepted, legacy outcome APIs still accept optional audit, and policy-denial `audit=None` still writes to an unanchored project-local chain. `local_sidecar` cannot detect coordinated rollback of both stores; the Linux lock-removal mutation gap remains.
+4. **Audit anchoring:** #89 defaults the three Principal write wrappers to anchored audit; #92 retires public role-string outcome exports. Explicit `require_anchored=False` remains accepted, private outcome helpers can omit audit if the wrapper gate is bypassed, and policy-denial `audit=None` still writes to an unanchored project-local chain. `local_sidecar` cannot detect coordinated rollback of both stores; the Linux lock-removal mutation gap remains.
 5. **Cross-store consistency:** decision records/outcomes and the shared audit chain use separate SQLite stores. A write to one is not atomic with a write to the other. #57 specifies reconciliation; the queue, detector and repair workflow are not implemented.
 6. **Purpose and retention:** #54 closes the binding-hook propagation gap by accepting and forwarding declared purpose/retention. Callers must supply those values; do not claim that every call site or all data paths have been migrated.
 7. **Enterprise controls:** OIDC, proven tenant isolation, external audit anchoring, operational backup/restore, incident response and fleet deployment are not complete.
