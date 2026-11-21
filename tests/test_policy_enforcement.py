@@ -72,3 +72,29 @@ def test_policy_exception_fails_closed_and_is_audited(tmp_path):
         )
     raw = (tmp_path / "data" / "audit_chain.sqlite3").read_bytes()
     assert b"private details must not be logged" not in raw
+
+
+
+def test_untrusted_decision_metadata_cannot_inject_personal_values_into_audit(tmp_path):
+    decision = {
+        "decision": "deny", "reason": "person@example.test",
+        "subject_id": "person@example.test", "policy_version": "test-v1",
+        "resource_ids": ["person@example.test"],
+    }
+    with pytest.raises(PolicyEnforcementError):
+        enforce_policy(
+            lambda operation, resource: decision,
+            project=tmp_path, operation="import",
+            resource={"resource_ids": ["dataset-1"]},
+        )
+    store = AuditChainStore(tmp_path / "data" / "audit_chain.sqlite3")
+    try:
+        event = json.loads(
+            store.db.execute("SELECT event_json FROM audit_events").fetchone()[0]
+        )
+        assert event["reason"] == "policy_denied"
+        assert event["subject_id"] == "unknown"
+        assert event["resource_ids"] == ["dataset-1"]
+        assert "person@example.test" not in json.dumps(event)
+    finally:
+        store.close()
