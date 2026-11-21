@@ -145,20 +145,24 @@ def test_review_outcome_as_ignores_caller_resource(tmp_path, seen, forged):
     assert seen[-1]["project_id"] == approved.project_scope["project_id"]
 
 
-def test_outcome_as_require_anchored_fails_closed_without_state_change(tmp_path):
+@pytest.mark.protected_defaults
+def test_outcome_as_require_anchored_fails_closed_without_state_change(tmp_path, monkeypatch):
+    from agora import protection
     _, store, approved = approved_store(tmp_path)
     plain = AuditChainStore(tmp_path / "audit.sqlite3")
     for audit in (None, plain):
         with pytest.raises(AnchorRequiredError):
             record_outcome_as(store, principal=ADAPTER.issue("op"), audit=audit,
-                              require_anchored=True, **_rec_args(approved))
+                              **_rec_args(approved))
     assert store.outcomes(approved.decision_id, approved.version) == []
+    monkeypatch.setattr(protection, "ANCHOR_REQUIRED", False)  # relaxed setup only
     out = record_outcome_as(store, principal=ADAPTER.issue("op"), **_rec_args(approved))
+    monkeypatch.setattr(protection, "ANCHOR_REQUIRED", True)
     for audit in (None, plain):
         with pytest.raises(AnchorRequiredError):
             review_outcome_as(store, approved.decision_id, approved.version, out["outcome_id"],
                               principal=ADAPTER.issue("rev"), audit=audit,
-                              require_anchored=True, **REV)
+                              **REV)
     assert store.reviews(approved.decision_id, approved.version, out["outcome_id"]) == []
     assert [e for e in plain.db.execute("SELECT 1 FROM audit_events")] == []
     plain.close()

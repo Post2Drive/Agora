@@ -7,6 +7,8 @@ does not import or call the simulation engine and never resolves a moving
 
 from __future__ import annotations
 
+from agora import protection as _protection
+
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -114,17 +116,16 @@ def build_scenario_input(
     transformation_policy: Mapping[str, Any] | None = None,
     policy: PolicyCallable | None = None,
     audit: Any | None = None,
-    require_policy: bool = True,
 ) -> dict[str, Any]:
     """Build a deterministic scenario-input package from one explicit snapshot.
 
     When supplied, policy is called as policy("simulation_input", resource)
-    before the snapshot database is opened. None preserves legacy behaviour.
+    before the snapshot database is opened. A policy is mandatory: None is denied (and audited).
     """
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
     project = Path(project)
-    if policy is not None or require_policy:
+    if policy is not None or _protection.POLICY_REQUIRED:
         try:
             policy_binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
             properties = {item.property_id: item for item in pack.property_types}
@@ -140,7 +141,7 @@ def build_scenario_input(
                 audit=audit,
                 project=project,
                 operation="simulation_input",
-                require_policy=require_policy,
+                require_policy=_protection.POLICY_REQUIRED,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [import_id, policy_binding.binding_id],
@@ -165,7 +166,11 @@ def build_scenario_input(
     if role not in {"context", "scenario_input"}:
         raise ScenarioInputError("snapshot data role is unsupported")
     try:
-        instances = materialize_instances(binding, pack, project, import_id)
+        instances = materialize_instances(
+            binding, pack, project, import_id, policy=policy, audit=audit,
+            purpose=transformation_policy.get("purpose") if isinstance(transformation_policy, Mapping) else None,
+            retention=transformation_policy.get("retention") if isinstance(transformation_policy, Mapping) else None,
+        )
     except (OntologyError, ValueError) as exc:
         raise ScenarioInputError(str(exc)) from exc
     instances, redactions = _check_policy(instances, transformation_policy)

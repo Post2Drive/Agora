@@ -213,8 +213,10 @@ def test_policy_allow_preserves_scenario_input_construction(tmp_path):
     seen = {}
 
     def allow(operation, resource):
-        seen["operation"] = operation
-        seen["resource"] = dict(resource)
+        if "operation" not in seen:  # first gate is simulation_input; inner binding gate follows
+            seen["operation"] = operation
+            seen["resource"] = dict(resource)
+        seen.setdefault("all", []).append(operation)
         return {
             "decision": "allow", "reason": "policy_allow",
             "subject_id": "operator-1", "policy_version": "test-v1",
@@ -227,4 +229,5 @@ def test_policy_allow_preserves_scenario_input_construction(tmp_path):
     )
     assert built["scenario_hash"]
     assert seen["operation"] == "simulation_input"
+    assert seen["all"] == ["simulation_input", "binding"]
     assert seen["resource"]["import_id"] == imported["import_id"]

@@ -195,14 +195,14 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
 
             def do_import():
                 r = ingest_csv(project, csv_path, _schema(), data_role="scenario_input",
-                               policy=op, audit=audit, require_policy=True)
+                               policy=op, audit=audit)
                 ctx["import_id"], ctx["rows"] = r["import_id"], r.get("accepted_rows", r.get("row_count", 3))
                 return {"import_id": r["import_id"]}
             run("import", do_import)
 
             def do_bind():
                 inst = materialize_instances(_binding(), _pack(), project, ctx["import_id"],
-                                             policy=op, audit=audit, require_policy=True)
+                                             policy=op, audit=audit)
                 ctx["instances"] = len(inst)
                 return {"instances": len(inst)}
             run("bind", do_bind)
@@ -223,7 +223,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
                                principal=adapter.issue("approver"), expected_fingerprint=p.fingerprint,
                                expected_scope={"project_id": PROJECT_ID},
                                expected_evidence_refs=p.evidence_refs,
-                               now=_stamp(base + timedelta(minutes=2)), audit=audit, require_anchored=True)
+                               now=_stamp(base + timedelta(minutes=2)), audit=audit)
                 ctx["approved"] = a
                 ctx["decision_id"], ctx["version"] = a.decision_id, a.version
                 return {"status": a.status, "approver": APPROVER_ID}
@@ -242,7 +242,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
                     source_ref={"source_registry_id": "synthetic-source-1", "evidence_id": "synthetic-evidence-1",
                                 "content_hash": "sha256:" + "ab" * 32},
                     provenance_class="observed", validation_status="source_verified",
-                    now=_stamp(base + timedelta(hours=3)), audit=audit, require_anchored=True)
+                    now=_stamp(base + timedelta(hours=3)), audit=audit)
                 ctx["outcome_id"] = out["outcome_id"]
                 return {"outcome_id": out["outcome_id"]}
             run("outcome_record", do_record)
@@ -252,7 +252,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
                 r = review_outcome_as(ctx["outcomes"], a.decision_id, a.version, ctx["outcome_id"],
                                       principal=adapter.issue("reviewer"), new_state="reviewed",
                                       rationale_code="source_checked", now=_stamp(base + timedelta(hours=4)),
-                                      audit=audit, require_anchored=True)
+                                      audit=audit)
                 return {"new_state": r["new_state"], "reviewer": REVIEWER_ID}
             run("outcome_review", do_review)
 
