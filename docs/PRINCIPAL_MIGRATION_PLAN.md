@@ -168,7 +168,7 @@ Verified on main:
 - **#70/#86/#89/#92:** public outcome writes now route through `record_outcome_as()` / `review_outcome_as()`; #92 retires the public role-string exports. The wrappers still accept explicit `require_anchored=False`, and private helpers can skip shared audit when audit is absent.
 - **#88:** `agora pilot --workdir <new-empty-directory>` runs a local synthetic sequence with explicit policy/anchor arguments, per-stage results, first-denial stop, audit verification and synthetic-labelled report. It does not persist the M2 run-record envelope or call `build_scenario_input()` / the simulation engine. Exact-head CI run `44945307064` passed 4/4.
 - **#89:** default-True policy/anchor parameters passed exact-head CI run `44948055801` (4/4).
-- **#92:** public role-string outcome exports retired; merged at `810f33b1`, exact-head CI run `44950576945` passed 4/4.
+- **#92:** public role-string outcome exports retired; merged at `1fbde112`, exact-head CI run `44950576945` passed 4/4.
 - **#94:** `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers; fresh-process tests cover CLI import and pilot help dispatch. Exact-head CI run `44955653075` passed 4/4.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
