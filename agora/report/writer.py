@@ -8,8 +8,10 @@ computed, never written by the model.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import sqlite3
 import time
 from pathlib import Path
 from typing import Callable
@@ -486,6 +488,101 @@ def write_section(llm, tb: Toolbox, a: dict, sec: dict, i: int, known: set[int],
         raise StepFailed(f"Step 'report section: {sec['title']}' could not run: {e}") from e
 
 
+def _report_provenance(project: Path) -> dict:
+    """Read and verify run provenance without modifying the run database."""
+    db_path = (project / "agora.db").resolve()
+    if not db_path.is_file():
+        return {
+            "run_id": str(project.name or project.resolve().name),
+            "provenance_status": "legacy_missing",
+            "legacy": True,
+            "mode": "exploratory",
+            "simulated": True,
+        }
+    db_uri = f"{db_path.as_uri()}?mode=ro"
+    db = sqlite3.connect(db_uri, uri=True)
+    try:
+        row = db.execute("SELECT value FROM meta WHERE key=?", ("run_id",)).fetchone()
+        run_id = json.loads(row[0]) if row else None
+        run_id = run_id or project.name or project.resolve().name
+
+        row = db.execute(
+            "SELECT value FROM meta WHERE key=?", ("input_provenance",)
+        ).fetchone()
+        envelope = json.loads(row[0]) if row else None
+    finally:
+        db.close()
+
+    if envelope is None:
+        return {
+            "run_id": str(run_id),
+            "provenance_status": "legacy_missing",
+            "legacy": True,
+            "mode": "exploratory",
+            "simulated": True,
+        }
+    if not isinstance(envelope, dict):
+        raise ValueError("report input provenance envelope is malformed")
+    manifest = envelope.get("input_manifest")
+    if not isinstance(manifest, dict):
+        raise ValueError("report input provenance manifest is malformed")
+    canonical = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    )
+    expected_hash = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if envelope.get("manifest_hash") != expected_hash:
+        raise ValueError("input provenance manifest hash mismatch")
+    if envelope.get("scenario_hash") != manifest.get("scenario_hash"):
+        raise ValueError("input provenance scenario hash mismatch")
+
+    required = {
+        "scenario_hash", "import_id", "dataset_id", "schema_id", "schema_version",
+        "schema_fingerprint", "binding_id", "binding_version", "binding_fingerprint",
+        "ontology_pack_id", "ontology_schema_version", "ontology_pack_fingerprint",
+        "data_role", "source_registry_id", "file_sha256",
+    }
+    missing = sorted(key for key in required if not manifest.get(key))
+    if missing:
+        raise ValueError(
+            "report input provenance is incomplete: " + ", ".join(missing)
+        )
+    redactions = manifest.get("redactions", [])
+    if not isinstance(redactions, list):
+        raise ValueError("report input provenance redactions are malformed")
+    property_ids = sorted({
+        item.get("property_id") for item in redactions
+        if isinstance(item, dict) and isinstance(item.get("property_id"), str)
+    })
+    return {
+        "run_id": str(run_id),
+        "provenance_status": "verified",
+        "legacy": False,
+        "mode": "exploratory",
+        "simulated": True,
+        "scenario_hash": envelope["scenario_hash"],
+        "manifest_hash": envelope["manifest_hash"],
+        "import_id": manifest["import_id"],
+        "dataset_id": manifest["dataset_id"],
+        "schema_id": manifest["schema_id"],
+        "schema_version": manifest["schema_version"],
+        "schema_fingerprint": manifest["schema_fingerprint"],
+        "binding_id": manifest["binding_id"],
+        "binding_version": manifest["binding_version"],
+        "binding_fingerprint": manifest["binding_fingerprint"],
+        "ontology_pack_id": manifest["ontology_pack_id"],
+        "ontology_schema_version": manifest["ontology_schema_version"],
+        "ontology_pack_fingerprint": manifest["ontology_pack_fingerprint"],
+        "transformation_policy_fingerprint": manifest.get("transformation_policy_fingerprint"),
+        "redaction_summary": {
+            "redacted_values": len(redactions),
+            "property_ids": property_ids,
+        },
+        "data_role": manifest["data_role"],
+        "source_registry_id": manifest["source_registry_id"],
+        "file_sha256": manifest["file_sha256"],
+    }
+
 def write_report(project: str | Path, llm: LLMBackend | None,
                  say: Callable[[str], None] = lambda m: None,
                  should_stop: Callable[[], bool] = lambda: False,
@@ -510,6 +607,9 @@ def write_report(project: str | Path, llm: LLMBackend | None,
         )
         if not VALIDATED_PREDICTION_ENABLED:
             raise PermissionError('Approval checks passed, but Validated Prediction output remains disabled pending separate owner approval. Use exploratory mode.')
+    # Preserve the validated-prediction gate as the first operation that can fail.
+    # Missing databases are legacy runs; this read must never create one.
+    provenance = _report_provenance(project)
     an = Analysis(project)
     try:
         a = an.everything()
@@ -562,6 +662,7 @@ def write_report(project: str | Path, llm: LLMBackend | None,
                       "model_version": approval["model_version"], "config_hash": approval["config_hash"]}
                      if approval else {"status": "not_assessed", "registry_id": None})
     report = {"mode": mode, "mode_label": ("VALIDATED PREDICTION" if approval else "EXPLORATORY SIMULATION"),
+              "provenance": provenance,
               "qualification": qualification, "claims": list(claims or []),
               "title": a["scenario"]["question"], "generated": time.strftime("%Y-%m-%d %H:%M"),
               "model": f"{llm.cfg.backend}:{llm.cfg.model}" if llm is not None else "none",
@@ -570,9 +671,10 @@ def write_report(project: str | Path, llm: LLMBackend | None,
               "quotes": {pid: posts.line(pid) for pid in cited}}
     out = project / "report"
     out.mkdir(exist_ok=True)
+    from .render import to_html, to_markdown, validate_exploratory_output
+    validate_exploratory_output(report)
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False, default=str),
                                      encoding="utf-8")
-    from .render import to_html, to_markdown
     (out / "report.md").write_text(to_markdown(report), encoding="utf-8")
     (out / "report.html").write_text(to_html(report), encoding="utf-8")
     say("Report saved: report/report.html and report/report.md")

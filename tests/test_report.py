@@ -1,5 +1,6 @@
 """Analysis, report agent (including its guard against invented numbers), interaction."""
 import json
+import shutil
 import sqlite3
 
 import pytest
@@ -10,6 +11,7 @@ from agora.report import interact
 from agora.report.analysis import Analysis
 from agora.report.writer import check, write_report
 from agora.sim.engine import Simulation
+from agora.store import Store
 from conftest import make_project
 
 
@@ -83,6 +85,9 @@ def test_report_without_model_states_numbers(ran):
     a = r["analysis"]
     lake = next(f for f in a["funnel"] if f["name"] == "register_lakeview")
     assert f"{lake['count']} of {lake['eligible']}" in r["sections"][0]["text"]
+    assert r["provenance"]["provenance_status"] == "legacy_missing"
+    assert "LEGACY RUN" in (ran / "report" / "report.md").read_text(encoding="utf-8")
+    assert "LEGACY RUN" in (ran / "report" / "report.html").read_text(encoding="utf-8")
 
 
 def test_chat_interview_ask_history(ran):
@@ -176,3 +181,41 @@ def test_report_agent_plans_and_uses_tools(ran):
         assert "63.7" not in s["text"]
     html = (ran / "report" / "report.html").read_text(encoding="utf-8")
     assert "How this report was researched" in html and "Opinion by group" in html
+
+
+
+def test_verified_input_provenance_is_in_json_markdown_and_html(ran, tmp_path):
+    project = tmp_path / "verified-report"
+    shutil.copytree(ran, project)
+    manifest = {
+        "scenario_hash": "sha256:scenario-report",
+        "import_id": "import-report",
+        "dataset_id": "customers",
+        "schema_id": "customers-v1",
+        "schema_version": "1.0.0",
+        "schema_fingerprint": "sha256:schema",
+        "binding_id": "customers.binding",
+        "binding_version": "1.0.0",
+        "binding_fingerprint": "sha256:binding",
+        "ontology_pack_id": "commerce",
+        "ontology_schema_version": "1.0.0",
+        "ontology_pack_fingerprint": "sha256:ontology",
+        "transformation_policy_fingerprint": "sha256:policy",
+        "data_role": "context",
+        "source_registry_id": "source-report",
+        "file_sha256": "sha256:file",
+        "redactions": [{"property_id": "commerce:Customer.email", "row_id": "secret-row"}],
+    }
+    store = Store(project / "agora.db")
+    store.set_input_provenance(manifest)
+    store.close()
+
+    report = write_report(project, None)
+    saved = json.loads((project / "report" / "report.json").read_text(encoding="utf-8"))
+    markdown = (project / "report" / "report.md").read_text(encoding="utf-8")
+    html = (project / "report" / "report.html").read_text(encoding="utf-8")
+    assert report["provenance"]["provenance_status"] == "verified"
+    assert saved["provenance"]["scenario_hash"] == "sha256:scenario-report"
+    assert "import-report" in markdown and "sha256:binding" in markdown
+    assert "Run provenance" in html and "sha256:ontology" in html
+    assert "secret-row" not in json.dumps(saved["provenance"])
