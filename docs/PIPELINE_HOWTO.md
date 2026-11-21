@@ -38,7 +38,7 @@ The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`; the module does not import or call the simulation engine.
+Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`. The `agora.pilot` module itself contains no simulation-engine import/call, but `agora.cli` currently imports `.sim.engine` at module scope before dispatch, so the CLI path loads that module; no simulation is invoked.
 
 This command is a merged M1 component, not an M2-complete operator workflow. It does not call `build_scenario_input()`, persist the immutable operator run record, provide a standalone audit timeline, reconcile cross-store records, list held outcomes, back up/restore stores, run a tamper drill or execute the operator runbook. Do not treat the in-code fixture as the checked-in dataset required by M2. Exact-head CI run `44945307064` passed all four jobs; no local execution is claimed by this document refresh.
 
@@ -142,13 +142,19 @@ The API checks the exact current version, fingerprint, scope, evidence reference
 
 ## 8. Step E — audit evidence
 
-**Status: AVAILABLE — local-sidecar API; partially wired, with opt-in gates**
+**Status: AVAILABLE — local-sidecar API; Principal wrapper gates default on, but universal protected-mode wiring remains partial**
 
 Main contains the local append-only hash chain from #38/#47 and the merged local-sidecar implementation from #63. #74 wires lifecycle/outcome appends and #75 introduces the structural `AuditAppender` protocol. The API includes `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()`, and `verify_anchored()`. `AnchoredAuditChain.append()` serializes the verify → chain append → anchor advance sequence with a cross-process sidecar lock and fails closed when the existing chain/anchor state is not cleanly verified. If the chain append succeeds but anchor persistence fails, `AnchorWriteError` reports a partial failure; do not retry the protected business operation or describe it as fully audited.
 
 The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-**Integration status on main after #88:**
+**Integration status on main after #89:**
+
+- #89 makes `require_anchored=True` the default on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; explicit `False` remains accepted.
+- Public `record_outcome()` / `review_outcome()` remain callable with optional audit, and the Principal wrappers still delegate to them.
+- `approve()` remains default-deny but can still be enabled with `AGORA_TEST_ONLY_LEGACY_APPROVE=1`.
+- Direct `enforce_policy()` still defaults `require_policy=False`; when `audit=None`, policy-denial logging uses an unanchored local `AuditChainStore`.
+- No standalone audit timeline or plain-language verification command exists; only the pilot's `audit_verify` stage is available.
 
 ## 9. Step F — record and review an observed outcome
 
@@ -156,7 +162,7 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
-There is no separate outcome CLI. PR #70 adds
+There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data and #89 defaults their anchor check on. The wrappers still delegate to public role-string `record_outcome()` / `review_outcome()`; explicit `require_anchored=False` remains accepted, and the legacy functions still accept optional audit.
 
 Outcome dependency review markers are not implemented. Reconciliation between decision and audit stores is not implemented.
 
