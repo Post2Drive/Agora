@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+from datetime import date, datetime
+import re
 from typing import Any, Mapping
 
 
@@ -19,6 +21,8 @@ _REQUIRED = {
     "proposer", "reviewer", "created_at", "updated_at", "approval_method", "review_date",
 }
 _OPTIONAL = {"approver", "supersedes", "fingerprint"}
+_REF_KINDS = {"import", "binding", "ontology_pack", "run", "scenario"}
+_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def _canonical(value: Any) -> str:
@@ -53,6 +57,41 @@ def _reject_latest(value: Any) -> None:
             _reject_latest(nested)
 
 
+def _validate_ref(ref: Mapping[str, Any]) -> None:
+    kind = _text(ref.get("kind"), "evidence_refs.kind")
+    if kind not in _REF_KINDS:
+        raise DecisionRecordError("unsupported evidence reference kind")
+    forbidden = {"head", "*"}
+    for value in ref.values():
+        if isinstance(value, str) and value.strip().lower() in forbidden:
+            raise DecisionRecordError("evidence references must use exact immutable IDs")
+    if kind == "import":
+        _text(ref.get("import_id"), "evidence_refs.import_id")
+    elif kind in {"binding", "ontology_pack"}:
+        fingerprint = _text(ref.get("fingerprint"), "evidence_refs.fingerprint")
+        if not _HASH_RE.fullmatch(fingerprint):
+            raise DecisionRecordError("binding and ontology references require a sha256 fingerprint")
+    elif kind == "run":
+        _text(ref.get("run_id"), "evidence_refs.run_id")
+        if ref.get("mode") != "exploratory":
+            raise DecisionRecordError("run evidence must be labelled exploratory")
+    elif kind == "scenario":
+        scenario_hash = _text(ref.get("scenario_hash"), "evidence_refs.scenario_hash")
+        if not _HASH_RE.fullmatch(scenario_hash):
+            raise DecisionRecordError("scenario references require a sha256 scenario_hash")
+        if ref.get("mode") != "exploratory":
+            raise DecisionRecordError("scenario evidence must be labelled exploratory")
+
+
+def _validate_timestamps(payload: Mapping[str, Any]) -> None:
+    try:
+        for field in ("created_at", "updated_at"):
+            parsed = datetime.fromisoformat(_text(payload[field], field).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                raise ValueError
+        date.fromisoformat(_text(payload["review_date"], "review_date"))
+    except (TypeError, ValueError):
+        raise DecisionRecordError("timestamps must be RFC3339 and review_date must be an ISO date") from None
 @dataclass(frozen=True)
 class DecisionRecord:
     decision_id: str
@@ -114,12 +153,17 @@ def load_decision_record(payload: Mapping[str, Any]) -> DecisionRecord:
     if status not in STATUSES:
         raise DecisionRecordError("unsupported decision status")
     refs = payload["evidence_refs"]
-    if not isinstance(refs, list) or any(not isinstance(ref, Mapping) or not ref for ref in refs):
+    if not isinstance(refs, list) or not refs or any(not isinstance(ref, Mapping) or not ref for ref in refs):
         raise DecisionRecordError("evidence_refs must be a non-empty list of objects")
     for ref in refs:
-        if not _text(ref.get("kind"), "evidence_refs.kind") or not _text(ref.get("ref"), "evidence_refs.ref"):
-            raise DecisionRecordError("evidence references require kind and exact ref")
+        _validate_ref(ref)
     _reject_latest(refs)
+    _validate_timestamps(payload)
+    approver = payload.get("approver")
+    if status == "approved":
+        approver = _text(approver, "approver")
+        if approver == _text(payload["proposer"], "proposer"):
+            raise DecisionRecordError("approver must differ from proposer")
     body = {
         "decision_id": decision_id, "version": version, "project_scope": dict(scope), "status": status,
         "statement": _text(payload["statement"], "statement"), "alternatives": _list_text(payload["alternatives"], "alternatives"),
@@ -133,6 +177,8 @@ def load_decision_record(payload: Mapping[str, Any]) -> DecisionRecord:
     for optional in ("approver", "supersedes"):
         if optional in payload and payload[optional] is not None:
             body[optional] = _text(payload[optional], optional)
+    if status == "approved":
+        body["approver"] = approver
     fingerprint = _fingerprint(body)
     if payload.get("fingerprint") is not None and payload["fingerprint"] != fingerprint:
         raise DecisionRecordError("decision record fingerprint does not match content")

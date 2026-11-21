@@ -12,11 +12,11 @@ def record():
     return {
         "decision_id": "decision-001", "version": 1, "project_scope": {"project_id": "pilot-1"},
         "status": "draft", "statement": "Choose a synthetic pilot cohort", "alternatives": ["A", "B"],
-        "evidence_refs": [{"kind": "snapshot", "ref": "import-001", "dataset_id": "customers"}, {"kind": "run", "ref": "run-001"}],
+        "evidence_refs": [{"kind": "import", "import_id": "import-001", "dataset_id": "customers"}, {"kind": "run", "run_id": "run-001", "mode": "exploratory"}],
         "rationale": "Evidence is exploratory.", "assumptions": ["Synthetic data"], "uncertainty": ["Small sample"],
         "outcome_measures": ["observed follow-up"], "proposer": "analyst", "reviewer": "reviewer",
         "created_at": "2026-11-21T00:00:00Z", "updated_at": "2026-11-21T00:00:00Z",
-        "approval_method": "manual", "review_date": "2026-12-01T00:00:00Z",
+        "approval_method": "manual", "review_date": "2026-12-01",
     }
 
 
