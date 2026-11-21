@@ -7,9 +7,11 @@ from typing import Any
 import uuid
 
 from agora.audit_chain import AuditAppender
-from agora.principal import Principal, decide_principal
+from agora.principal import Principal
 
-from .permissions import DecisionPermissionError, authorize_decision_approval
+from .permissions import (
+    DecisionPermissionError, authorize_decision_approval, authorize_decision_approval_principal,
+)
 from .schema import DecisionRecord, DecisionRecordError, load_decision_record
 from .store import DecisionRecordStore
 
@@ -160,6 +162,55 @@ def propose(
     return updated
 
 
+def _check_approvable(
+    current: DecisionRecord, decision_id: str, actor: str, *,
+    expected_fingerprint: str, expected_scope: Mapping[str, Any],
+    expected_evidence_refs: list[dict[str, Any]], moment: datetime,
+    resource: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """State, exact-version, separation-of-duties and expiry checks; returns policy resource."""
+    if current.status != "proposed":
+        raise ApprovalTransitionError("only a proposed decision can be approved")
+    if expected_fingerprint != current.fingerprint:
+        raise ApprovalTransitionError("stale decision fingerprint")
+    if dict(expected_scope) != current.project_scope:
+        raise ApprovalTransitionError("decision scope does not match the reviewed scope")
+    if expected_evidence_refs != current.evidence_refs:
+        raise ApprovalTransitionError("decision evidence does not match the reviewed evidence")
+    if current.proposer == current.reviewer:
+        raise ApprovalTransitionError("proposer and reviewer must be different people")
+    if actor in {current.proposer, current.reviewer}:
+        raise ApprovalTransitionError("approver must differ from proposer and reviewer")
+    if date.fromisoformat(current.review_date) < moment.date():
+        raise ApprovalTransitionError("decision approval window has expired")
+    policy_resource = dict(resource or {})
+    policy_resource.update(current.project_scope)
+    policy_resource["resource_ids"] = [decision_id]
+    policy_resource.setdefault("source_sensitivity", "internal")
+    return policy_resource
+
+
+def _commit_approval(
+    store: DecisionRecordStore, current: DecisionRecord, actor: str, method: str,
+    moment: datetime, policy_decision: dict[str, Any], audit: AuditAppender | None,
+) -> DecisionRecord:
+    stamp = _stamp(moment)
+    updated = _next(
+        current, status="approved", actor=actor, method=method,
+        occurred_at=stamp, approver=actor,
+    )
+    store.append_transition(
+        updated,
+        _event(updated, "approved", actor, method, stamp),
+        policy_decision=policy_decision,
+    )
+    _audit(
+        audit, updated, "approved", actor, operation="decision_approval",
+        policy_version=policy_decision.get("policy_version"),
+    )
+    return updated
+
+
 def approve(
     store: DecisionRecordStore,
     decision_id: str,
@@ -176,30 +227,20 @@ def approve(
     now: datetime | str | None = None,
     audit: AuditAppender | None = None,
 ) -> DecisionRecord:
-    """Approve only the exact current proposal after policy and separation checks."""
+    """LEGACY role-string approval (caller asserts role). Prefer approve_as().
+
+    Kept only until call sites migrate to approve_as(); production paths must
+    not use it (see docs/PRINCIPAL_MIGRATION_PLAN.md).
+    """
     current = _current(store, decision_id, expected_version)
-    if current.status != "proposed":
-        raise ApprovalTransitionError("only a proposed decision can be approved")
-    if expected_fingerprint != current.fingerprint:
-        raise ApprovalTransitionError("stale decision fingerprint")
-    if dict(expected_scope) != current.project_scope:
-        raise ApprovalTransitionError("decision scope does not match the reviewed scope")
-    if expected_evidence_refs != current.evidence_refs:
-        raise ApprovalTransitionError("decision evidence does not match the reviewed evidence")
-    if current.proposer == current.reviewer:
-        raise ApprovalTransitionError("proposer and reviewer must be different people")
-    if actor in {current.proposer, current.reviewer}:
-        raise ApprovalTransitionError("approver must differ from proposer and reviewer")
+    moment = _time(now)
     if not isinstance(subject, Mapping) or subject.get("subject_id") != actor:
         raise ApprovalTransitionError("policy subject must identify the approval actor")
-
-    moment = _time(now)
-    if date.fromisoformat(current.review_date) < moment.date():
-        raise ApprovalTransitionError("decision approval window has expired")
-    policy_resource = dict(resource or {})
-    policy_resource.update(current.project_scope)
-    policy_resource["resource_ids"] = [decision_id]
-    policy_resource.setdefault("source_sensitivity", "internal")
+    policy_resource = _check_approvable(
+        current, decision_id, actor, expected_fingerprint=expected_fingerprint,
+        expected_scope=expected_scope, expected_evidence_refs=expected_evidence_refs,
+        moment=moment, resource=resource,
+    )
     # This call is mandatory: the central PDP grants decision_approval to
     # approver only and also checks scope and sensitivity.
     try:
@@ -212,22 +253,7 @@ def approve(
             policy_version=exc.decision.get("policy_version"),
         )
         raise
-
-    stamp = _stamp(moment)
-    updated = _next(
-        current, status="approved", actor=actor, method=method,
-        occurred_at=stamp, approver=actor,
-    )
-    store.append_transition(
-        updated,
-        _event(updated, "approved", actor, method, stamp),
-        policy_decision=policy_decision,
-    )
-    _audit(
-        audit, updated, "approved", actor, operation="decision_approval",
-        policy_version=policy_decision.get("policy_version"),
-    )
-    return updated
+    return _commit_approval(store, current, actor, method, moment, policy_decision, audit)
 
 
 def approve_as(
@@ -253,24 +279,26 @@ def approve_as(
     if require_anchored:
         _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
+    moment = _time(now)
     policy_resource = dict(resource or {})
     policy_resource.update(current.project_scope)
     policy_resource["resource_ids"] = [decision_id]
     policy_resource.setdefault("source_sensitivity", "internal")
-    moment = _time(now)
-    decision, role = decide_principal(principal, "decision_approval", policy_resource, now=moment)
-    if role is None:
-        _audit(audit, current, "approval_denied", decision["subject_id"], decision="deny",
-               reason=str(decision.get("reason", "policy_denied")),
-               operation="decision_approval", policy_version=decision.get("policy_version"))
-        raise DecisionPermissionError(decision)
-    return approve(
-        store, decision_id, expected_version, actor=principal.subject_id, role=role,
-        subject={"subject_id": principal.subject_id, "project_id": current.project_scope.get("project_id")},
-        expected_fingerprint=expected_fingerprint, expected_scope=expected_scope,
-        expected_evidence_refs=expected_evidence_refs, method=method, resource=resource,
-        now=moment, audit=audit,
+    try:
+        policy_decision, _role = authorize_decision_approval_principal(
+            principal, policy_resource, now=moment)
+    except DecisionPermissionError as exc:
+        _audit(audit, current, "approval_denied", str(exc.decision.get("subject_id", "unknown")),
+               decision="deny", reason=str(exc.decision.get("reason", "policy_denied")),
+               operation="decision_approval", policy_version=exc.decision.get("policy_version"))
+        raise
+    actor = principal.subject_id  # only reached when principal is a valid Principal
+    _check_approvable(
+        current, decision_id, actor, expected_fingerprint=expected_fingerprint,
+        expected_scope=expected_scope, expected_evidence_refs=expected_evidence_refs,
+        moment=moment, resource=resource,
     )
+    return _commit_approval(store, current, actor, method, moment, policy_decision, audit)
 
 
 def reject(

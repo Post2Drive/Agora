@@ -4,7 +4,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from datetime import datetime
+
 from agora.policy import decide
+from agora.principal import Principal, decide_principal
 
 
 class DecisionPermissionError(PermissionError):
@@ -27,4 +30,27 @@ def authorize_decision_approval(
     return decision
 
 
-__all__ = ["DecisionPermissionError", "authorize_decision_approval"]
+def authorize_decision_approval_principal(
+    principal: Principal | None,
+    resource: Mapping[str, Any],
+    *,
+    now: datetime | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Principal-native approval gate: authority comes only from the principal.
+
+    Requires the ``approver`` role specifically (a principal holding other roles
+    cannot approve). Raises DecisionPermissionError with the audit-safe denial.
+    Returns (decision, role).
+    """
+    decision, role = decide_principal(
+        principal, "decision_approval", resource, now=now, required_role="approver",
+    )
+    if role is None or decision.get("decision") != "allow":
+        raise DecisionPermissionError(decision)
+    return decision, role
+
+
+__all__ = [
+    "DecisionPermissionError", "authorize_decision_approval",
+    "authorize_decision_approval_principal",
+]
