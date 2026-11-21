@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 1fbde112d00fc4fc579e9be6385104d655a9ced4 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91 and #92; no ChatGPT docs PR is currently open.
+**Assessment base:** main at 810f33b1a89dc227f9d54764e324488e20a64817 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93 and #94; no ChatGPT docs PR was open at the start of this refresh.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -159,7 +159,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
 
-## Current migration status — main 1fbde112d00fc4fc579e9be6385104d655a9ced4 (22 November 2026)
+## Current migration status — main 810f33b1a89dc227f9d54764e324488e20a64817 (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89:** `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` now default to `require_policy=True`. Explicit `False` remains accepted. `enforce_policy()` itself defaults off, and its `audit=None` denial path still writes to an unanchored local `AuditChainStore`.
@@ -168,10 +168,11 @@ Verified on main:
 - **#70/#86/#89/#92:** public outcome writes now route through `record_outcome_as()` / `review_outcome_as()`; #92 retires the public role-string exports. The wrappers still accept explicit `require_anchored=False`, and private helpers can skip shared audit when audit is absent.
 - **#88:** `agora pilot --workdir <new-empty-directory>` runs a local synthetic sequence with explicit policy/anchor arguments, per-stage results, first-denial stop, audit verification and synthetic-labelled report. It does not persist the M2 run-record envelope or call `build_scenario_input()` / the simulation engine. Exact-head CI run `44945307064` passed 4/4.
 - **#89:** default-True policy/anchor parameters passed exact-head CI run `44948055801` (4/4).
-- **#92:** public role-string outcome exports retired; merged at `1fbde112`, exact-head CI run `44950576945` passed 4/4.
+- **#92:** public role-string outcome exports retired; merged at `810f33b1`, exact-head CI run `44950576945` passed 4/4.
+- **#94:** `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers; fresh-process tests cover CLI import and pilot help dispatch. Exact-head CI run `44955653075` passed 4/4.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
-**Current blockers:** legacy `approve()` has a runtime environment escape; explicit `require_policy=False` / `require_anchored=False` overrides remain; direct `enforce_policy()` defaults `require_policy=False`; policy-denial `audit=None` still writes to an unanchored local chain. The public role-string outcome exports are retired by #92. `agora.cli` still imports `.sim.engine` at module scope, so the M2 pilot CLI import-isolation slice remains queued. Reconciliation (#57) and outcome dependency markers (#60) remain specifications only. No M1/M2 confirmation exists. PR #91 is merged; no open ChatGPT docs PR existed at the start of this refresh.
+**Current blockers:** legacy `approve()` has a runtime environment escape; explicit `require_policy=False` / `require_anchored=False` overrides remain; direct `enforce_policy()` defaults `require_policy=False`; policy-denial `audit=None` still writes to an unanchored local chain. The public role-string outcome exports are retired by #92. CLI import isolation is closed by #94: `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers, while pilot/data dispatch remain engine-import-free. Reconciliation (#57) and outcome dependency markers (#60) remain specifications only. No M1/M2 confirmation exists. PRs #91 and #93 are merged; no open ChatGPT docs PR existed at the start of this refresh.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.
