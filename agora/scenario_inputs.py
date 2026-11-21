@@ -62,7 +62,7 @@ def _policy_fingerprint(policy: Mapping[str, Any] | None) -> str | None:
     return None if policy is None else _sha256(dict(policy))
 
 
-def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | None) -> None:
+def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     sensitive = {
         property_id
         for instance in instances
@@ -70,15 +70,37 @@ def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | N
         if level in {"personal", "sensitive"}
     }
     if not sensitive:
-        return
+        return instances, []
     if not isinstance(policy, Mapping):
         raise ScenarioInputError("personal or sensitive values require an explicit transformation policy")
-    required = {"policy_id", "purpose", "retention", "reviewer", "approved_at", "audit_reference"}
-    if not required.issubset(policy) or any(not isinstance(policy[key], str) or not policy[key].strip() for key in required):
+    scalar_required = {"policy_id", "purpose", "retention", "reviewer", "approved_at", "audit_reference"}
+    required = scalar_required | {"authorized_property_ids"}
+    if not required.issubset(policy) or any(not isinstance(policy[key], str) or not policy[key].strip() for key in scalar_required):
+        if "authorized_property_ids" in policy and not isinstance(policy["authorized_property_ids"], (list, tuple, set)):
+            raise ScenarioInputError("transformation policy authorized_property_ids must be a list")
         raise ScenarioInputError("transformation policy is incomplete")
-    permitted = set(policy.get("permitted_sensitivities", ("personal", "sensitive")))
-    if not {"personal", "sensitive"}.issubset(permitted):
-        raise ScenarioInputError("transformation policy does not authorize all sensitive values")
+    authorized = set(policy["authorized_property_ids"])
+    if any(not isinstance(value, str) or not value.strip() for value in authorized):
+        raise ScenarioInputError("transformation policy authorized_property_ids must contain text IDs")
+    known = set(instances[0].get("property_sensitivity", {})) if instances else set()
+    unknown = authorized - known
+    if unknown:
+        raise ScenarioInputError("transformation policy references an unknown property")
+    non_sensitive = authorized - sensitive
+    if non_sensitive:
+        raise ScenarioInputError("transformation policy can authorize only personal or sensitive properties")
+    sanitized = []
+    redactions: list[dict[str, Any]] = []
+    for instance in instances:
+        clone = dict(instance)
+        clone["property_values"] = dict(instance.get("property_values", {}))
+        for property_id in sorted(sensitive - authorized):
+            if property_id in clone["property_values"]:
+                value_hash = _sha256(clone["property_values"][property_id])
+                clone["property_values"][property_id] = "[REDACTED]"
+                redactions.append({"property_id": property_id, "row_id": instance.get("row_id"), "value_hash": value_hash})
+        sanitized.append(clone)
+    return sanitized, redactions
 
 
 def build_scenario_input(
@@ -98,13 +120,13 @@ def build_scenario_input(
     role = snapshot.get("data_role")
     if role == "sealed_holdout":
         raise ScenarioInputError("sealed_holdout snapshots cannot feed scenario inputs")
-    if role not in {"context", "scenario_input", "calibration", "validation"}:
+    if role not in {"context", "scenario_input"}:
         raise ScenarioInputError("snapshot data role is unsupported")
     try:
         instances = materialize_instances(binding, pack, project, import_id)
     except (OntologyError, ValueError) as exc:
         raise ScenarioInputError(str(exc)) from exc
-    _check_policy(instances, transformation_policy)
+    instances, redactions = _check_policy(instances, transformation_policy)
     parameters = dict(scenario_parameters or {})
     policy_fp = _policy_fingerprint(transformation_policy)
     binding_fingerprint = binding.fingerprint if isinstance(binding, DataBinding) else _sha256(binding)
@@ -135,6 +157,7 @@ def build_scenario_input(
         "created_at": created_at,
         "scenario_hash": scenario_hash,
         "run_provenance_reference": f"scenario:{scenario_hash}",
+        "redactions": redactions,
     }
     return {
         "manifest": manifest,

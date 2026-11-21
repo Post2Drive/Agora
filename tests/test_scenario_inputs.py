@@ -41,16 +41,18 @@ def _binding(version="1.0.0", binding_id="scenario.customer.v1"):
                          "property_sensitivity": {"scenario:Customer.id": "personal", "scenario:Customer.email": "sensitive"}})
 
 
-def _import(tmp_path, schema=None, content="C001,synthetic@example.test\n"):
+def _import(tmp_path, schema=None, content="C001,synthetic@example.test\n", data_role="context"):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     source = tmp_path / "customers.csv"
     source.write_text("customer_id,email\n" + content, encoding="utf-8")
-    return ingest_csv(tmp_path, source, schema or _schema(), data_role="context")
+    return ingest_csv(tmp_path, source, schema or _schema(), data_role=data_role)
 
 
 def _policy():
     return {"policy_id": "test-transform-v1", "purpose": "synthetic test transformation", "retention": "one day",
             "reviewer": "governance-test", "approved_at": "2026-11-21T00:00:00Z", "audit_reference": "AUD-001",
-            "permitted_sensitivities": ["personal", "sensitive"]}
+            "permitted_sensitivities": ["personal", "sensitive"],
+            "authorized_property_ids": ["scenario:Customer.id"]}
 
 
 def test_explicit_import_id_required_and_latest_rejected(tmp_path):
@@ -113,6 +115,30 @@ def test_sensitive_values_require_explicit_policy(tmp_path):
         build_scenario_input(_binding(), _pack(), tmp_path, result["import_id"])
     built = build_scenario_input(_binding(), _pack(), tmp_path, result["import_id"], transformation_policy=_policy())
     assert built["manifest"]["transformation_policy_fingerprint"].startswith("sha256:")
+    assert built["instances"][0]["property_values"]["scenario:Customer.email"] == "[REDACTED]"
+    assert built["manifest"]["redactions"]
+
+
+def test_calibration_and_validation_roles_are_rejected(tmp_path):
+    for role in ("calibration", "validation"):
+        result = _import(tmp_path / role, data_role=role)
+        with pytest.raises(ScenarioInputError, match="data role"):
+            build_scenario_input(_binding(), _pack(), tmp_path / role, result["import_id"], transformation_policy=_policy())
+
+
+def test_listed_sensitive_property_is_preserved(tmp_path):
+    result = _import(tmp_path)
+    policy = _policy() | {"authorized_property_ids": ["scenario:Customer.id", "scenario:Customer.email"]}
+    built = build_scenario_input(_binding(), _pack(), tmp_path, result["import_id"], transformation_policy=policy)
+    assert built["instances"][0]["property_values"]["scenario:Customer.email"] == "synthetic@example.test"
+    assert built["manifest"]["redactions"] == []
+
+
+def test_unknown_or_non_sensitive_authorized_property_is_rejected(tmp_path):
+    result = _import(tmp_path)
+    policy = _policy() | {"authorized_property_ids": ["scenario:Customer.unknown"]}
+    with pytest.raises(ScenarioInputError, match="unknown property"):
+        build_scenario_input(_binding(), _pack(), tmp_path, result["import_id"], transformation_policy=policy)
 
 
 def test_run_record_contains_exact_provenance(tmp_path):
