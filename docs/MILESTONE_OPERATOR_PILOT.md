@@ -1,7 +1,7 @@
 # M2 — Operator-Usable Synthetic Pilot
 
 **Status:** M2 scope approved by the owner; this checklist remains a planning contract, not an execution authorisation or readiness declaration.  
-**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
+**Assessment base:** `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026)  
 **Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
