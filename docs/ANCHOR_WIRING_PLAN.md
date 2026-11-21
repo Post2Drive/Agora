@@ -1,9 +1,9 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Documentation plan only; no source-code change or implementation approval  
-**Assessment base:** `main` at `ef09a828868cfa774eff58bcb56e41a639408ae2` (21 November 2026). The code baseline remains `19f51d84d3ecc8392eb8713e392f93cb58a736bf`; the later #62 merge changed documentation only.  
+**Status:** Stages A and D implemented on main by merged PR #71; Stages B and C remain planned/not implemented. This document is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
-**Implementation under development:** PR #63, `feat/audit-anchor`, head `b135fdadd17bebfac4ab3137554bb4519070d5f9`; in the review queue per the latest collaboration entry (GitHub state remains open draft, not merged). Exact-head workflow run 184 completed with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. No formal review submission or inline review thread was present at this check.
+**Implementation evidence:** PR #63 (local-sidecar primitive) and PR #71 (anchored writer factory plus policy-denial/data-boundary wiring). PR #71 exact head `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; exact-head Actions run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 ## 1. Purpose and non-claims
 
@@ -15,15 +15,15 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against the code at `19f51d84d3ecc8392eb8713e392f93cb58a736bf`. PR #62 subsequently merged the rung-status document only; it did not change these code paths.
+The following inventory was checked against current main at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`, after PR #71 merged.
 
 ### 2.1 Audit primitives
 
 - `agora/audit_chain.py` defines `AuditChainStore(path)`, `append(event)`, `verify()` and `close()`. The store redacts to an allow-list, uses an append-only SQLite table, verifies the full hash chain and rejects replayed event IDs.
-- PR #63 adds `agora/audit_anchor.py` on its draft branch. It provides `AnchorStore(path, chain_id)`, `bootstrap_anchor(..., performed_by=...)`, `verify_anchored(chain, anchors)` and `AnchoredAuditChain(chain, anchors)`. The wrapper exposes `append()` and `verify()`; it does not currently expose `close()` or a context-manager lifecycle.
-- PR #63's `AnchorStore` appends JSONL records, flushes and calls `os.fsync`. It does not currently show explicit file-permission setting or an atomic temporary-file/rename protocol. The merged specification #52 calls for service-identity permissions and atomic write/rename plus fsync where supported. Resolve and document this implementation/specification gap before treating the storage section as complete.
+- Merged PR #63 provides `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()` and `verify_anchored()`; the writer exposes `append()`, `verify()` and `close()`. Merged PR #71 adds `open_anchored_audit(chain_path, anchor_path, chain_id)`, which uses explicit paths, does not bootstrap, rejects same-file/unclean pairs and closes the chain on exit.
+- `AnchorStore` appends JSONL records, flushes and calls `os.fsync`; the implementation uses owner-only creation permissions. Compare the exact implementation against every #52 storage-hardening requirement before deployment; passing CI does not prove all operational permission, atomicity, backup or restore requirements.
 - The wrapper checks the existing anchor before appending, appends to the chain, reads/verifies the resulting head, then advances the anchor. If the anchor write fails, it raises `AnchorWriteError` and leaves the chain event in place. The next protected append sees an unanchored tail and is refused.
-- The current wrapper has no visible cross-process lock covering the chain append plus anchor advance. The wiring implementation must prove concurrent writers cannot race the two-store sequence or create ambiguous anchor advancement.
+- `AnchoredAuditChain` serializes verify → chain append → anchor advance with a cross-process sidecar lock. The known Linux lock-removal mutation gap remains; the earlier mutation proof did not detect removal of the lock.
 
 ### 2.2 Decision lifecycle
 
@@ -49,7 +49,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py` currently creates `AuditChainStore(project / "data" / "audit_chain.sqlite3")` internally when it must record a denial, appends the `policy_denied` event, and closes the store. It has no injected audit-writer/factory parameter and no anchor-path or chain-ID configuration. If this append fails, it raises `PolicyEnforcementError`.
+`agora/policy_enforcement.py::enforce_policy()` now accepts optional `audit=`. When a writer is supplied, denial events are appended through that writer and there is no unanchored fallback for that call. `open_anchored_audit()` supplies the configured writer. The data-boundary callers `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` now accept/thread `audit=`. However, the writer remains optional and `policy=None` remains a no-op; protected mode does not yet require a principal or anchored writer.
 
 The shared `enforce_policy()` boundary is called by:
 
@@ -159,7 +159,7 @@ Never bootstrap automatically on missing/corrupt anchor history. Never reset an 
 ### Recovery rules
 
 - An unanchored tail may result from a crash after chain append and before anchor durability. It is not permission to repeat the original operation or to delete the event.
-- A future recovery command must be explicit, append-only, idempotent and bound to the exact prior anchor, current chain head, event IDs and independent operator approval. The current PR #63 draft does not provide that recovery command.
+- A future recovery command must be explicit, append-only, idempotent and bound to the exact prior anchor, current chain head, event IDs and independent operator approval. The merged #63/#71 implementation does not provide that recovery command.
 - If chain and anchor must be restored from backup, restore them as a coordinated pair and verify the pair before resuming. A local pair alone cannot prove that both were not rolled back together.
 - If the anchor is missing after prior use, do not call bootstrap as a repair. Escalate for evidence-preserving investigation.
 - Keep external anchoring out of scope until a separate threat review, authentication/key-management plan, outage policy and owner approval exist.
@@ -187,7 +187,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63:** in the review queue per the latest collaboration entry; GitHub still shows it as open draft, not merged. Exact-head CI run 184 is green across all four matrix jobs, but no formal review submission or inline review thread was present at this check. The code does not wire the wrapper into approval, outcomes or policy enforcement.
+- **PR #63:** merged local-sidecar primitive; exact-head CI run 201 passed all four matrix jobs. **PR #71:** merged Stage A/D wiring; exact-head CI run 211 passed all four matrix jobs. Policy-denial/data-boundary paths accept an anchored writer; decision lifecycle and outcomes remain unwired (Stages B/C).
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
 - **Principal migration:** merged PR #58 provides only the synthetic `approve_as()` slice. Other role-string boundaries remain a separate migration task.
@@ -201,3 +201,18 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - No real data, personal/customer records, credentials, drivers, network connectors or external write-back.
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
+
+
+## 10. Current mainline status after PR #71
+
+**Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` is merged. It uses explicit chain/anchor paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
+
+**Stage D — policy-denial and data-boundary threading: IMPLEMENTED, BUT OPTIONAL.** `enforce_policy(..., audit=)` accepts an injected writer. When supplied, denial events use the anchored writer and do not fall back to a plain chain append. `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` accept and thread `audit=`. Important remaining limitation: `audit=None` preserves legacy behaviour, and `policy=None` remains a no-op. The new wiring does not make the policy hook principal-native or require an anchored writer in protected mode.
+
+**Stage B — decision lifecycle: NOT IMPLEMENTED.** `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()` and `supersede()` still accept optional audit appenders and have not been migrated to require the anchored writer in protected mode.
+
+**Stage C — outcome recording/review: NOT IMPLEMENTED.** #70 adds Principal-gated `record_outcome_as()` and `review_outcome_as()`, but these delegate to legacy role-string functions. Outcome APIs still accept optional audit appenders; no anchored outcome writer is wired by #71.
+
+**Next acceptance gates:** complete Stage B/C with the same configured anchored writer, preserve committed-but-unanchored partial-failure state, require the writer on protected paths, retain no-bootstrap and local-sidecar trust limitations, and add deterministic mutation/concurrency proofs. Do not claim complete anchoring until decision and outcome append boundaries are included.
+
+PR #71 changed `agora/audit_anchor.py`, `agora/ontology/binding.py`, `agora/policy_enforcement.py`, `agora/scenario_inputs.py`, `agora/tabular.py` and `tests/test_anchor_wiring.py`. Its exact-head CI run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is CI evidence, not a local test run in this documentation cycle.
