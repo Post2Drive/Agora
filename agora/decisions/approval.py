@@ -214,11 +214,11 @@ def _commit_approval(
 
 
 APPROVAL_BASELINE_SENSITIVITY = "internal"
-LEGACY_APPROVE_ENV = "AGORA_TEST_ONLY_LEGACY_APPROVE"
 
 
 def _legacy_approve_enabled() -> bool:
-    return os.environ.get(LEGACY_APPROVE_ENV) == "1"
+    from .. import protection
+    return protection.LEGACY_APPROVE_ENABLED is True
 
 
 def approve(
@@ -241,12 +241,12 @@ def approve(
 
     Kept only until call sites migrate to approve_as(); production paths must
     not use it (see docs/PRINCIPAL_MIGRATION_PLAN.md). Fails closed unless the
-    explicit test-only switch AGORA_TEST_ONLY_LEGACY_APPROVE=1 is set.
+    test-only module flag agora.protection.LEGACY_APPROVE_ENABLED is set
+    (there is no environment-variable switch).
     """
     if not _legacy_approve_enabled():
         raise ApprovalTransitionError(
-            "legacy role-string approve() is disabled; use approve_as() with a "
-            f"Principal (test-only switch: {LEGACY_APPROVE_ENV}=1)"
+            "legacy role-string approve() is disabled; use approve_as() with a Principal"
         )
     current = _current(store, decision_id, expected_version)
     moment = _time(now)

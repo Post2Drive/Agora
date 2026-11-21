@@ -12,3 +12,6 @@ from __future__ import annotations
 
 POLICY_REQUIRED = True
 ANCHOR_REQUIRED = True
+LEGACY_APPROVE_ENABLED = False
+# Legacy role-string approve() is disabled in production. This flag (no env
+# var, no CLI switch) is set True only by tests/conftest.py.

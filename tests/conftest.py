@@ -27,9 +27,11 @@ def project(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _legacy_approve_test_only(monkeypatch):
-    """Legacy role-string approve() is test-only; tests may opt out via delenv."""
-    monkeypatch.setenv("AGORA_TEST_ONLY_LEGACY_APPROVE", "1")
+def _legacy_approve_test_only(request, monkeypatch):
+    """Legacy role-string approve() is test-only (agora.protection flag)."""
+    from agora import protection
+    monkeypatch.setattr(protection, "LEGACY_APPROVE_ENABLED",
+                        not request.node.get_closest_marker("legacy_approve_disabled"))
 
 
 @pytest.fixture(autouse=True)
