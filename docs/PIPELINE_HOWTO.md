@@ -138,7 +138,7 @@ The decision schema/store and lifecycle are Python APIs; there is no single deci
 
 For a synthetic-only rehearsal, define fixture identities in code/configuration controlled by the test harness (not request fields), issue a predeclared approver fixture, and call `approve_as(store, decision_id, expected_version, principal=approver_principal, expected_fingerprint=..., expected_scope=..., expected_evidence_refs=..., audit=...)` after a separate proposer and reviewer have prepared/reviewed the exact proposal.
 
-The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. #80/#84 make `approve_as()` principal-native and derive policy input from the stored decision. #82's legacy role-string approval gate remains runtime-enableable. #89 proposes default-on anchor checks but is unmerged; `SyntheticFixtureAdapter` is not production authentication.
+The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. #80/#84 make `approve_as()` principal-native and derive policy input from the stored decision. #82's legacy role-string approval gate remains runtime-enableable. #89 is merged and defaults `approve_as()` anchoring on; explicit False remains accepted. `SyntheticFixtureAdapter` is not production authentication.
 
 ## 8. Step E — audit evidence
 
