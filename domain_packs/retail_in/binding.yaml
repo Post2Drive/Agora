@@ -1,0 +1,24 @@
+binding_id: retail.customer.v1
+binding_version: 1.0.0
+object_type_id: retail:Customer
+object_type_version: 1.0.0
+dataset_id: retail_customers
+schema_id: retail-customers-v1
+schema_version: 1.0.0
+column_map:
+  customer_id: retail:Customer.customer_id
+  age: retail:Customer.age
+  spend: retail:Customer.spend
+  joined_on: retail:Customer.joined_on
+  opted_in: retail:Customer.opted_in
+  email: retail:Customer.email
+identity:
+  strategy: record_key
+  primary_key_column: customer_id
+property_sensitivity:
+  retail:Customer.customer_id: personal
+  retail:Customer.age: internal
+  retail:Customer.spend: internal
+  retail:Customer.joined_on: internal
+  retail:Customer.opted_in: internal
+  retail:Customer.email: sensitive

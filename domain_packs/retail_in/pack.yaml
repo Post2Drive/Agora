@@ -1,0 +1,78 @@
+pack_id: retail-in-pack
+schema_version: 1.0.0
+object_types:
+  - type_id: retail:Customer
+    version: 1.0.0
+    name: Customer
+    description: Synthetic retail customer record.
+    properties:
+      - retail:Customer.customer_id
+      - retail:Customer.age
+      - retail:Customer.spend
+      - retail:Customer.joined_on
+      - retail:Customer.opted_in
+      - retail:Customer.email
+    identity_strategy: record_key
+property_types:
+  - property_id: retail:Customer.customer_id
+    version: 1.0.0
+    name: Customer identifier
+    data_type: identifier
+    required: true
+    nullable: false
+    sensitivity: personal
+  - property_id: retail:Customer.age
+    version: 1.0.0
+    name: Customer age
+    data_type: integer
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: retail:Customer.spend
+    version: 1.0.0
+    name: Lifetime spend
+    data_type: decimal
+    required: true
+    nullable: false
+    sensitivity: internal
+    precision: 10
+    scale: 2
+  - property_id: retail:Customer.joined_on
+    version: 1.0.0
+    name: Joined date
+    data_type: date
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: retail:Customer.opted_in
+    version: 1.0.0
+    name: Marketing opt in
+    data_type: boolean
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: retail:Customer.email
+    version: 1.0.0
+    name: Contact email
+    data_type: string
+    required: true
+    nullable: false
+    sensitivity: sensitive
+link_types: []
+action_types:
+  - action_type_id: retail:RecordInterest
+    version: 1.0.0
+    name: Record interest
+    actor_type_id: retail:Customer
+    target_type_id: retail:Customer
+    inputs:
+      - retail:Customer.customer_id
+    preconditions:
+      - actor_exists
+    effects:
+      - interest_recorded
+    permissions:
+      - synthetic_test_only
+    simulated_only: true
+    execution_mode: simulation_only
+    external_writeback: prohibited
