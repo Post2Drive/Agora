@@ -3,7 +3,7 @@
 **Status:** Documentation plan only; no source-code change or implementation approval  
 **Assessment base:** `main` at `0a00ef189fb63b4361c406fcfa665662ae03e15a` (21 November 2026), after PR #70 merged. The local-sidecar anchor implementation (#63), Windows audit-log lock fix (#66), and principal-first outcome slice (#70) are on main.  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
-**Implementation under development:** PR #63, `feat/audit-anchor`, head `b135fdadd17bebfac4ab3137554bb4519070d5f9`; in the review queue per the latest collaboration entry (GitHub state remains open draft, not merged). Exact-head workflow run 184 completed with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. No formal review submission or inline review thread was present at this check.
+**Implementation status:** PR #63 is merged at head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`; exact-head Actions run 201 ([44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154)) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The wrapper remains local-sidecar and is not wired into the protected decision, outcome or policy-denial call sites.
 
 ## 1. Purpose and non-claims
 
