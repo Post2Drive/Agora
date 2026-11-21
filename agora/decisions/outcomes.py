@@ -185,7 +185,7 @@ def _authorize(
     return result
 
 
-def record_outcome(
+def _record_outcome(
     store: DecisionOutcomeStore,
     *,
     decision_id: str,
@@ -208,7 +208,7 @@ def record_outcome(
     now: datetime | str | None = None,
     audit: AuditAppender | None = None,
 ) -> dict[str, Any]:
-    """Append one observed outcome for an exact approved decision version."""
+    """Internal role-string writer; public route is record_outcome_as (Principal-derived)."""
     try:
         record = store.decisions.get(decision_id, decision_version)
     except DecisionRecordError as exc:
@@ -286,7 +286,7 @@ def record_outcome(
     return payload
 
 
-def review_outcome(
+def _review_outcome(
     store: DecisionOutcomeStore,
     decision_id: str,
     decision_version: int,
@@ -303,7 +303,7 @@ def review_outcome(
     now: datetime | str | None = None,
     audit: AuditAppender | None = None,
 ) -> dict[str, Any]:
-    """Append a review event; the reviewer must differ from the recorder."""
+    """Internal role-string writer; public route is review_outcome_as (Principal-derived)."""
     outcome = store.get(decision_id, decision_version, outcome_id)
     record = store.decisions.get(decision_id, decision_version)
     if new_state not in {"reviewed", "disputed"}:
@@ -381,7 +381,7 @@ def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | Non
     _principal_gate(principal, "operator", kwargs.get("audit"), store, kwargs["decision_id"],
                     kwargs["decision_version"], kwargs.get("outcome_id"), None,
                     kwargs.get("now"))
-    return record_outcome(store, recorder=principal.subject_id, role="operator",
+    return _record_outcome(store, recorder=principal.subject_id, role="operator",
                           subject={"subject_id": principal.subject_id, "project_id": _project(store, kwargs["decision_id"], kwargs["decision_version"])}, **kwargs)
 
 
@@ -397,13 +397,12 @@ def review_outcome_as(store: DecisionOutcomeStore, decision_id: str, decision_ve
     kwargs.pop("resource", None)  # ignored: derived from the stored decision only
     _principal_gate(principal, "reviewer", kwargs.get("audit"), store, decision_id,
                     decision_version, outcome_id, None, kwargs.get("now"))
-    return review_outcome(store, decision_id, decision_version, outcome_id,
+    return _review_outcome(store, decision_id, decision_version, outcome_id,
                           reviewer=principal.subject_id, role="reviewer",
                           subject={"subject_id": principal.subject_id, "project_id": _project(store, decision_id, decision_version)}, **kwargs)
 
 
 __all__ = [
     "record_outcome_as", "review_outcome_as",
-    "DecisionOutcomeStore", "OutcomeError", "OutcomePermissionError", "record_outcome",
-    "review_outcome",
+    "DecisionOutcomeStore", "OutcomeError", "OutcomePermissionError",
 ]
