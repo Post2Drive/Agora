@@ -337,6 +337,9 @@ def review_outcome(
             "reviewer": reviewer, "reviewed_at": stamp, "seq": seq}
 
 
+OUTCOME_BASELINE_SENSITIVITY = "internal"
+
+
 def _principal_gate(
     principal: Principal | None, required_role: str, audit: AuditAppender | None,
     store: DecisionOutcomeStore, decision_id: str, decision_version: int,
@@ -346,10 +349,11 @@ def _principal_gate(
         record = store.decisions.get(decision_id, decision_version)
     except DecisionRecordError as exc:
         raise OutcomeError("decision version was not found") from exc
-    res = dict(resource or {})
-    res.update(record.project_scope)
+    # Caller-supplied ``resource`` is ignored: policy inputs come only from the
+    # stored decision plus a fixed baseline sensitivity (no downgrade possible).
+    res = dict(record.project_scope)
     res["resource_ids"] = [decision_id] + ([outcome_id] if outcome_id else [])
-    res.setdefault("source_sensitivity", "internal")
+    res["source_sensitivity"] = OUTCOME_BASELINE_SENSITIVITY
     moment = _utc(now, "now") if now is not None else datetime.now(timezone.utc)
     decision, role = decide_principal(principal, "decision_outcome", res, now=moment,
                                       required_role=required_role)
@@ -372,8 +376,9 @@ def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | Non
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
     if kwargs.pop("require_anchored", False):
         require_anchored(kwargs.get("audit"))
+    kwargs.pop("resource", None)  # ignored: derived from the stored decision only
     _principal_gate(principal, "operator", kwargs.get("audit"), store, kwargs["decision_id"],
-                    kwargs["decision_version"], kwargs.get("outcome_id"), kwargs.get("resource"),
+                    kwargs["decision_version"], kwargs.get("outcome_id"), None,
                     kwargs.get("now"))
     return record_outcome(store, recorder=principal.subject_id, role="operator",
                           subject={"subject_id": principal.subject_id, "project_id": _project(store, kwargs["decision_id"], kwargs["decision_version"])}, **kwargs)
@@ -387,8 +392,9 @@ def review_outcome_as(store: DecisionOutcomeStore, decision_id: str, decision_ve
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
     if kwargs.pop("require_anchored", False):
         require_anchored(kwargs.get("audit"))
+    kwargs.pop("resource", None)  # ignored: derived from the stored decision only
     _principal_gate(principal, "reviewer", kwargs.get("audit"), store, decision_id,
-                    decision_version, outcome_id, kwargs.get("resource"), kwargs.get("now"))
+                    decision_version, outcome_id, None, kwargs.get("now"))
     return review_outcome(store, decision_id, decision_version, outcome_id,
                           reviewer=principal.subject_id, role="reviewer",
                           subject={"subject_id": principal.subject_id, "project_id": _project(store, decision_id, decision_version)}, **kwargs)
