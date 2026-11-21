@@ -1,7 +1,7 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026)  
+**Assessment base:** `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026)  
 **Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `1fbde112` | Evidence / missing item |
+| M2 requirement | Mainline status at `810f33b1` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
@@ -33,7 +33,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **PARTIAL — protected policy:** #89 makes the three data-boundary defaults True; direct `enforce_policy()` still defaults off and its `audit=None` path is unanchored. Explicit False remains possible.
 - **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #82 default-denies legacy role-string `approve()` behind an environment-variable switch, which is not structurally test-only.
 - **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #89 defaults the three Principal write wrappers to anchored audit, #92 retires public role-string outcome exports, but explicit `require_anchored=False` and unanchored policy-denial `audit=None` remain.
-- **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages, stops on first denial and does not invoke the engine. However `agora.cli` imports `.sim.engine` at module scope before dispatch; M2 import isolation remains outstanding.
+- **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages, stops on first denial and does not invoke the engine. #94 removes the module-level `.sim.engine` import; engine loading is confined to simulation-dependent handlers. Its fresh-process pilot-dispatch assertion uses `--help`, so a full `--workdir` subprocess assertion remains desirable.
 - **NOT YET — reconciliation/held outcomes:** no implementation beyond #57/#60 specifications.
 
 Do not execute a component command as though it were the full M2 workflow.
