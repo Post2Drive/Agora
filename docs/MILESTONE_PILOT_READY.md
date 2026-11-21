@@ -47,7 +47,7 @@ Confirmed merged implementation PRs:
 - #88 — adds the `agora pilot --workdir <new-empty-directory>` guided synthetic workflow, with per-stage results, first-denial stop, anchored audit verification and synthetic-labelled report; exact-head CI run `44945307064` passed all four jobs.
 
 - #89 — default-on policy/anchor parameters on six protected entry points; merged at `87c7cc95b3e7c231f52dca4924d6fc433c698462`. Exact-head Actions run `44948055801` passed all four matrix jobs.
-- #92 — retires public role-string `record_outcome()` / `review_outcome()` exports and routes public writes through Principal wrappers; merged at `a191b587` before #94. Exact-head Actions run `44950576945` passed all four matrix jobs.
+- #92 — retires public role-string `record_outcome()` / `review_outcome()` exports and routes public writes through Principal wrappers; merged before #94 (mainline merge `1fbde112`). Exact-head Actions run `44950576945` passed all four matrix jobs.
 - #94 — lazy-loads `.sim.engine` only in engine-dependent CLI handlers; fresh-process tests cover `import agora.cli` and `agora pilot --help`. Exact-head Actions run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 - #96 — removes explicit `require_policy` / `require_anchored` opt-out kwargs from six protected public entry points; exact-head CI run `44956724553` passed 4/4.
 - #97 — removes the legacy approval env switch, defaults direct policy enforcement from `POLICY_REQUIRED`, and rejects unanchored denial writes; exact-head CI run `44958568446` passed 4/4.
@@ -109,10 +109,10 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #89 | Default-on policy/anchor parameters on six protected entry points | Merged (`87c7cc95`); exact-head CI run `44948055801` passed 4/4 |
 | #91 | Documentation refresh after #88/#89 | Merged; exact-head CI run `44949947675` passed 4/4 |
 | #92 | Public role-string outcome API retirement | Merged; exact-head CI run `44950576945` passed 4/4 |
+| #94 | Lazy-load simulation engine only in engine-dependent CLI handlers | Merged; exact-head CI run `44955653075` passed 4/4 |
 | #95 | M1/M2 documentation refresh after #94 | Merged; exact-head docs CI run `44958100514` passed 4/4 |
 | #96 | Remove public policy/anchor opt-out kwargs | Merged; exact-head CI run `44956724553` passed 4/4 |
 | #97 | Remove legacy approval env switch and unanchored denial fallback; protect direct policy default | Merged; exact-head CI run `44958568446` passed 4/4 |
-| #94 | Lazy-load simulation engine only in engine-dependent CLI handlers | Merged; exact-head CI run `44955653075` passed 4/4 |
 
 Main is `a191b587876e5a26a73b716098c8f36eb561ea37` (merge of #97). PRs #94–#97 are merged; no open PR existed at the start of this documentation refresh.
 
