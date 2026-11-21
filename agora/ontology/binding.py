@@ -223,11 +223,18 @@ def materialize_instances(
     import_id: str,
     *,
     policy: PolicyCallable | None = None,
+    purpose: str | None = None,
+    retention: str | None = None,
 ) -> list[dict[str, Any]]:
     """Read one explicit snapshot and return provenance-rich ontology instances.
 
     When supplied, policy is called as policy("binding", resource) before the
     snapshot database is opened. None preserves the legacy behaviour.
+
+    The policy runs before any read, so the snapshot's column policies are not
+    available to it. Callers that bind personal or sensitive data declare the
+    purpose and retention explicitly; the policy decision point denies such
+    data when either is missing. Both default to None (fail closed).
     """
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
@@ -251,6 +258,8 @@ def materialize_instances(
                     "dataset_id": binding.dataset_id,
                     "source_sensitivity": source_sensitivity,
                     "target_sensitivity": source_sensitivity,
+                    "purpose": purpose,
+                    "retention": retention,
                 },
             )
         except PolicyEnforcementError as exc:
