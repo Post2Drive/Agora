@@ -1,7 +1,8 @@
 # M2 — Operator-Usable Synthetic Pilot
 
 **Status:** Draft for Claude and owner review; not owner-approved, not an execution authorisation, and not a readiness declaration.  
-**Assessment base:** `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
+**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
+**Source note:** This draft acceptance contract was merged with docs PR #83; it remains unapproved and does not declare M1 or M2 reached.  
 **Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
