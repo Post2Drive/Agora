@@ -31,6 +31,7 @@ def enforce_policy(
     operation: str,
     resource: Mapping[str, Any],
     audit: Any | None = None,
+    require_policy: bool = False,
 ) -> Mapping[str, Any] | None:
     """Evaluate an optional decision callable and audit every denial.
 
@@ -41,12 +42,16 @@ def enforce_policy(
     audit, when given, is an object with append(event) (for example an
     AnchoredAuditChain). The caller owns its lifecycle. Without it the legacy
     unanchored project-local chain is used.
+
+    require_policy=True marks a protected operation: a missing policy is denied
+    (and the denial audited) instead of being a no-op.
     """
-    if policy is None:
+    if policy is None and not require_policy:
         return None
-    if not callable(policy):
+    if policy is None or not callable(policy):
         decision: Mapping[str, Any] = {
-            "decision": "deny", "reason": "policy_not_callable",
+            "decision": "deny",
+            "reason": "policy_required" if policy is None else "policy_not_callable",
             "subject_id": "unknown", "policy_version": "unknown",
         }
     else:
