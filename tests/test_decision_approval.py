@@ -195,7 +195,7 @@ def test_reject_and_expiry_are_append_only_transitions(tmp_path):
     ]
     rejected_store.close()
 
-    expired_store, proposed = prepared_store(tmp_path / "expiry")
+    expired_store, proposed = prepared_store(tmp_path / "expiry-parent")
     expired = expire(
         expired_store, proposed.decision_id, proposed.version,
         now="2026-12-02T00:00:00Z",
