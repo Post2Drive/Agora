@@ -28,7 +28,7 @@ The following inventory was checked against main at the assessment SHA:
 
 ### 2.1 Principal implementation status
 
-PR #58 established the synthetic Principal/PDP and `approve_as()` bridge. PR #70 then added `required_role` filtering to `decide_principal()` plus `record_outcome_as()` and `review_outcome_as()`. The wrappers require Principal, derive actor and subject from it, enforce `operator` / `reviewer`, and reject caller-supplied recorder/reviewer, role and subject authority fields. They still delegate to the legacy role-string outcome functions; legacy APIs remain available. PR #71 added an `audit=` parameter for anchored denial writes in data-boundary policy calls, but did not migrate the policy callback to Principal. These are partial migration slices, not a completed identity boundary.
+PR #58 established the synthetic Principal/PDP and `approve_as()` bridge. PR #70 then added `required_role` filtering to `decide_principal()` plus `record_outcome_as()` and `review_outcome_as()`. The wrappers require Principal, derive actor and subject from it, enforce `operator` / `reviewer`, and reject caller-supplied recorder/reviewer, role and subject authority fields. They still delegate to the legacy role-string outcome functions; legacy APIs remain available. PR #71 added an `audit=` parameter for anchored denial writes in data-boundary policy calls; #74 adds anchor gates to three principal entry points but does not migrate the shared policy callback to Principal. These are partial migration slices, not a completed identity boundary.
 
 Before each stage, re-read agora/principal.py and its tests on current main; do not assume APIs beyond what is merged.
 
@@ -105,7 +105,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
 - Both wrappers reject caller-supplied `recorder`/`reviewer`, `role` and `subject` authority fields.
 - Both wrappers delegate to the legacy `record_outcome()` / `review_outcome()` role-string functions internally. The legacy APIs have not been removed or made unreachable from production-capable paths.
-- The audit argument remains optional and is not yet wired to the anchored writer. PR #71 did not change outcome append paths.
+- #74 wires outcome append helpers to the supplied audit writer and adds an opt-in `require_anchored=True` gate on principal outcome wrappers; other legacy paths remain optional.
 
 **Remaining Stage 4 work:**
 
