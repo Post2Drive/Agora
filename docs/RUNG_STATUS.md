@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026), including merged PRs #51–#89 and the earlier merged implementation history; #91 is the open ChatGPT docs draft.
+**Assessment base:** `main` at `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026), including merged PRs through #92; #91 is merged and no ChatGPT docs PR is open.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -12,8 +12,8 @@
 | 2 — Ontology | **Demonstrated for the current typed-binding slice** | Binding contract and implementation (#23–#24), tabular bound validation (#25), synthetic retail/civic domain-pack proofs (#30, #40), pilot data contract (#41), and policy enforcement on governed binding paths (#43). | Broader ontology governance and complete domain coverage remain future work; do not equate the current typed contract with a general enterprise ontology service. |
 | 3 — Ingestion with provenance | **Demonstrated for local structured snapshots; broader connectors remain partial** | Read-only snapshot commands (#28), scenario-input adapter and fixture proofs (#31/#41), provenance store (#35), policy wiring (#43), report provenance (#44), and default-on data-boundary policy hooks (#79/#89). | No real database drivers, network connector framework or write-back. Explicit `require_policy=False` remains possible; policy-denial `audit=None` still logs to an unanchored local chain. |
 | 4 — Simulation as decision engine | **Partial** | Scenario-input contract/adapter (#29, #31), run provenance store (#35), report provenance export (#44), and governed-pipeline synthetic end-to-end test (#46). The test does not run the simulation engine. | Scenario-input provenance is **not wired into** `agora/sim/engine.py`: new runs do not yet prepare and persist the input envelope before population creation, and resume does not yet call `Store.assert_resume_input` before `World.load`. Matched-run validity and observed-outcome separation remain distinct evidence requirements. No simulation wiring is authorised by this status update. |
-| 5 — Decisions and actions | **Partial; no operational action execution** | Decision schema/store (#37), approval state machine (#42), report provenance (#44), append-only observed-outcome store and independent outcome review lifecycle (#53), and binding purpose/retention propagation into the PDP (#54). #53 rejects simulation-only evidence for observed outcomes and preserves corrections/reviews append-only. | No action executor or external write-back exists. Dependency review markers for changed source/evidence are not implemented. Decision-store and audit-chain writes remain separate transactions; reconciliation queue/worker/repair are specified in #57 but not implemented. An approved decision or recorded outcome is not permission to execute an external action. |
-| 6 — Security and deployment | **Partial; not an enterprise security/deployment capability** | Deny-by-default PDP (#39), audit chain/anchor (#38/#63), writer/lifecycle wiring (#71/#74/#75), Principal policy (#78), data-boundary hooks (#79/#89), principal approval (#80/#84/#89), legacy approval gate (#82), outcome wrappers (#70/#86) and guided synthetic pilot (#88). | Principal wrappers default to anchored audit, but explicit opt-outs and public role-string outcome APIs remain; `approve()` retains a runtime env switch; policy-denial `audit=None` is unanchored. Reconciliation/markers, backup/restore, incident response and fleet deployment remain incomplete. |
+| 5 — Decisions and actions | **Partial; no operational action execution** | Decision schema/store (#37), approval state machine (#42), append-only observed outcomes/reviews (#53), Principal outcome wrappers (#70/#86), and #92 retirement of the public role-string outcome exports. | No action executor or external write-back exists. Dependency review markers (#60) and decision/audit reconciliation (#57) remain specifications only. Decision-store and audit-chain writes remain separate transactions. An approved decision or recorded outcome is not permission to execute an external action. |
+| 6 — Security and deployment | **Partial; not an enterprise security/deployment capability** | Deny-by-default PDP (#39), audit chain/anchor (#38/#63), writer/lifecycle wiring (#71/#74/#75), Principal policy (#78), data-boundary hooks (#79/#89), principal approval (#80/#84/#89), legacy approval gate (#82), Principal outcome public routes (#70/#86/#92) and guided synthetic pilot (#88). | Public role-string outcome exports are retired, but legacy `approve()` retains a runtime env switch; explicit policy/anchor opt-outs and unanchored policy-denial `audit=None` remain. Reconciliation/markers, backup/restore, incident response and fleet deployment remain incomplete. |
 
 ## Merged implementation and design PRs
 
@@ -39,12 +39,14 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#82:** legacy role-string `approve()` now fails closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; exact-head CI run `44937162200` passed all four matrix jobs. The compatibility function remains in source and must not be enabled outside tests.
 - **#84:** `approve_as()` ignores caller-supplied policy resource data and derives its PDP resource from stored decision scope plus fixed baseline sensitivity `internal`; precise `AnchorRequiredError`/unchanged-state coverage was added. Exact-head CI run `44939812441` passed all four matrix jobs.
 - **#85:** ChatGPT documentation refresh and operator run-record field map merged; exact-head CI run `44945012741` passed all four jobs.
-- **#86:** outcome `_as` wrappers ignore caller resource data; exact-head CI run `44942485500` passed all four jobs. Public role-string outcome functions remain callable and are still delegated to.
+- **#86:** outcome `_as` wrappers ignore caller resource data; exact-head CI run `44942485500` passed all four jobs.
+- **#92:** public role-string `record_outcome()` / `review_outcome()` exports were retired; `record_outcome_as()` / `review_outcome_as()` are the public routes. Exact-head run `44950576945` passed all four matrix jobs.
 - **#88:** guided synthetic `agora pilot --workdir` entry point merged; exact-head CI run `44945307064` passed all four jobs. It does not persist the M2 run-record envelope or invoke the scenario-input adapter/engine.
 
 - **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
+- **#92:** outcome role-string public exports retired; exact-head CI run `44950576945` passed all four jobs.
 
-**Open docs draft:** #91 refreshes nine documentation files against #88/#89; no implementation PR is open.
+**Open PRs at this snapshot:** none. ChatGPT docs PR #91 merged; Claude's #92 merged. The next ChatGPT documentation refresh is being prepared on a new docs branch.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
@@ -52,7 +54,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 ## Open gaps to keep visible
 
 1. **Simulation wiring:** scenario-input provenance is not connected to `agora/sim/**`. No edit to that path is authorised by this document; implementation requires Claude's written approval and a separate owner-approved execution step.
-2. **Identity migration:** #80/#84 make `approve_as()` principal-native; #82 still leaves a runtime-enableable legacy approval switch. #86's outcome wrappers ignore caller resource data and #89 defaults them to anchored audit, but they still delegate to public role-string outcome APIs. OIDC remains a later, separately approved integration.
+2. **Identity migration:** #80/#84 make `approve_as()` principal-native; #82 still leaves a runtime-enableable legacy approval switch. #86/#89 made the Principal outcome wrappers derive resource/actor data and default to anchored audit; #92 then retired the public role-string outcome exports. Explicit anchor opt-out remains. OIDC remains a later, separately approved integration.
 3. **Outcome dependency review:** #53 records and reviews outcomes, but source-change/erasure dependency review markers remain unimplemented.
 4. **Audit anchoring:** #89 defaults the three Principal write wrappers to anchored audit. Explicit `False` remains accepted, legacy outcome APIs still accept optional audit, and policy-denial `audit=None` still writes to an unanchored project-local chain. `local_sidecar` cannot detect coordinated rollback of both stores; the Linux lock-removal mutation gap remains.
 5. **Cross-store consistency:** decision records/outcomes and the shared audit chain use separate SQLite stores. A write to one is not atomic with a write to the other. #57 specifies reconciliation; the queue, detector and repair workflow are not implemented.
@@ -74,4 +76,4 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Process note
 
-This assessment is a documentation snapshot of the merged mainline at `87c7cc95b3e7c231f52dca4924d6fc433c698462`; #91 is the open ChatGPT docs draft.
+This assessment is a documentation snapshot of merged main at `1fbde112d00fc4fc579e9be6385104d655a9ced4`; #91 and #92 are merged and no PR was open when this refresh began.
