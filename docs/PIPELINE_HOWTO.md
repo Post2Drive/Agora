@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `d0cb5c7260f3d18643cd6a93fd6fdd4e9cbd43c9` (21 November 2026)  
+**Assessment base:** `main` at `90789ccfd866c038ce67753645b5e258134b9af3` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 There is **no single CLI/API entry point** on this mainline that executes import → bind → decision → principal approval → anchored audit → observed outcome → simulated-labelled report as one governed workflow.
 
-The repository provides several separate CLI commands and Python APIs. Some stages are only partially governed, some use legacy caller-supplied role strings, and the local audit-anchor implementation is still an open draft PR (#63), not part of main. The scenario-input package is not connected to the simulation engine.
+The repository provides several separate CLI commands and Python APIs. Some stages are only partially governed and some use legacy caller-supplied role strings. The local-sidecar audit-anchor implementation (#63) is now on main, but it is not wired into decision, outcome or policy call sites. The scenario-input package is not connected to the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -21,7 +21,7 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — limited synthetic slice** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58). This is not production identity; legacy role-string approval remains underneath the bridge and other call sites are not migrated. |
-| Anchored audit chain | **NOT AVAILABLE ON MAIN** | #52 is a specification. Implementation PR #63 remains open/draft; it is not merged and not wired into decision, outcome or policy call sites. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API, not wired** | #63 adds `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()` and `verify_anchored()`. It is merged on main but not wired into decision, outcome or policy call sites; trust is `local_sidecar`, not external anchoring. |
 | Observed outcome recording/review | **AVAILABLE — Python API, partial governance** | `DecisionOutcomeStore`, `record_outcome()`, `review_outcome()` (#53). Current APIs still accept caller-supplied role/subject values; no CLI. Simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
@@ -128,13 +128,13 @@ The API checks the exact current version, fingerprint, scope, evidence reference
 
 ## 8. Step E — audit evidence
 
-**Status: NOT AVAILABLE — anchored audit**
+**Status: AVAILABLE — local-sidecar API; NOT wired into protected call sites**
 
-Main contains `AuditChainStore` from #38/#47: a local append-only, redacted hash chain with `append()`, `verify()` and `close()`. It is **not independently anchored** and cannot detect a removed tail if the remaining chain is internally consistent.
+Main contains the local append-only hash chain from #38/#47 and the merged local-sidecar implementation from #63. The API includes `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()`, and `verify_anchored()`. `AnchoredAuditChain.append()` serializes the verify → chain append → anchor advance sequence with a cross-process sidecar lock and fails closed when the existing chain/anchor state is not cleanly verified. If the chain append succeeds but anchor persistence fails, `AnchorWriteError` reports a partial failure; do not retry the protected business operation or describe it as fully audited.
 
-The local sidecar anchor implementation is proposed in #63, but live GitHub state at this assessment shows #63 open/draft/unmerged. Even if that implementation later merges, the wiring plan (#64) is documentation only and the wrapper still needs the lock, permission/atomic-write and close-lifecycle gaps resolved before wiring is treated as complete.
+The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-Do not describe the current pipeline as anchored, externally anchored, or fully tamper-resistant. Do not substitute a plain hash-chain verification for anchor verification.
+**Integration gap:** the wrapper is not wired into decision lifecycle, outcome/review or policy-denial append boundaries. The wiring plan (#64) is documentation only. Do not claim that approvals, outcomes or policy denials are anchored until every protected call site uses the wrapper and failure behaviour is verified. Do not treat the local anchor as external anchoring or full protection against coordinated rollback.
 
 ## 9. Step F — record and review an observed outcome
 
@@ -168,7 +168,7 @@ The following are **not** delivered by this guide:
 
 1. A single CLI/API orchestrator with exact immutable IDs passed between stages.
 2. Principal-first policy enforcement at import, binding, decision, outcomes and review call sites; removal of caller-controlled role authority.
-3. A reviewed and merged audit-anchor implementation, followed by wiring at decision, outcome and policy-denial append boundaries with serialized writes, safe lifecycle/close, permissions, atomicity and fail-closed recovery.
+3. Wire the merged local-sidecar anchor implementation (#63) at decision, outcome and policy-denial append boundaries with serialized writes, safe lifecycle/close, permissions, durability and fail-closed recovery; document the residual local-sidecar trust limitation.
 4. Reconciliation implementation or an owner-approved and tested manual recovery procedure for decision/audit cross-store gaps.
 5. Outcome dependency markers or an owner-approved and tested manual hold/review procedure.
 6. Scenario-input-to-engine integration, including new-run and resume paths; this remains separately blocked by the simulation-wiring approval gate.
