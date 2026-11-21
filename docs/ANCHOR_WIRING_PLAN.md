@@ -187,7 +187,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63:** in the review queue per the latest collaboration entry; GitHub still shows it as open draft, not merged. Exact-head CI run 184 is green across all four matrix jobs, but no formal review submission or inline review thread was present at this check. The code does not wire the wrapper into approval, outcomes or policy enforcement.
+- **PR #63:** merged local-sidecar primitive; exact-head CI run 201 passed all four matrix jobs. **PR #71:** merged Stage A/D wiring; exact-head CI run 211 passed all four matrix jobs. Policy-denial/data-boundary paths accept an anchored writer; decision lifecycle and outcomes remain unwired (Stages B/C).
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
 - **Principal migration:** merged PR #58 provides only the synthetic `approve_as()` slice. Other role-string boundaries remain a separate migration task.
