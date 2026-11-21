@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), principal-native approval (#80/#84), guided pilot (#88), default-True policy/anchor parameters (#89) and public outcome-API retirement (#92) are merged. Explicit opt-outs and the unanchored policy-denial path remain. This is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026).  
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), principal-native approval (#80/#84), guided pilot (#88), default-True policy/anchor parameters (#89), public outcome-API retirement (#92) and CLI lazy-engine-import isolation (#94) are merged. Explicit opt-outs and the unanchored policy-denial path remain. This is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `1fbde112d00fc4fc579e9be6385104d655a9ced4`, after PRs #91 and #92 merged.
+The following inventory was checked against main at `810f33b1a89dc227f9d54764e324488e20a64817`, after PRs #91, #92 and #94 merged.
 
 ### 2.1 Audit primitives
 
@@ -200,7 +200,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
 
-## 10. Current mainline status after PR #92
+## 10. Current mainline status after PR #94
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
@@ -210,11 +210,11 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage C — outcome recording/review: PUBLIC PRINCIPAL ROUTES ONLY.** #92 removes public `record_outcome()` / `review_outcome()` exports; `record_outcome_as()` / `review_outcome_as()` are the public routes. Their default anchor gate is on, but explicit `require_anchored=False` still bypasses it; private helpers and audit-optional internals are not a substitute for enforcing the gate at every protected boundary.
 
-**Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never imports/calls the simulation engine. It does not make lower-level APIs universally non-bypassable.
+**Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never calls the simulation engine. #94 removes the module-level `.sim.engine` import from `agora.cli`; engine imports are lazy inside simulation-dependent handlers. It does not make lower-level APIs universally non-bypassable.
 
-**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801` and #92 run `44950576945` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945` and #94 run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-**Remaining acceptance gates:** require the same configured anchored writer for policy-denial/data-boundary paths; remove unanchored `audit=None` fallback and explicit opt-outs in production paths; remove the runtime legacy approval switch; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, backup/restore and tamper drills. `agora.cli` still imports `.sim.engine` at module scope; M2 pilot dispatch needs a fresh-process import-isolation proof. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** require the same configured anchored writer for policy-denial/data-boundary paths; remove unanchored `audit=None` fallback and explicit opt-outs in production paths; remove the runtime legacy approval switch; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
