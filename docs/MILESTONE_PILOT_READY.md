@@ -2,7 +2,7 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 21 November 2026  
-**Main base:** `7778b37ddd1b115f3a15ad35673e430ba22ac869`  
+**Main base:** `dcf66c3eab49564150faf8748fed733fe725e0a5`  
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
@@ -19,7 +19,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `7778b37ddd1b115f3a15ad35673e430ba22ac869`.
+Assessment base: `dcf66c3eab49564150faf8748fed733fe725e0a5`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -80,9 +80,9 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | #67–#69 | Readiness and manual-procedure documentation | Merged |
 | #70 | Principal-first outcome record/review bridge | Merged |
 | #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
-| #72 | Earlier documentation refresh based on pre-#71 main | Open draft; superseded by this refresh |
+| #72 | Earlier documentation refresh based on pre-#71 main | Closed; superseded |
 
-Main is `7778b37ddd1b115f3a15ad35673e430ba22ac869`. PR #71 is merged. PR #72, the superseded pre-#71 documentation draft, is closed. PR #73 is the current documentation refresh, open/draft/unmerged.
+Main is `dcf66c3eab49564150faf8748fed733fe725e0a5` (merge of #78). PRs #71, #73, #74, #75 and #78 are merged. PR #72 and #76 (superseded docs drafts) are closed.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -105,7 +105,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `7778b37ddd1b115f3a15ad35673e430ba22ac869`, after #70 and #71 merged. Stages A/D of anchor wiring are implemented; Stages B/C, principal migration slice 2, protected-mode enforcement and the single callable orchestrator remain open. The reconciliation and outcome hold/review procedures are documentation proposals only and still require owner approval and rehearsal before they can satisfy a milestone gate.
+This assessment is refreshed against main `dcf66c3eab49564150faf8748fed733fe725e0a5`, after #78 merged. Anchor wiring Stages A-D are partly implemented (opt-in `require_anchored`); principal slice 2 (#78) is merged; principal slice 3 (threading `require_policy` through ingest/binding/scenario-input and `authorize_decision_approval`), universal protected mode and the single callable orchestrator remain open. The reconciliation and outcome hold/review procedures are documentation proposals only and still require owner approval and rehearsal before they can satisfy a milestone gate.
 
 ## 7. Permanent safety boundaries
 
@@ -117,8 +117,8 @@ This assessment is refreshed against main `7778b37ddd1b115f3a15ad35673e430ba22ac
 - A green CI run does not authorise a PR merge, ready-for-review transition or external action.
 
 
-## Current mainline correction — PR #74 (21 November 2026)
+## Stage B/C status — PR #74/#75 (21 November 2026)
 
-This section supersedes earlier status text in this document that described Stages B/C as unwired. Main is `7778b37ddd1b115f3a15ad35673e430ba22ac869`, the merge of #75 (which includes #74). PR #74 merged at exact head `ca92a206219bb7da6de4b4f50a157b74ac6103c7`; exact-head Actions run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Stages B/C are partly wired (see below). Main is `dcf66c3eab49564150faf8748fed733fe725e0a5`, the merge of #75 (which includes #74). PR #74 merged at exact head `ca92a206219bb7da6de4b4f50a157b74ac6103c7`; exact-head Actions run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 Main now has `require_anchored()` and `require_anchored=True` on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`, checked before state mutation. Decision lifecycle and outcome/review append helpers accept the audit writer; anchor failures surface as typed partial-failure errors after business state may already be committed. This is partial Stage B/C, not universal protected mode: legacy lifecycle APIs and optional `audit=None` paths remain. Principal wrappers still bridge to legacy role-string APIs. PR #75 is now merged at exact head `ae1b50577047eb7ef1435bcf231037f566eed77d`; exact-head Actions run 224 (`44929428177`) passed all four matrix jobs. Its `AuditAppender` Protocol/type annotations make the writer contract structural; it does not add broader protected gates beyond #74. Reconciliation (#57), outcome markers (#60) and the callable end-to-end pipeline remain incomplete.

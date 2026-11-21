@@ -1,7 +1,7 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `7778b37ddd1b115f3a15ad35673e430ba22ac869` (21 November 2026)  
+**Assessment base:** `main` at `dcf66c3eab49564150faf8748fed733fe725e0a5` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
@@ -196,6 +196,6 @@ Stop immediately if real/personal/sensitive data, credentials, network access, e
 Passing a component-level demonstration means only that the documented local synthetic component ran. It does not establish that the complete pipeline exists or is ready for a pilot.
 
 
-## Current mainline correction — PR #74
+## Stage B/C status — PR #74/#75
 
-Main `7778b37ddd1b115f3a15ad35673e430ba22ac869` includes #74: lifecycle/outcome appends use the supplied audit writer, and `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can require an anchored writer with `require_anchored=True`. The gate runs before state mutation. Legacy/unprotected paths remain; principal wrappers still bridge to role-string APIs. Exact-head run 221 (`44928837108`) passed all four matrix jobs. Reconciliation and outcome markers remain specifications only; the end-to-end command remains NOT IMPLEMENTED.
+Main `dcf66c3eab49564150faf8748fed733fe725e0a5` includes #74: lifecycle/outcome appends use the supplied audit writer, and `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can require an anchored writer with `require_anchored=True`. The gate runs before state mutation. Legacy/unprotected paths remain; principal wrappers still bridge to role-string APIs. Exact-head run 221 (`44928837108`) passed all four matrix jobs. Reconciliation and outcome markers remain specifications only; the end-to-end command remains NOT IMPLEMENTED.

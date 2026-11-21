@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 7778b37ddd1b115f3a15ad35673e430ba22ac869 (21 November 2026), including merged #58, #70 and #71  
+**Assessment base:** main at dcf66c3eab49564150faf8748fed733fe725e0a5 (21 November 2026), including merged #58, #70 and #71  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -155,6 +155,9 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
 
-## Current migration status — main 7778b37ddd1b115f3a15ad35673e430ba22ac869
+## Current migration status — main dcf66c3eab49564150faf8748fed733fe725e0a5
 
-#74 added anchored appends and opt-in anchor gates on the principal approval/outcome wrappers; it did not complete principal migration. Shared `enforce_policy()` still uses the legacy `(operation, resource)` callback contract. Decision lifecycle methods other than `approve_as()` remain legacy role-string interfaces; outcome wrappers still bridge to legacy functions. Next slice: principal-native PDP/shared policy and decision call sites, rejecting missing/expired/untrusted/wrong-role/cross-project/cross-tenant/low-assurance principals before reads or mutations. Mutation proofs must show caller-supplied role/subject cannot elevate authority and removing any gate causes a focused test failure. No OIDC, real credentials or network identity.
+#78 (slice 2) is merged: `principal_policy(principal, required_role)` returns a `PolicyCallable` bound to an adapter-issued Principal, and `enforce_policy(require_policy=True)` denies and audits a missing policy. Not yet wired: ingest, binding and scenario-input do not pass `require_policy`; `authorize_decision_approval` is still role-string (slice 3).
+
+
+#74 added anchored appends and opt-in anchor gates on the principal approval/outcome wrappers; it did not complete principal migration. Shared `enforce_policy()` still uses the legacy `(operation, resource)` callback contract. Decision lifecycle methods other than `approve_as()` remain legacy role-string interfaces; outcome wrappers still bridge to legacy functions. Next slice (3): thread `require_policy` through ingest/binding/scenario-input and migrate `authorize_decision_approval`; then the remaining decision call sites, rejecting missing/expired/untrusted/wrong-role/cross-project/cross-tenant/low-assurance principals before reads or mutations. Mutation proofs must show caller-supplied role/subject cannot elevate authority and removing any gate causes a focused test failure. No OIDC, real credentials or network identity.

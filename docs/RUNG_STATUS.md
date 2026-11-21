@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `7778b37ddd1b115f3a15ad35673e430ba22ac869` (21 November 2026), including merged PRs #51–#71 and the earlier merged implementation history.
+**Assessment base:** `main` at `dcf66c3eab49564150faf8748fed733fe725e0a5` (21 November 2026), including merged PRs #51–#71 and the earlier merged implementation history.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -60,6 +60,6 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 This assessment is a documentation snapshot of the merged mainline at the SHA stated above. Reassess it after material merges; do not silently promote partial rungs to demonstrated based only on specifications or CI.
 
 
-## Current mainline correction — PR #74
+## Stage B/C status — PR #74/#75
 
-Assessment base is `7778b37ddd1b115f3a15ad35673e430ba22ac869`. #74 adds anchored lifecycle/outcome append wiring and `require_anchored=True` gates on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`. Exact-head run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is partial protected coverage; legacy role-string bridges, optional audit paths, Principal-native shared policy enforcement, reconciliation, outcome markers and the callable pipeline remain incomplete. #75 is merged at exact head `ae1b50577047eb7ef1435bcf231037f566eed77d`; exact-head run 224 (`44929428177`) passed all four matrix jobs. Its Protocol/type refactor adds a structural append contract, not broader protected gates.
+Assessment base is `dcf66c3eab49564150faf8748fed733fe725e0a5`. #74 adds anchored lifecycle/outcome append wiring and `require_anchored=True` gates on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`. Exact-head run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is partial protected coverage; legacy role-string bridges, optional audit paths, Principal-native shared policy enforcement, reconciliation, outcome markers and the callable pipeline remain incomplete. #75 is merged at exact head `ae1b50577047eb7ef1435bcf231037f566eed77d`; exact-head run 224 (`44929428177`) passed all four matrix jobs. Its Protocol/type refactor adds a structural append contract, not broader protected gates.

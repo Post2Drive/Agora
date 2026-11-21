@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
 **Status:** Stages A/D implemented by #71; Stage B/C append wiring and protected gates on three principal entry points implemented by #74; universal protected mode remains incomplete. This document is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `7778b37ddd1b115f3a15ad35673e430ba22ac869` (21 November 2026).  
+**Assessment base:** `main` at `dcf66c3eab49564150faf8748fed733fe725e0a5` (21 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive) and PR #71 (anchored writer factory plus policy-denial/data-boundary wiring). PR #71 exact head `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; exact-head Actions run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against current main at `7778b37ddd1b115f3a15ad35673e430ba22ac869`, after PR #71 merged.
+The following inventory was checked against current main at `dcf66c3eab49564150faf8748fed733fe725e0a5`, after PR #71 merged.
 
 ### 2.1 Audit primitives
 
@@ -218,6 +218,6 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 PR #71 changed `agora/audit_anchor.py`, `agora/ontology/binding.py`, `agora/policy_enforcement.py`, `agora/scenario_inputs.py`, `agora/tabular.py` and `tests/test_anchor_wiring.py`. Its exact-head CI run [44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is CI evidence, not a local test run in this documentation cycle.
 
 
-## Current mainline correction — Stage B/C (#74)
+## Stage B/C status (#74/#75)
 
-Main `7778b37ddd1b115f3a15ad35673e430ba22ac869` includes #74. `require_anchored()` accepts only `AnchoredAuditChain`. `approve_as(..., require_anchored=True)`, `record_outcome_as(..., require_anchored=True)` and `review_outcome_as(..., require_anchored=True)` fail closed before state mutation without that writer. Lifecycle/outcome append helpers use the supplied writer and surface typed partial failures. This is partial: other lifecycle APIs still allow optional audit, and Principal wrappers still bridge to legacy role-string functions. #74 exact-head run 221 (`44928837108`) passed all four matrix jobs. #75 is merged at exact head `ae1b50577047eb7ef1435bcf231037f566eed77d`; exact-head run 224 (`44929428177`) passed all four matrix jobs. It adds the structural `AuditAppender` protocol/type refactor plus repeated tests, not broader protected gates.
+Main `dcf66c3eab49564150faf8748fed733fe725e0a5` includes #74. `require_anchored()` accepts only `AnchoredAuditChain`. `approve_as(..., require_anchored=True)`, `record_outcome_as(..., require_anchored=True)` and `review_outcome_as(..., require_anchored=True)` fail closed before state mutation without that writer. Lifecycle/outcome append helpers use the supplied writer and surface typed partial failures. This is partial: other lifecycle APIs still allow optional audit, and Principal wrappers still bridge to legacy role-string functions. #74 exact-head run 221 (`44928837108`) passed all four matrix jobs. #75 is merged at exact head `ae1b50577047eb7ef1435bcf231037f566eed77d`; exact-head run 224 (`44929428177`) passed all four matrix jobs. It adds the structural `AuditAppender` protocol/type refactor plus repeated tests, not broader protected gates.
