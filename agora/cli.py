@@ -594,6 +594,9 @@ def main(argv=None) -> int:
     if len(raw_argv) > 1 and raw_argv[0] == "data" and raw_argv[1] in {"import-csv", "snapshots", "show", "rejected"}:
         from .data_cli import main as data_cli_main
         return data_cli_main(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "reconcile":
+        from .reconcile import main as reconcile_main
+        return reconcile_main(raw_argv[1:])
     if raw_argv and raw_argv[0] == "pilot":
         from .pilot import main as pilot_main
         return pilot_main(raw_argv[1:])
