@@ -69,3 +69,13 @@ def test_cross_scope_is_denied_and_record_is_audit_safe():
     assert result["decision"] == "deny"
     assert result["reason"] == "cross_scope"
     assert set(result) == {"subject_id", "policy_version", "decision", "resource_ids", "reason"}
+
+
+def test_decision_approval_is_reserved_for_approver_role():
+    resource = _resource(source_sensitivity="internal")
+    for role in ("operator", "reader", "reviewer"):
+        result = decide(_subject(), role, "decision_approval", resource)
+        assert result["decision"] == "deny"
+        assert result["reason"] == "role_not_permitted"
+    allowed = decide(_subject(), "approver", "decision_approval", resource)
+    assert allowed["decision"] == "allow"
