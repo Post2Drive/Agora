@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; a guided synthetic CLI now exists, but M1/M2 exit gates remain open.  
-**Assessment base:** `main` at `6e2d76623fae909c062ee950781e9ed673416f3f` (22 November 2026)  
+**Assessment base:** `main` at `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
-Main now has one guided local command: `agora pilot --workdir <new-empty-directory>` (#88). It runs a fixed synthetic sequence with per-stage results, stops at the first denial, verifies its local anchored audit chain and writes a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, reconciliation/held-outcome listing, backup/restore/tamper drill or tested runbook exists.
+Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, reconciliation/held-outcome listing, backup/restore/tamper drill or tested runbook exists.
 
-The repository also provides separate CLI commands and Python APIs. #88's pilot explicitly passes `require_policy=True` and `require_anchored=True` inside its own stages. Lower-level mainline APIs still default `require_policy=False` and `require_anchored=False`; #89 proposes changing those defaults but remains open/draft despite four green exact-head CI jobs. #86's outcome wrappers still delegate to public role-string functions, and the `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. The scenario-input package remains disconnected from the simulation engine.
+The repository also provides separate CLI commands and Python APIs. #89 is merged: the three data-boundary APIs default `require_policy=True`, and `approve_as()` / the Principal outcome wrappers default `require_anchored=True`. Explicit `False` overrides remain accepted, direct `enforce_policy()` still defaults off, and `audit=None` policy-denial logging remains unanchored. #86 outcome wrappers still delegate to public role-string functions, and the `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. The scenario-input package remains disconnected from the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -17,13 +17,13 @@ This guide documents the available components and their boundaries. It does not 
 | Pipeline stage | Status on merged main | What is actually available |
 |---|---|---|
 | Synthetic CSV import | **AVAILABLE — CLI** | `agora data import-csv`, snapshot listing/show/rejected-row commands; immutable local snapshot and manifest. |
-| Ontology binding | **AVAILABLE — Python API, partial governance** | `load_binding`, `validate_binding`, `materialize_instances`; main defaults `require_policy=False`. #89 proposes `True` but is unmerged; `audit=None` policy-denial logging remains unanchored. |
-| Shared policy enforcement | **AVAILABLE — partial** | #78/#79 provide Principal-bound callback plumbing and three policy boundaries. Main defaults `require_policy=False`; #89 proposes `True` but remains draft. `audit=None` still creates an unanchored local chain. |
+| Ontology binding | **AVAILABLE — Python API, partial governance** | `load_binding`, `validate_binding`, `materialize_instances`; #89 makes `require_policy=True` the default. Explicit `False` and unanchored `audit=None` denial logging remain. |
+| Shared policy enforcement | **AVAILABLE — partial** | #78/#79/#89 provide Principal-bound callback plumbing and default-on policy checks at three data boundaries. Direct `enforce_policy()` defaults off; `audit=None` still creates an unanchored local chain. |
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
-| Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84 make `approve_as()` principal-native with stored-decision-derived policy input. Main defaults `require_anchored=False`; #89 proposes `True` but is unmerged. Legacy `approve()` retains its runtime environment switch. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75 provide writer, factory and append wiring. Main's Principal write defaults remain `require_anchored=False`; #89 proposes `True` but is unmerged. Explicit opt-out and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
-| Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #86 ignores caller resource data, but wrappers still delegate to public role-string functions. Main's anchor default remains off; #89 proposes default-on but is unmerged. |
+| Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89 make `approve_as()` principal-native with stored-decision-derived policy input and default-on anchor check. Explicit `False` remains accepted; legacy `approve()` retains its runtime environment switch. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89 provide writer, factory, append wiring and default-on anchor checks on three Principal wrappers. Explicit opt-out, legacy outcome paths and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
+| Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #86 ignores caller resource data and #89 defaults Principal wrappers to anchored audit, but wrappers still delegate to public role-string functions. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
 | M2 run record | **NOT AVAILABLE in the pilot** | `agora/pilot.py` returns an in-memory `PilotResult`; it does not persist/verify the immutable `RUN_PROVENANCE_SPEC.md` envelope. |
@@ -180,7 +180,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 The following gaps remain after the #88 guided pilot command:
 
-1. Merge/review the default-on protection slice only through the owner-controlled process. PR #89 is open/draft with four green exact-head jobs; main still has False defaults, explicit False overrides remain in the PR, and `audit=None` policy denials still use an unanchored chain.
+1. #89's default-on policy/anchor parameters are now merged (run `44948055801`, 4/4 green). Remove production-capable explicit False opt-outs and make the configured anchored writer mandatory for policy-denial/data-boundary paths; `audit=None` still uses an unanchored chain.
 2. Retire the public role-string `record_outcome()` / `review_outcome()` APIs and remove the runtime-enableable legacy `approve()` environment switch; keep no production-capable role-string authority path.
 3. Require the same configured `AnchoredAuditChain` for policy-denial/data-boundary paths; remove unanchored `audit=None` fallback and prove denial precedes protected reads.
 4. Implement decision/audit reconciliation (#57) and outcome dependency markers/held-outcome listing (#60); both remain specifications only.
