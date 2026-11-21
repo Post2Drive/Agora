@@ -2,7 +2,7 @@
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
 **Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
-**Milestone dependency:** this docs PR adds a draft `docs/MILESTONE_OPERATOR_PILOT.md` and fixture specification for Claude/owner review. Neither is merged or owner-approved yet. This file remains a provisional status map, not an executable runbook.
+**Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
 
