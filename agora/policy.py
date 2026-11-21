@@ -1,6 +1,6 @@
 """Deny-by-default RBAC + ABAC policy decision point.
 
-This module is intentionally standalone.  Callers may use the returned,
+This module is intentionally standalone. Callers may use the returned,
 audit-safe decision at an enforcement boundary; no existing path is wired to
 it yet.
 """
@@ -10,15 +10,15 @@ from collections.abc import Mapping
 from typing import Any
 
 POLICY_VERSION = "stage2-v1"
-OPERATIONS = frozenset({"import", "binding", "simulation_input", "report_export"})
+OPERATIONS = frozenset({"import", "binding", "simulation_input", "report_export", "decision_approval"})
 SENSITIVITY_RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
 
 # Keep this deliberately small until an identity adapter defines the complete
-# enterprise role model.  Unknown roles are denied rather than inferred.
+# enterprise role model. Unknown roles are denied rather than inferred.
 ROLE_OPERATIONS = {
-    "operator": OPERATIONS,
+    "operator": OPERATIONS - {"decision_approval"},
     "reviewer": frozenset({"binding", "report_export"}),
-    "approver": frozenset({"report_export"}),
+    "approver": frozenset({"report_export", "decision_approval"}),
     "reader": frozenset({"report_export"}),
 }
 
@@ -37,7 +37,6 @@ def _scope(subject: Any, resource: Mapping[str, Any]) -> tuple[str | None, str |
     subject_scope = subject.get("project_id") if isinstance(subject, Mapping) else None
     subject_scope = subject_scope or (subject.get("tenant_id") if isinstance(subject, Mapping) else None)
     resource_scope = resource.get("project_id") or resource.get("tenant_id")
-    # A caller may provide an explicit target scope under either name.
     target_scope = resource.get("resource_project_id") or resource.get("resource_tenant_id")
     return (str(subject_scope) if subject_scope is not None else None,
             str(resource_scope or target_scope) if (resource_scope or target_scope) is not None else None)
@@ -91,9 +90,6 @@ def decide(subject: Any, role: str, operation: str, resource: Mapping[str, Any],
     if SENSITIVITY_RANK[target_sensitivity] < SENSITIVITY_RANK[source_sensitivity]:
         return deny("sensitivity_downgrade")
 
-    # Imports may validate a snapshot before downstream use.  If the caller
-    # declares that it will be bound/scenario-fed, purpose and retention are
-    # required at the import boundary as well.
     requires_policy = operation != "import" or bool(
         resource.get("will_bind") or resource.get("downstream_use")
     )
@@ -108,4 +104,3 @@ def authorize(subject: Any, role: str, operation: str, resource: Mapping[str, An
               *, policy_version: str = POLICY_VERSION) -> dict[str, Any]:
     """Compatibility name for enforcement points."""
     return decide(subject, role, operation, resource, policy_version=policy_version)
-
