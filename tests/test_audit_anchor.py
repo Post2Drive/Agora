@@ -202,3 +202,50 @@ def test_local_sidecar_limitation_consistent_older_pair_is_not_detected(tmp_path
     rolled = AuditChainStore(tmp_path / "chain.sqlite3")
     out = verify_anchored(rolled, AnchorStore(anchors.path, "chain-1"))
     assert out["valid"] is True and out["trust_level"] == "local_sidecar"
+
+
+def _worker(chain_path, anchor_path, worker, count):
+    from agora.audit_anchor import AnchoredAuditChain, AnchorStore
+    from agora.audit_chain import AuditChainStore
+    chain = AuditChainStore(chain_path)
+    wrapped = AnchoredAuditChain(chain, AnchorStore(anchor_path, "c1"))
+    for i in range(count):
+        wrapped.append({"event_id": f"w{worker}-{i}", "event_type": "t"})
+    wrapped.close()
+
+
+def test_concurrent_processes_keep_chain_and_anchor_consistent(tmp_path):
+    import multiprocessing
+    from agora.audit_anchor import AnchorStore, AnchoredAuditChain, bootstrap_anchor
+    from agora.audit_chain import AuditChainStore
+    cp, ap = str(tmp_path / "c.db"), str(tmp_path / "a.jsonl")
+    chain = AuditChainStore(cp)
+    bootstrap_anchor(chain, AnchorStore(ap, "c1"), performed_by="test")
+    chain.close()
+    ctx = multiprocessing.get_context("spawn")
+    procs = [ctx.Process(target=_worker, args=(cp, ap, w, 6)) for w in range(3)]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join(60)
+    assert all(p.exitcode == 0 for p in procs)
+    chain = AuditChainStore(cp)
+    verdict = AnchoredAuditChain(chain, AnchorStore(ap, "c1")).verify()
+    assert verdict["status"] == "anchored_verified" and verdict["sequence"] == 18
+    chain.close()
+
+
+def test_anchor_file_is_owner_only_and_close_closes_chain(tmp_path):
+    import os, sqlite3, stat
+    import pytest
+    from agora.audit_anchor import AnchorStore, AnchoredAuditChain, bootstrap_anchor
+    from agora.audit_chain import AuditChainStore
+    chain = AuditChainStore(tmp_path / "c.db")
+    anchors = AnchorStore(tmp_path / "a.jsonl", "c1")
+    bootstrap_anchor(chain, anchors, performed_by="test")
+    if os.name != "nt":
+        assert stat.S_IMODE(os.stat(anchors.path).st_mode) == 0o600
+    wrapped = AnchoredAuditChain(chain, anchors)
+    wrapped.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        chain.verify()

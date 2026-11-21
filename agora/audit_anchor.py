@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from agora.audit_chain import GENESIS, AuditChainStore, _canonical
+from agora.validation.audit_log import _exclusive_lock
 
 FORMAT_VERSION = 1
 TRUST_LEVEL = "local_sidecar"
@@ -115,11 +116,16 @@ class AnchorStore:
         }
         record = {**body, "record_hash": _record_hash(body)}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
+        fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)  # owner-only on POSIX
+        with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
             handle.write(_canonical(record) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
         return record
+
+    def lock(self):
+        """Cross-process exclusive lock on a sidecar lock file next to the anchor history."""
+        return _exclusive_lock(self.path.with_name(self.path.name + ".lock"))
 
     def advance(self, sequence: int, head_hash: str) -> dict[str, Any]:
         return self._append(sequence, head_hash)
@@ -175,16 +181,20 @@ class AnchoredAuditChain:
         self.chain, self.anchors = chain, anchors
 
     def append(self, event: Mapping[str, Any]) -> dict[str, Any]:
-        state = verify_anchored(self.chain, self.anchors)
-        if not state["valid"]:
-            raise AnchorRequiredError(f"audit chain is not cleanly anchored: {state['status']}")
-        appended = self.chain.append(event)
-        sequence, head = _head(self.chain)
-        try:
-            self.anchors.advance(sequence, head)
-        except Exception as exc:
-            raise AnchorWriteError("event was appended but its anchor could not be written") from exc
-        return appended
+        with self.anchors.lock():  # serialise verify -> append -> anchor across processes
+            state = verify_anchored(self.chain, self.anchors)
+            if not state["valid"]:
+                raise AnchorRequiredError(f"audit chain is not cleanly anchored: {state['status']}")
+            appended = self.chain.append(event)
+            sequence, head = _head(self.chain)
+            try:
+                self.anchors.advance(sequence, head)
+            except Exception as exc:
+                raise AnchorWriteError("event was appended but its anchor could not be written") from exc
+            return appended
+
+    def close(self) -> None:
+        self.chain.close()
 
     def verify(self) -> dict[str, Any]:
         return verify_anchored(self.chain, self.anchors)
