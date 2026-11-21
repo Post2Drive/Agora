@@ -50,7 +50,7 @@ The following headings reserve the runbook structure. Each step must be replaced
 6. **Audit timeline and verification — NOT YET:** show event sequence, chain verification and anchor comparison in plain language without exposing raw values.
 7. **Reconciliation and held outcomes — NOT YET:** list unmatched/held records; no automatic repair without explicit independent approval.
 8. **Backup/restore and tamper drill — NOT YET:** document and test copy/restore, anchor continuity, tamper detection and fail-closed recovery.
-9. **Run record and report — PARTIAL:** persist and verify the complete provenance envelope; any report must remain exploratory/simulated-labelled and must not call the engine as part of this M2 flow.
+9. **Run record and report — PARTIAL:** persist and verify the complete provenance envelope using the field map in `docs/PILOT_RUN_RECORD_FIELDS.md` and parent contract `docs/RUN_PROVENANCE_SPEC.md`; any report must remain exploratory/simulated-labelled and must not call the engine as part of this M2 flow.
 10. **Dress rehearsal — NOT YET:** only after the M2 checklist, tested runbook, exact-head CI and separate owner approval; log the exact command, SHA, fixture hashes, stage results, denials and operator sign-off.
 
 ## 5. Mandatory stop conditions
