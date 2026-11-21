@@ -209,9 +209,9 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage D — policy-denial and data-boundary threading: IMPLEMENTED, BUT OPTIONAL.** `enforce_policy(..., audit=)` accepts an injected writer. When supplied, denial events use the anchored writer and do not fall back to a plain chain append. `ingest_csv()`, `materialize_instances()` and `build_scenario_input()` accept and thread `audit=`. Important remaining limitation: `audit=None` preserves legacy behaviour, and `policy=None` remains a no-op. The new wiring does not make the policy hook principal-native or require an anchored writer in protected mode.
 
-**Stage B — decision lifecycle: NOT IMPLEMENTED.** `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()` and `supersede()` still accept optional audit appenders and have not been migrated to require the anchored writer in protected mode.
+**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74).** `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()` and `supersede()` still accept optional audit appenders and have not been migrated to require the anchored writer in protected mode.
 
-**Stage C — outcome recording/review: NOT IMPLEMENTED.** #70 adds Principal-gated `record_outcome_as()` and `review_outcome_as()`, but these delegate to legacy role-string functions. Outcome APIs still accept optional audit appenders; no anchored outcome writer is wired by #71.
+**Stage C — outcome recording/review: PARTIALLY IMPLEMENTED (#74).** #70 adds Principal-gated `record_outcome_as()` and `review_outcome_as()`, but these delegate to legacy role-string functions. Outcome APIs still accept optional audit appenders; no anchored outcome writer is wired by #71.
 
 **Next acceptance gates:** complete Stage B/C with the same configured anchored writer, preserve committed-but-unanchored partial-failure state, require the writer on protected paths, retain no-bootstrap and local-sidecar trust limitations, and add deterministic mutation/concurrency proofs. Do not claim complete anchoring until decision and outcome append boundaries are included.
 
