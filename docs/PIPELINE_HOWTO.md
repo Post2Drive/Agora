@@ -22,7 +22,7 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89 make `approve_as()` principal-native with stored-decision-derived policy input and default-on anchor check. Explicit `False` remains accepted; legacy `approve()` retains its runtime environment switch. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89 provide writer, factory, append wiring and default-on anchor checks on three Principal wrappers. Explicit opt-out, legacy outcome paths and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89 provide writer, factory, append wiring and default-on anchor checks on three Principal wrappers; #92 retires public role-string outcome exports. Explicit opt-out and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected mode partial** | #92 retires public role-string exports. Explicit `require_anchored=False` remains accepted; private helper audit can be omitted when the wrapper guard is bypassed. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
@@ -150,8 +150,8 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 **Integration status on main after #89:**
 
-- #89 makes `require_anchored=True` the default on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; explicit `False` remains accepted.
-- Public `record_outcome()` / `review_outcome()` remain callable with optional audit, and the Principal wrappers still delegate to them.
+- #89 makes `require_anchored=True` the default on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; explicit `False` remains accepted. #92 retires the public role-string outcome exports.
+- #92 removes public `record_outcome()` / `review_outcome()` exports. `record_outcome_as()` / `review_outcome_as()` are the public routes; explicit `require_anchored=False` remains accepted.
 - `approve()` remains default-deny but can still be enabled with `AGORA_TEST_ONLY_LEGACY_APPROVE=1`.
 - Direct `enforce_policy()` still defaults `require_policy=False`; when `audit=None`, policy-denial logging uses an unanchored local `AuditChainStore`.
 - No standalone audit timeline or plain-language verification command exists; only the pilot's `audit_verify` stage is available.
@@ -162,7 +162,7 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
-There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data and #89 defaults their anchor check on. The wrappers still delegate to public role-string `record_outcome()` / `review_outcome()`; explicit `require_anchored=False` remains accepted, and the legacy functions still accept optional audit.
+There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data; #89 defaults their anchor check on; #92 retires the public role-string outcome exports. Explicit `require_anchored=False` remains accepted, so the wrapper gate is not yet non-bypassable.
 
 Outcome dependency review markers are not implemented. Reconciliation between decision and audit stores is not implemented.
 
