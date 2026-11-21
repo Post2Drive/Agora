@@ -114,7 +114,7 @@ def build_scenario_input(
     transformation_policy: Mapping[str, Any] | None = None,
     policy: PolicyCallable | None = None,
     audit: Any | None = None,
-    require_policy: bool = False,
+    require_policy: bool = True,
 ) -> dict[str, Any]:
     """Build a deterministic scenario-input package from one explicit snapshot.
 

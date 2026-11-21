@@ -32,3 +32,4 @@ include = ["agora*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["protected_defaults: keep production policy/anchor defaults (no test relaxation)"]

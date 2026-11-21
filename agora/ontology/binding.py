@@ -226,7 +226,7 @@ def materialize_instances(
     audit: Any | None = None,
     purpose: str | None = None,
     retention: str | None = None,
-    require_policy: bool = False,
+    require_policy: bool = True,
 ) -> list[dict[str, Any]]:
     """Read one explicit snapshot and return provenance-rich ontology instances.
 
