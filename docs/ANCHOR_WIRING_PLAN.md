@@ -159,7 +159,7 @@ Never bootstrap automatically on missing/corrupt anchor history. Never reset an 
 ### Recovery rules
 
 - An unanchored tail may result from a crash after chain append and before anchor durability. It is not permission to repeat the original operation or to delete the event.
-- A future recovery command must be explicit, append-only, idempotent and bound to the exact prior anchor, current chain head, event IDs and independent operator approval. The current PR #63 draft does not provide that recovery command.
+- A future recovery command must be explicit, append-only, idempotent and bound to the exact prior anchor, current chain head, event IDs and independent operator approval. The merged #63/#71 implementation does not provide that recovery command.
 - If chain and anchor must be restored from backup, restore them as a coordinated pair and verify the pair before resuming. A local pair alone cannot prove that both were not rolled back together.
 - If the anchor is missing after prior use, do not call bootstrap as a repair. Escalate for evidence-preserving investigation.
 - Keep external anchoring out of scope until a separate threat review, authentication/key-management plan, outage policy and owner approval exist.
