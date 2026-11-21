@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A and D writer plumbing implemented by #71; Stage B/C append wiring and opt-in protected gates implemented by #74; #80 makes `approve_as()` principal-native and #82 test-gates legacy role-string `approve()`. Universal protected mode remains incomplete because policy/anchor requirements are still optional and outcome legacy paths remain. This document is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026).  
+**Status:** Stage A and D writer plumbing implemented by #71; Stage B/C append wiring and opt-in protected gates implemented by #74; #80 makes `approve_as()` principal-native, #82 test-gates legacy role-string `approve()`, and #84 isolates its policy resource from caller input. Universal protected mode remains incomplete because policy/anchor requirements are still optional and outcome legacy paths remain. This document is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against current main at `c9cfdc94734920e64f858cb718275d1931af9537`, after PRs #78, #79, #80 and #82 merged.
+The following inventory was checked against current main at `7afa1414acd9c2e68361faab81a5d246597a5919`, after PRs #78, #79, #80, #82 and #84 merged.
 
 ### 2.1 Audit primitives
 
@@ -190,7 +190,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - **PR #63/#71/#74:** the local-sidecar primitive, writer factory, policy/data-boundary threading and lifecycle/outcome append boundaries are merged. Exact-head CI runs 201, 211 and 221 passed all four matrix jobs. `require_anchored=True` remains opt-in on the three Principal wrappers.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
-- **Principal migration:** #80 makes `approve_as()` principal-native; #82 test-gates legacy role-string `approve()` behind `AGORA_TEST_ONLY_LEGACY_APPROVE=1`, while outcome wrappers still delegate to legacy role-string APIs. #79's `require_policy` is opt-in/default-false; no policy or anchor gate is enabled by default everywhere.
+- **Principal migration:** #80 makes `approve_as()` principal-native; #82 gates legacy role-string `approve()` behind `AGORA_TEST_ONLY_LEGACY_APPROVE=1`; #84 makes `approve_as()` ignore caller-supplied policy resources and derive its project scope/resource ID from the stored decision with a fixed `internal` baseline. Outcome wrappers still delegate to legacy role-string APIs. #79's `require_policy` is opt-in/default-false; no policy or anchor gate is enabled by default everywhere.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
@@ -203,13 +203,13 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
 
-## 10. Current mainline status after PR #82
+## 10. Current mainline status after PR #84
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
 **Stage D — policy-denial and data-boundary threading: IMPLEMENTED, BUT OPTIONAL.** `enforce_policy(..., audit=)` accepts an injected writer. When supplied, denial events use it; when `audit=None`, the implementation creates a legacy unanchored project-local `AuditChainStore`. #78 adds a principal-bound `principal_policy()` and `require_policy=True` missing-policy denial; #79 threads `require_policy` through `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. All data-boundary defaults remain `False`, and the callback still receives only `(operation, resource)`. Policy and anchor are not default-on.
 
-**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74/#80/#82).** Lifecycle methods accept optional audit appenders and the anchor gate remains opt-in. #80 makes `approve_as()` principal-native through `authorize_decision_approval_principal()`; #82 makes legacy role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` is set. `approve_as(..., require_anchored=True)` fails closed before state mutation without an `AnchoredAuditChain`; its default remains `False`.
+**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74/#80/#82/#84).** Lifecycle methods accept optional audit appenders and the anchor gate remains opt-in. #80 makes `approve_as()` principal-native; #82 makes legacy role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` is set; #84 ignores caller-supplied policy resource fields and uses the stored decision's project scope and decision ID with a fixed `internal` baseline. `approve_as(..., require_anchored=True)` fails closed before state mutation without an `AnchoredAuditChain`; its default remains `False`.
 
 **Stage C — outcome recording/review: PARTIALLY IMPLEMENTED (#70/#74).** `record_outcome_as()` and `review_outcome_as()` derive roles from Principal but still delegate to legacy role-string functions. Their `require_anchored=True` gates are opt-in; the underlying outcome APIs still accept optional audit appenders. No default protected outcome path is established.
 
