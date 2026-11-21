@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026), including merged PRs #51–#89 and the earlier merged implementation history; #90 is the open ChatGPT docs draft.
+**Assessment base:** `main` at `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026), including merged PRs #51–#89 and the earlier merged implementation history; #91 is the open ChatGPT docs draft.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -44,7 +44,7 @@ The following newer slices are confirmed merged on the assessed mainline:
 
 - **#89:** default-True policy/anchor parameters merged at `87c7cc95`; exact-head CI run `44948055801` passed all four jobs. Explicit opt-outs and the unanchored policy-denial path remain.
 
-**Open docs draft:** #90 refreshes nine documentation files against #88/#89; no implementation PR is open.
+**Open docs draft:** #91 refreshes nine documentation files against #88/#89; no implementation PR is open.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
@@ -74,4 +74,4 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Process note
 
-This assessment is a documentation snapshot of the merged mainline at `87c7cc95b3e7c231f52dca4924d6fc433c698462`; #90 is the open ChatGPT docs draft.
+This assessment is a documentation snapshot of the merged mainline at `87c7cc95b3e7c231f52dca4924d6fc433c698462`; #91 is the open ChatGPT docs draft.
