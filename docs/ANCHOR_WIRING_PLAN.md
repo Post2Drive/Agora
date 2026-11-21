@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A and D writer plumbing implemented by #71; Stage B/C append wiring and opt-in protected gates implemented by #74; #80 makes `approve_as()` principal-native and #82 test-gates legacy role-string `approve()`. Universal protected mode remains incomplete because policy/anchor requirements are still optional and outcome legacy paths remain. This document is a wiring plan, not deployment or rehearsal approval.  
-**Assessment base:** `main` at `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026).  
+**Status:** Stage A and D writer plumbing implemented by #71; Stage B/C append wiring and opt-in protected gates implemented by #74; #80/#84 provide principal-native approval with stored-decision-only policy input, and #82 default-denies legacy role-string `approve()`. Universal protected mode remains incomplete because policy/anchor requirements are optional and outcome legacy paths remain. This document is a wiring plan, not deployment or rehearsal approval.  
+**Assessment base:** `main` at `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against current main at `c9cfdc94734920e64f858cb718275d1931af9537`, after PRs #78, #79, #80 and #82 merged.
+The following inventory was checked against current main at `7afa1414acd9c2e68361faab81a5d246597a5919`, after PRs #78, #79, #80 and #82 merged.
 
 ### 2.1 Audit primitives
 
@@ -203,19 +203,19 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
 
-## 10. Current mainline status after PR #82
+## 10. Current mainline status after PR #84
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
 **Stage D — policy-denial and data-boundary threading: IMPLEMENTED, BUT OPTIONAL.** `enforce_policy(..., audit=)` accepts an injected writer. When supplied, denial events use it; when `audit=None`, the implementation creates a legacy unanchored project-local `AuditChainStore`. #78 adds a principal-bound `principal_policy()` and `require_policy=True` missing-policy denial; #79 threads `require_policy` through `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. All data-boundary defaults remain `False`, and the callback still receives only `(operation, resource)`. Policy and anchor are not default-on.
 
-**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74/#80/#82).** Lifecycle methods accept optional audit appenders and the anchor gate remains opt-in. #80 makes `approve_as()` principal-native through `authorize_decision_approval_principal()`; #82 makes legacy role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` is set. `approve_as(..., require_anchored=True)` fails closed before state mutation without an `AnchoredAuditChain`; its default remains `False`.
+**Stage B — decision lifecycle: PARTIALLY IMPLEMENTED (#74/#80/#82/#84).** Lifecycle methods accept optional audit appenders and the anchor gate remains opt-in. #80 makes `approve_as()` principal-native; #84 makes its policy resource server-derived and adds precise missing/unanchored-writer error coverage. #82 makes legacy role-string `approve()` fail closed unless `AGORA_TEST_ONLY_LEGACY_APPROVE=1` is set. `approve_as(..., require_anchored=True)` fails closed before state mutation without an `AnchoredAuditChain`; its default remains `False`.
 
 **Stage C — outcome recording/review: PARTIALLY IMPLEMENTED (#70/#74).** `record_outcome_as()` and `review_outcome_as()` derive roles from Principal but still delegate to legacy role-string functions. Their `require_anchored=True` gates are opt-in; the underlying outcome APIs still accept optional audit appenders. No default protected outcome path is established.
 
-**Exact-head CI evidence:** #74 run 221 (`44928837108`), #75 run 224 (`44929428177`), #79 run 236 (`44931670540`), #80 run 239 (`44934473818`) and #82 run `44937162200` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #79 had one initial Windows 3.11 SQLite lock failure; a rerun passed. These CI results do not establish operational backup/restore or close the known Linux lock-removal mutation gap.
+**Exact-head CI evidence:** #74 run 221 (`44928837108`), #75 run 224 (`44929428177`), #79 run 236 (`44931670540`), #80 run 239 (`44934473818`), #82 run `44937162200` and #84 run `44939812441` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #79 had one initial Windows 3.11 SQLite lock failure; a rerun passed. These CI results do not establish operational backup/restore or close the known Linux lock-removal mutation gap.
 
-**Remaining acceptance gates:** require the same configured anchored writer on every protected path by default; remove/gate legacy optional-audit paths; migrate outcome writes to Principal at the actual store boundary; keep denial before protected source reads; add a precise `AnchorRequiredError` assertion and unchanged-state proof for the `require_anchored=True` gate; add cross-process lock mutation/concurrency proofs and backup/restore/tamper drills. Preserve the committed-but-unanchored partial-failure state and the explicit `local_sidecar` trust limitation. Reconciliation (#57) remains a specification only.
+**Remaining acceptance gates:** require the same configured anchored writer on every protected path by default; remove/gate legacy optional-audit paths; migrate outcome writes to Principal at the actual store boundary; keep denial before protected source reads; the `approve_as()` precise `AnchorRequiredError` and unchanged-state proof is now present in #84; add equivalent denial/no-mutation proofs for outcome wrappers and every protected entry point; add cross-process lock mutation/concurrency proofs and backup/restore/tamper drills. Preserve the committed-but-unanchored partial-failure state and the explicit `local_sidecar` trust limitation. Reconciliation (#57) remains a specification only.
 
 ## 11. Permanent safety boundaries
 
