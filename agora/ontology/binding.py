@@ -255,7 +255,6 @@ def materialize_instances(
                 audit=audit,
                 project=project,
                 operation="binding",
-                require_policy=_protection.POLICY_REQUIRED,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [binding.binding_id, binding.dataset_id],

@@ -58,19 +58,23 @@ def test_resource_cannot_grant_authority(tmp_path):
                        operation="import", resource=forged)
 
 
-def test_policy_none_still_noop_unless_required(tmp_path):
-    assert _run(None, tmp_path) is None
+def test_policy_none_still_noop_unless_required(tmp_path, monkeypatch):
+    from agora import protection
+    assert _run(None, tmp_path) is None  # conftest relaxes POLICY_REQUIRED for legacy fixtures
+    monkeypatch.setattr(protection, "POLICY_REQUIRED", True)
     with pytest.raises(PolicyEnforcementError, match="policy_required"):
-        _run(None, tmp_path, require_policy=True)
+        _run(None, tmp_path)
     c = AuditChainStore(tmp_path / "data" / "audit_chain.sqlite3")
     n = c.db.execute("SELECT count(*) FROM audit_events").fetchone()[0]
     c.close()
     assert n == 1
 
 
-def test_non_callable_policy_still_denied_when_required(tmp_path):
+def test_non_callable_policy_still_denied_when_required(tmp_path, monkeypatch):
+    from agora import protection
+    monkeypatch.setattr(protection, "POLICY_REQUIRED", True)
     with pytest.raises(PolicyEnforcementError, match="policy_not_callable"):
-        _run("nope", tmp_path, require_policy=True)
+        _run("nope", tmp_path)
 
 
 def test_required_role_is_enforced_by_bound_policy(tmp_path):
