@@ -73,7 +73,7 @@ CI status is a point-in-time observation; re-fetch the exact head before any lat
 
 - [ ] The owner confirms the precise pilot scope, operators, data directory, stop conditions and permitted commands.
 - [x] The pilot runbook (#56) is reviewed, corrected against main and merged (Done; execution still requires approval).
-- [ ] The deployment-hardening specification (#55) is merged (Done); the required local host/VM, permissions, backup and restore checks are evidenced.
+- [ ] The deployment-hardening specification (#55) is merged (Done); the required local host/VM, permissions, backup and restore checks are still to be evidenced (Not started).
 - [ ] The synthetic principal slice (#58) is merged (Partial); all governed operations use adapter-issued principals rather than caller-supplied role strings.
 - [ ] The audit-anchor implementation is built and independently verified against crash, restore and tamper cases. A local sidecar is not represented as protection against an attacker who can rewrite both local stores.
 - [ ] Decision-store/audit-chain reconciliation (specified in #57; Not started as code) is implemented or a documented manual recovery procedure is approved and tested.
