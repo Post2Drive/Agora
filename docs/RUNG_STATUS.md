@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026), including merged PRs #51–#71 and the earlier merged implementation history.
+**Assessment base:** `main` at `adacbd71726324de71cdbf9d20943701c553d252` (21 November 2026), including merged PRs #51–#71 and the earlier merged implementation history.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -58,3 +58,8 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 ## Process note
 
 This assessment is a documentation snapshot of the merged mainline at the SHA stated above. Reassess it after material merges; do not silently promote partial rungs to demonstrated based only on specifications or CI.
+
+
+## Current mainline correction — PR #74
+
+Assessment base is `adacbd71726324de71cdbf9d20943701c553d252`. #74 adds anchored lifecycle/outcome append wiring and `require_anchored=True` gates on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`. Exact-head run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This is partial protected coverage; legacy role-string bridges, optional audit paths, Principal-native shared policy enforcement, reconciliation, outcome markers and the callable pipeline remain incomplete. Open #75 is not merged.
