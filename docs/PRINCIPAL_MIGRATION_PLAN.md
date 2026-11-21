@@ -103,7 +103,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 4 — migrate outcome recording and review
 
-**Current status: PARTIALLY IMPLEMENTED by merged PRs #70/#86/#89;
+**Current status: PARTIALLY IMPLEMENTED by merged PRs #70/#86/#89; exit gate remains open. #86 ignores caller-supplied resource data and #89 defaults the Principal wrappers to anchored audit, but they still delegate to public role-string outcome functions.**
 
 - `record_outcome_as(store, *, principal, **kwargs)` derives recorder/actor from Principal and calls `decide_principal(..., required_role="operator")`.
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
