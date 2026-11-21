@@ -217,7 +217,8 @@ SECTIONS = [
      _decisions, "approve committee association decision"),
     ("range", "Range of outcomes",
      "Explain the likely range of results and the probabilities (win chances, targets), and which "
-     "assumptions move the result most.",     _range, ""),
+     "assumptions move the result most.",
+     _range, ""),
     ("risks", "How far to trust this",
      "Explain the main uncertainties: which inputs are assumptions, how many people actually wrote with "
      "the model, and what real data would make the prediction sharper. Be honest and specific.",
