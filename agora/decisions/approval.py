@@ -4,8 +4,11 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from collections.abc import Mapping
 from typing import Any
+import uuid
 
-from .permissions import authorize_decision_approval
+from agora.audit_chain import AuditChainStore
+
+from .permissions import DecisionPermissionError, authorize_decision_approval
 from .schema import DecisionRecord, DecisionRecordError, load_decision_record
 from .store import DecisionRecordStore
 
@@ -86,6 +89,47 @@ def _event(record: DecisionRecord, transition: str, actor: str, method: str,
     }
 
 
+def _audit(
+    audit: AuditChainStore | None,
+    record: DecisionRecord,
+    transition: str,
+    actor: str,
+    *,
+    decision: str = "allow",
+    reason: str | None = None,
+    operation: str = "decision_lifecycle",
+    policy_version: str | None = None,
+) -> None:
+    """Append an allow-listed audit event after the transition is stored.
+
+    The decision store and the audit chain are separate SQLite files, so the
+    two writes cannot share one transaction. The transition is stored first;
+    if the audit append then fails we raise so the caller cannot treat the
+    approval as fully audited.
+    """
+    if audit is None:
+        return
+    event: dict[str, Any] = {
+        "event_id": f"decision-{transition}-{uuid.uuid4().hex}",
+        "event_type": f"decision_{transition}",
+        "subject_id": actor,
+        "operation": operation,
+        "decision": decision,
+        "resource_ids": [record.decision_id, f"version-{record.version}"],
+        "decision_fingerprint": record.fingerprint,
+    }
+    if reason:
+        event["reason"] = reason
+    if policy_version:
+        event["policy_version"] = policy_version
+    try:
+        audit.append(event)
+    except Exception as exc:
+        raise ApprovalTransitionError(
+            "decision transition was stored but its audit event could not be appended"
+        ) from exc
+
+
 def propose(
     store: DecisionRecordStore,
     decision_id: str,
@@ -94,6 +138,7 @@ def propose(
     actor: str,
     method: str = "manual",
     now: datetime | str | None = None,
+    audit: AuditChainStore | None = None,
 ) -> DecisionRecord:
     """Move a draft to proposed; only its named proposer may submit it."""
     current = _current(store, decision_id, expected_version)
@@ -107,6 +152,7 @@ def propose(
     stamp = _stamp(moment)
     updated = _next(current, status="proposed", actor=actor, method=method, occurred_at=stamp)
     store.append_transition(updated, _event(updated, "proposed", actor, method, stamp))
+    _audit(audit, updated, "proposed", actor)
     return updated
 
 
@@ -124,6 +170,7 @@ def approve(
     method: str = "manual",
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
+    audit: AuditChainStore | None = None,
 ) -> DecisionRecord:
     """Approve only the exact current proposal after policy and separation checks."""
     current = _current(store, decision_id, expected_version)
@@ -151,7 +198,16 @@ def approve(
     policy_resource.setdefault("source_sensitivity", "internal")
     # This call is mandatory: the central PDP grants decision_approval to
     # approver only and also checks scope and sensitivity.
-    policy_decision = authorize_decision_approval(subject, role, policy_resource)
+    try:
+        policy_decision = authorize_decision_approval(subject, role, policy_resource)
+    except DecisionPermissionError as exc:
+        _audit(
+            audit, current, "approval_denied", actor, decision="deny",
+            reason=str(exc.decision.get("reason", "policy_denied")),
+            operation="decision_approval",
+            policy_version=exc.decision.get("policy_version"),
+        )
+        raise
 
     stamp = _stamp(moment)
     updated = _next(
@@ -162,6 +218,10 @@ def approve(
         updated,
         _event(updated, "approved", actor, method, stamp),
         policy_decision=policy_decision,
+    )
+    _audit(
+        audit, updated, "approved", actor, operation="decision_approval",
+        policy_version=policy_decision.get("policy_version"),
     )
     return updated
 
@@ -174,6 +234,7 @@ def reject(
     actor: str,
     method: str = "manual",
     now: datetime | str | None = None,
+    audit: AuditChainStore | None = None,
 ) -> DecisionRecord:
     """Allow the assigned reviewer to reject a proposal."""
     current = _current(store, decision_id, expected_version)
@@ -184,6 +245,7 @@ def reject(
     stamp = _stamp(_time(now))
     updated = _next(current, status="rejected", actor=actor, method=method, occurred_at=stamp)
     store.append_transition(updated, _event(updated, "rejected", actor, method, stamp))
+    _audit(audit, updated, "rejected", actor)
     return updated
 
 
@@ -193,6 +255,7 @@ def expire(
     expected_version: int,
     *,
     now: datetime | str,
+    audit: AuditChainStore | None = None,
 ) -> DecisionRecord:
     """Close an unapproved proposal after its review date has elapsed."""
     current = _current(store, decision_id, expected_version)
@@ -207,6 +270,7 @@ def expire(
     store.append_transition(
         updated, _event(updated, "expired", actor, method, stamp, reason="review_date_elapsed")
     )
+    _audit(audit, updated, "expired", actor, reason="review_date_elapsed")
     return updated
 
 
@@ -219,6 +283,7 @@ def supersede(
     replacement_fingerprint: str,
     method: str = "manual",
     now: datetime | str | None = None,
+    audit: AuditChainStore | None = None,
 ) -> DecisionRecord:
     """Mark a proposed/approved/rejected version superseded without rewriting it."""
     current = _current(store, decision_id, expected_version)
@@ -236,6 +301,7 @@ def supersede(
         _event(updated, "superseded", actor, method, stamp,
                replacement_fingerprint=replacement_fingerprint),
     )
+    _audit(audit, updated, "superseded", actor)
     return updated
 
 
