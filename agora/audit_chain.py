@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 
 GENESIS = "0" * 64
@@ -39,6 +39,15 @@ def redact_event(event: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(event, Mapping) or not event:
         raise ValueError("audit event must be a non-empty mapping")
     return _redact(dict(event))
+
+
+class AuditAppender(Protocol):
+    """Structural type for anything that can durably append an audit event.
+
+    Satisfied by AuditChainStore and by AnchoredAuditChain (anchor-checked writer).
+    """
+
+    def append(self, event: Mapping[str, Any]) -> Any: ...
 
 
 class AuditChainStore:
@@ -100,4 +109,4 @@ class AuditChainStore:
         self.db.close()
 
 
-__all__ = ["AuditChainStore", "GENESIS", "redact_event"]
+__all__ = ["AuditAppender", "AuditChainStore", "GENESIS", "redact_event"]
