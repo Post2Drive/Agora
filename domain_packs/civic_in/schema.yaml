@@ -1,0 +1,30 @@
+schema_id: civic-service-requests-v1
+schema_version: 1.0.0
+dataset_name: civic_service_requests
+header: true
+row_policy:
+  malformed: fail
+  unknown_columns: reject
+  missing_columns: reject
+columns:
+  - name: request_id
+    type: string
+    nullable: false
+    primary_key: true
+    sensitivity: internal
+  - name: category
+    type: string
+    nullable: false
+    sensitivity: public
+  - name: priority
+    type: integer
+    nullable: false
+    sensitivity: internal
+  - name: opened_on
+    type: date
+    nullable: false
+    sensitivity: public
+  - name: resolved
+    type: boolean
+    nullable: false
+    sensitivity: internal
