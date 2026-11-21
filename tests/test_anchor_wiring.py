@@ -92,7 +92,7 @@ def test_ingest_denial_anchored_before_source_read(tmp_path):
 import json as _json
 
 from agora.decisions.approval import ApprovalTransitionError, approve, propose
-from agora.decisions.outcomes import OutcomeError, record_outcome, review_outcome
+from agora.decisions.outcomes import OutcomeError, _record_outcome as record_outcome, _review_outcome as review_outcome
 from agora.decisions.store import DecisionRecordStore
 from tests.test_decision_approval import approve_args, draft_record
 from tests.test_decision_outcomes import approved_store, outcome_args, review_args

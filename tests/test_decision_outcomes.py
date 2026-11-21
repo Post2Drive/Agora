@@ -8,7 +8,8 @@ import pytest
 from agora.audit_chain import AuditChainStore
 from agora.decisions.approval import approve, propose
 from agora.decisions.outcomes import (
-    DecisionOutcomeStore, OutcomeError, OutcomePermissionError, record_outcome, review_outcome,
+    DecisionOutcomeStore, OutcomeError, OutcomePermissionError,
+    _record_outcome as record_outcome, _review_outcome as review_outcome,
 )
 from agora.decisions.store import DecisionRecordStore
 from tests.test_decision_approval import approve_args, draft_record
@@ -231,3 +232,11 @@ def test_audit_failure_is_visible_after_store_write(tmp_path):
     with pytest.raises(OutcomeError, match="audit event could not be appended"):
         record_outcome(store, **outcome_args(approved, outcome_id="o-1"), audit=Broken())
     assert store.get(approved.decision_id, approved.version, "o-1")["outcome_id"] == "o-1"
+
+
+def test_public_role_string_outcome_apis_are_retired():
+    import agora.decisions.outcomes as m
+    for name in ("record_outcome", "review_outcome"):
+        assert not hasattr(m, name), name
+        assert name not in m.__all__
+    assert {"record_outcome_as", "review_outcome_as"} <= set(m.__all__)
