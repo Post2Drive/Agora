@@ -1,0 +1,22 @@
+binding_id: civic.service_request.v1
+binding_version: 1.0.0
+object_type_id: civic:ServiceRequest
+object_type_version: 1.0.0
+dataset_id: civic_service_requests
+schema_id: civic-service-requests-v1
+schema_version: 1.0.0
+column_map:
+  request_id: civic:ServiceRequest.request_id
+  category: civic:ServiceRequest.category
+  priority: civic:ServiceRequest.priority
+  opened_on: civic:ServiceRequest.opened_on
+  resolved: civic:ServiceRequest.resolved
+identity:
+  strategy: record_key
+  primary_key_column: request_id
+property_sensitivity:
+  civic:ServiceRequest.request_id: internal
+  civic:ServiceRequest.category: public
+  civic:ServiceRequest.priority: internal
+  civic:ServiceRequest.opened_on: public
+  civic:ServiceRequest.resolved: internal

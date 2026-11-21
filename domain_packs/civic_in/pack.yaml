@@ -1,0 +1,97 @@
+pack_id: civic-in-pack
+schema_version: 1.0.0
+object_types:
+  - type_id: civic:ServiceRequest
+    version: 1.0.0
+    name: Service request
+    description: Synthetic public-service request record.
+    properties:
+      - civic:ServiceRequest.request_id
+      - civic:ServiceRequest.category
+      - civic:ServiceRequest.priority
+      - civic:ServiceRequest.opened_on
+      - civic:ServiceRequest.resolved
+    identity_strategy: record_key
+  - type_id: civic:Service
+    version: 1.0.0
+    name: Public service
+    description: Synthetic service catalogue entry.
+    properties:
+      - civic:Service.service_code
+      - civic:Service.name
+    identity_strategy: record_key
+property_types:
+  - property_id: civic:ServiceRequest.request_id
+    version: 1.0.0
+    name: Request identifier
+    data_type: identifier
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: civic:ServiceRequest.category
+    version: 1.0.0
+    name: Request category
+    data_type: string
+    required: true
+    nullable: false
+    sensitivity: public
+  - property_id: civic:ServiceRequest.priority
+    version: 1.0.0
+    name: Priority
+    data_type: integer
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: civic:ServiceRequest.opened_on
+    version: 1.0.0
+    name: Opened date
+    data_type: date
+    required: true
+    nullable: false
+    sensitivity: public
+  - property_id: civic:ServiceRequest.resolved
+    version: 1.0.0
+    name: Resolved flag
+    data_type: boolean
+    required: true
+    nullable: false
+    sensitivity: internal
+  - property_id: civic:Service.service_code
+    version: 1.0.0
+    name: Service code
+    data_type: identifier
+    required: true
+    nullable: false
+    sensitivity: public
+  - property_id: civic:Service.name
+    version: 1.0.0
+    name: Service name
+    data_type: string
+    required: true
+    nullable: false
+    sensitivity: public
+link_types:
+  - link_type_id: civic:ServiceRequest.service
+    version: 1.0.0
+    name: Requests service
+    source_type_id: civic:ServiceRequest
+    target_type_id: civic:Service
+    predicate: requests_service
+    cardinality: one_to_many
+action_types:
+  - action_type_id: civic:RecordRequest
+    version: 1.0.0
+    name: Record request
+    actor_type_id: civic:ServiceRequest
+    target_type_id: civic:Service
+    inputs:
+      - civic:ServiceRequest.request_id
+    preconditions:
+      - request_exists
+    effects:
+      - request_recorded
+    permissions:
+      - synthetic_test_only
+    simulated_only: true
+    execution_mode: simulation_only
+    external_writeback: prohibited
