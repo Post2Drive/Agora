@@ -50,6 +50,26 @@ class AuditAppender(Protocol):
     def append(self, event: Mapping[str, Any]) -> Any: ...
 
 
+def verify_rows(rows: Any) -> tuple[str, int | None]:
+    """Verify (seq,event_id,previous_hash,event_json,event_hash) rows in order.
+
+    Returns (last_hash, None) when intact, or ("", first_broken_sequence).
+    """
+    previous = GENESIS
+    for seq, _event_id, prior, raw, stored in rows:
+        if prior != previous:
+            return "", seq
+        try:
+            event = json.loads(raw)
+            actual = hashlib.sha256(_canonical({"previous_hash": prior, "event": event}).encode()).hexdigest()
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return "", seq
+        if actual != stored:
+            return "", seq
+        previous = stored
+    return previous, None
+
+
 class AuditChainStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -61,19 +81,7 @@ class AuditChainStore:
 
     def _state(self) -> tuple[str, int | None]:
         rows = self.db.execute("SELECT seq,event_id,previous_hash,event_json,event_hash FROM audit_events ORDER BY seq").fetchall()
-        previous = GENESIS
-        for seq, _event_id, prior, raw, stored in rows:
-            if prior != previous:
-                return "", seq
-            try:
-                event = json.loads(raw)
-                actual = hashlib.sha256(_canonical({"previous_hash": prior, "event": event}).encode()).hexdigest()
-            except (ValueError, TypeError, json.JSONDecodeError):
-                return "", seq
-            if actual != stored:
-                return "", seq
-            previous = stored
-        return previous, None
+        return verify_rows(rows)
 
     def append(self, event: Mapping[str, Any]) -> dict[str, Any]:
         safe = redact_event(event)
@@ -109,4 +117,4 @@ class AuditChainStore:
         self.db.close()
 
 
-__all__ = ["AuditAppender", "AuditChainStore", "GENESIS", "redact_event"]
+__all__ = ["AuditAppender", "AuditChainStore", "GENESIS", "redact_event", "verify_rows"]
