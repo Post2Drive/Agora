@@ -27,11 +27,12 @@ def _allow(operation, resource):
             "policy_version": "t", "resource_ids": []}
 
 
+@pytest.mark.protected_defaults
 def test_ingest_require_policy_denies_missing_policy_and_audits(tmp_path):
     src = tmp_path / "c.csv"
     src.write_text("customer_id,email\nC1,a@example.test\n", encoding="utf-8")
     with pytest.raises(TabularIngestError) as exc:
-        ingest_csv(tmp_path / "p", src, _schema(), data_role="context", require_policy=True)
+        ingest_csv(tmp_path / "p", src, _schema(), data_role="context")
     assert exc.value.code == "POLICY_DENIED"
     ev = _events(tmp_path / "p")
     assert ev[0]["event_type"] == "policy_denied" and ev[0]["reason"] == "policy_required"
@@ -47,27 +48,28 @@ def test_ingest_require_policy_with_allowing_policy_works(tmp_path):
     src = tmp_path / "c.csv"
     src.write_text("customer_id,email\nC1,a@example.test\n", encoding="utf-8")
     out = ingest_csv(tmp_path / "p", src, _schema(), data_role="context",
-                     policy=_allow, require_policy=True)
+                     policy=_allow)
     assert out["import_id"]
 
 
-def test_binding_require_policy_denies_missing_policy(tmp_path):
-    imported = _import(tmp_path)
+def test_binding_require_policy_denies_missing_policy(tmp_path, monkeypatch):
+    from agora import protection
+    imported = _import(tmp_path)  # relaxed setup
+    monkeypatch.setattr(protection, "POLICY_REQUIRED", True)
     with pytest.raises(OntologyError, match="Policy denied"):
-        materialize_instances(_binding(), _pack(), tmp_path, imported["import_id"],
-                              require_policy=True)
+        materialize_instances(_binding(), _pack(), tmp_path, imported["import_id"])
     assert _events(tmp_path)[-1]["reason"] == "policy_required"
     assert materialize_instances(_binding(), _pack(), tmp_path, imported["import_id"],
-                                 policy=_allow, purpose="synthetic", retention="one day",
-                                 require_policy=True)
+                                 policy=_allow, purpose="synthetic", retention="one day")
 
 
-def test_scenario_input_require_policy_denies_missing_policy(tmp_path):
-    imported = _import(tmp_path)
+def test_scenario_input_require_policy_denies_missing_policy(tmp_path, monkeypatch):
+    from agora import protection
+    imported = _import(tmp_path)  # relaxed setup
+    monkeypatch.setattr(protection, "POLICY_REQUIRED", True)
     with pytest.raises(ScenarioInputError):
         build_scenario_input(_binding(), _pack(), tmp_path, imported["import_id"],
-                             transformation_policy=_policy(), require_policy=True)
+                             transformation_policy=_policy())
     assert _events(tmp_path)[-1]["reason"] == "policy_required"
     assert build_scenario_input(_binding(), _pack(), tmp_path, imported["import_id"],
-                                transformation_policy=_policy(), policy=_allow,
-                                require_policy=True)
+                                transformation_policy=_policy(), policy=_allow)

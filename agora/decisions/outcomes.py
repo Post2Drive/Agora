@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
+from agora import protection as _protection
 from agora.audit_anchor import require_anchored as _require_anchored
 from agora.audit_chain import AuditAppender
 from agora.policy import decide
@@ -370,12 +371,12 @@ def _project(store: DecisionOutcomeStore, decision_id: str, version: int) -> str
 
 
 def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | None,
-                      require_anchored: bool = True, **kwargs: Any) -> dict[str, Any]:
+                      **kwargs: Any) -> dict[str, Any]:
     """record_outcome with recorder/role/subject derived from a trusted principal."""
     for banned in ("recorder", "role", "subject"):
         if banned in kwargs:
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
-    if require_anchored:
+    if _protection.ANCHOR_REQUIRED:
         _require_anchored(kwargs.get("audit"))
     kwargs.pop("resource", None)  # ignored: derived from the stored decision only
     _principal_gate(principal, "operator", kwargs.get("audit"), store, kwargs["decision_id"],
@@ -387,12 +388,12 @@ def record_outcome_as(store: DecisionOutcomeStore, *, principal: Principal | Non
 
 def review_outcome_as(store: DecisionOutcomeStore, decision_id: str, decision_version: int,
                       outcome_id: str, *, principal: Principal | None,
-                      require_anchored: bool = True, **kwargs: Any) -> dict[str, Any]:
+                      **kwargs: Any) -> dict[str, Any]:
     """review_outcome with reviewer/role/subject derived from a trusted principal."""
     for banned in ("reviewer", "role", "subject"):
         if banned in kwargs:
             raise OutcomeError(f"{banned} is derived from the principal and must not be supplied")
-    if require_anchored:
+    if _protection.ANCHOR_REQUIRED:
         _require_anchored(kwargs.get("audit"))
     kwargs.pop("resource", None)  # ignored: derived from the stored decision only
     _principal_gate(principal, "reviewer", kwargs.get("audit"), store, decision_id,
