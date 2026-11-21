@@ -105,6 +105,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #88 | Guided synthetic `agora pilot --workdir` entry point | Merged (`6e2d766`); exact-head CI run `44945307064` passed 4/4 |
 | #89 | Default-on policy/anchor parameters on six protected entry points | Merged (`87c7cc95`); exact-head CI run `44948055801` passed 4/4 |
 | #91 | Documentation refresh after #88/#89 | Merged; exact-head CI run `44949947675` passed 4/4 |
+| #92 | Public role-string outcome API retirement | Merged; exact-head CI run `44950576945` passed 4/4 |
 
 Main is `1fbde112d00fc4fc579e9be6385104d655a9ced4` (merge of #92). #85/#86/#88/#89/#91/#92 are merged; no ChatGPT-owned docs PR was open at the start of this refresh.
 
