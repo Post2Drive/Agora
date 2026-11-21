@@ -296,7 +296,8 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                data_role: str, max_bytes: int = DEFAULT_MAX_BYTES,
                max_rows: int = DEFAULT_MAX_ROWS,
                policy: PolicyCallable | None = None,
-               audit: Any | None = None) -> dict[str, Any]:
+               audit: Any | None = None,
+               require_policy: bool = False) -> dict[str, Any]:
     """Import a local CSV as an immutable, typed, provenance-registered snapshot.
 
     When supplied, policy is called as policy("import", resource) before the
@@ -306,7 +307,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
     if data_role not in ROLES:
         raise TabularIngestError("DATA_ROLE_INVALID", "An explicit valid data role is required.")
     columns, dataset_id, schema_fp = _schema_contract(schema)
-    if policy is not None:
+    if policy is not None or require_policy:
         sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
         source_sensitivity = max(
             (column["sensitivity"] for column in columns),
@@ -318,6 +319,7 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                 audit=audit,
                 project=project,
                 operation="import",
+                require_policy=require_policy,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [dataset_id],
