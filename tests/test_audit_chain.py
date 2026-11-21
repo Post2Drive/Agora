@@ -83,3 +83,34 @@ def test_two_connections_append_without_forking_chain(tmp_path):
     assert right.verify()["valid"] is True
     left.close()
     right.close()
+
+
+def test_concurrent_threads_do_not_fork_chain(tmp_path):
+    import threading
+
+    path = tmp_path / "audit.db"
+    AuditChainStore(path).close()
+    errors: list[str] = []
+
+    def writer(prefix: str) -> None:
+        store = AuditChainStore(path)  # one connection per thread
+        try:
+            for i in range(25):
+                try:
+                    store.append({"event_id": f"{prefix}{i}", "event_type": "t"})
+                except Exception as exc:  # noqa: BLE001 - recorded for the assertion
+                    errors.append(str(exc))
+        finally:
+            store.close()
+
+    threads = [threading.Thread(target=writer, args=(p,)) for p in "abcd"]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    verifier = AuditChainStore(path)
+    result = verifier.verify()
+    verifier.close()
+    assert errors == []
+    assert result["valid"] is True
+    assert result["entries"] == 100
