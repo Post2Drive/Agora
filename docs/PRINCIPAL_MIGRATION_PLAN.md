@@ -88,7 +88,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 3 — migrate shared policy enforcement and data-boundary callers
 
-**Current implementation on main:** #78/#79/#89/#96 provide Principal-bound policy plumbing and remove caller opt-out kwargs from the three protected data-boundary entry points. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True`, removes unanchored denial writes and makes legacy role-string approval test-only. However, the helper signature still accepts explicit `require_policy=False`; when policy is missing, that branch returns without denial. This stage is not complete.
+**Current implementation on main:** #78/#79/#89/#96 provide Principal-bound policy plumbing and remove caller opt-out kwargs from the three protected data-boundary entry points. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True`, refuses the local fallback when `audit=None`, and makes legacy role-string approval test-only. However, the helper still accepts explicit `require_policy=False` and a supplied plain `AuditChainStore` without anchored-writer validation. This stage is not complete.
 
 1. Replace the current operation/resource-only PolicyCallable contract with a principal-aware contract. The callback must receive the exact Principal used by the request and call the principal-native PDP.
 2. Make enforce_policy validate the principal and preserve the current safe denial audit behaviour.
@@ -162,7 +162,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 
 Verified on main:
 - **#78/#79/#89/#96:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and removes unanchored denial writes, but explicit `require_policy=False` is still accepted by the helper.
-- **#80/#84/#89:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and now defaults to `require_anchored=True`; explicit `False` remains accepted.
+- **#80/#84/#89/#96:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and no longer accepts a public `require_anchored` opt-out kwarg.
 - **#82/#97:** legacy role-string `approve()` remains in source but the environment switch is removed; only the test-only `LEGACY_APPROVE_ENABLED` module flag enables it.
 - **#70/#86/#89/#92/#96:** public outcome writes route through `record_outcome_as()` / `review_outcome_as()`; #92 retires role-string exports and #96 removes public anchor opt-out kwargs. Private helpers still accept optional audit internally.
 - **#88:** `agora pilot --workdir <new-empty-directory>` runs a local synthetic sequence with explicit policy/anchor arguments, per-stage results, first-denial stop, audit verification and synthetic-labelled report. It does not persist the M2 run-record envelope or call `build_scenario_input()` / the simulation engine. Exact-head CI run `44945307064` passed 4/4.
@@ -170,7 +170,7 @@ Verified on main:
 - **#92:** public role-string outcome exports retired; merged at `a191b587`, exact-head CI run `44950576945` passed 4/4.
 - **#94:** `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers; fresh-process tests cover CLI import and pilot help dispatch. Exact-head CI run `44955653075` passed 4/4.
 - **#96:** removes `require_policy` / `require_anchored` opt-out kwargs from six protected public entry points; exact-head CI run `44956724553` passed 4/4.
-- **#97:** removes the legacy approval env switch, defaults direct policy enforcement from `POLICY_REQUIRED`, and prevents unanchored denial writes; exact-head CI run `44958568446` passed 4/4. Direct explicit False remains accepted by `enforce_policy()`.
+- **#97:** removes the legacy approval env switch, defaults direct policy enforcement from `POLICY_REQUIRED`, and refuses the local fallback when `audit=None`; exact-head CI run `44958568446` passed 4/4. Direct explicit False remains accepted, and supplied plain appenders are not validated as anchored.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
