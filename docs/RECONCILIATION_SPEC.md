@@ -8,7 +8,7 @@ Decision lifecycle and approval operations write the immutable decision record/v
 
 Reconciliation must detect and resolve this cross-store gap without rewriting decision history, fabricating audit evidence, weakening hash-chain verification, or silently treating an unaudited transition as fully audited.
 
-The same general pattern may later apply to decision outcomes and reviews if/when those records are implemented and their audit contract is confirmed. This specification's initial scope is decision lifecycle/approval events only.
+The same pattern may later apply to decision outcomes and reviews. The outcome store (#53) is merged and writes its own audit events, but its reconciliation contract is not specified here; this specification's initial scope is decision lifecycle/approval events only.
 
 ## 2. Invariants
 
