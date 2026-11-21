@@ -1,14 +1,14 @@
 # Synthetic Operator-Pilot Fixture Specification
 
 **Status:** Draft specification for Claude and owner review; no fixture files are added by this document.  
-**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
+**Assessment base:** `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026)  
 **Data class:** Invented synthetic records only
 
 ## 1. Purpose
 
 Define a small, deterministic, checked-in fixture set for the future operator-usable synthetic pilot. The fixture must exercise import, schema validation, ontology binding, scenario-input construction and governed decision boundaries without representing real people, customers, organisations, locations, demand or sales.
 
-The paths below are proposed and were verified absent on the assessed mainline:
+The merged #88 pilot currently embeds `SYNTHETIC_CSV`, schema and binding definitions in `agora/pilot.py`; it does not use a checked-in fixture directory. The following paths remain proposed
 
 - `fixtures/pilot.csv`
 - `fixtures/pilot-schema.yaml`
