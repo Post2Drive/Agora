@@ -193,6 +193,46 @@ def test_store_rejects_approved_record_without_valid_transition(tmp_path):
     store.close()
 
 
+def test_append_rejects_noninitial_version_without_history(tmp_path):
+    store = DecisionRecordStore(tmp_path / "noninitial.db")
+    proposed = draft_record()
+    proposed.update(version=3, status="proposed")
+    with pytest.raises(DecisionRecordError, match="version 1.*draft"):
+        store.append(proposed)
+    store.close()
+
+
+def test_append_rejects_version_two_rejected_without_history(tmp_path):
+    store = DecisionRecordStore(tmp_path / "rejected.db")
+    rejected = draft_record()
+    rejected.update(version=2, status="rejected")
+    with pytest.raises(DecisionRecordError, match="version 1.*draft"):
+        store.append(rejected)
+    store.close()
+
+
+def test_append_rejects_a_second_draft_for_existing_decision_id(tmp_path):
+    store = DecisionRecordStore(tmp_path / "second-draft.db")
+    original = draft_record()
+    store.append(original)
+
+    changed_draft = draft_record()
+    changed_draft["rationale"] = "A different draft must not replace the original."
+    with pytest.raises(DecisionRecordError, match="decision already exists"):
+        store.append(changed_draft)
+    store.close()
+
+
+def test_append_allows_idempotent_replay_of_identical_initial_draft(tmp_path):
+    store = DecisionRecordStore(tmp_path / "draft-replay.db")
+    original = draft_record()
+    first = store.append(original)
+    replay = store.append(original)
+    assert replay.fingerprint == first.fingerprint
+    assert len(store.versions(first.decision_id)) == 1
+    store.close()
+
+
 def test_reject_and_expiry_are_append_only_transitions(tmp_path):
     rejected_store, proposed = prepared_store(tmp_path)
     rejected = reject(
