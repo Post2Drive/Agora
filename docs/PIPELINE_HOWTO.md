@@ -186,8 +186,8 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 The following gaps remain after the #88 guided pilot command:
 
-1. Remove both direct policy-helper bypasses: explicit `enforce_policy(..., require_policy=False)` and acceptance of a supplied plain `AuditChainStore`. Require an `AnchoredAuditChain` for protected denial events and add negative tests/mutation proofs.
-3. Require the same configured `AnchoredAuditChain` for policy-denial/data-boundary paths; #97 fails closed when `audit=None`, but a supplied plain `AuditChainStore` is still accepted. Also remove the direct `require_policy=False` bypass.
+1. Remove the direct `enforce_policy(..., require_policy=False)` bypass with a negative test and mutation proof.
+3. Require the configured `AnchoredAuditChain` for policy-denial/data-boundary paths; #97 fails closed when `audit=None`, but a supplied plain `AuditChainStore` is still accepted. Add negative tests and mutation proofs for missing, plain and anchored writers.
 4. Implement decision/audit reconciliation (#57) and outcome dependency markers/held-outcome listing (#60); both remain specifications only.
 5. Persist and verify the immutable operator run record in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
 6. Add the checked-in synthetic fixture set; #88 currently embeds its CSV/schema/binding in Python, and the proposed fixture paths remain absent on main.
