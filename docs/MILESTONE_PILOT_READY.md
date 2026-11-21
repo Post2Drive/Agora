@@ -34,7 +34,7 @@ Confirmed merged implementation PRs:
 - #53 — append-only observed outcomes and review API.
 - #54 — binding purpose/retention propagation into the policy hook.
 - #58 — first synthetic principal approval slice; remaining call sites are not migrated.
-- #63 — local-sidecar audit-anchor primitive; #71 adds the writer factory and policy-denial/data-boundary wiring (Stages A/D). Decision lifecycle and outcomes remain unwired.
+- #63 — local-sidecar audit-anchor primitive; #71 adds the writer factory and policy-denial/data-boundary wiring (Stages A/D); #74/#75 add lifecycle/outcome append wiring and the structural `AuditAppender` contract. Protected gates remain opt-in.
 - #66 — Windows audit-log lock fix.
 - #78 — `principal_policy(principal, required_role)` and `enforce_policy(..., require_policy=True)`; exact-head CI run 233 (`44930549886`) passed all four matrix jobs.
 - #79 — opt-in `require_policy` on `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`; exact-head CI run 236 (`44931670540`) passed all four matrix jobs after one Windows 3.11 database-lock failure was rerun successfully.
@@ -47,6 +47,8 @@ Earlier merged design/runbook documents remain:
 Exact-head GitHub Actions evidence:
 - #63 head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`, run [44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154): all four Ubuntu/Windows × Python 3.11/3.12 jobs passed.
 - #66 head `6e0b483d628e5b4317e2cd3296a0bf0604d403f6`, run [44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682): all four matrix jobs passed.
+- #74 head `ca92a206219bb7da6de4b4f50a157b74ac6103c7`, run [44928837108](https://github.com/Post2Drive/Agora/actions/runs/44928837108): all four matrix jobs passed.
+- #75 head `ae1b50577047eb7ef1435bcf231037f566eed77d`, run [44929428177](https://github.com/Post2Drive/Agora/actions/runs/44929428177): all four matrix jobs passed.
 - #65 head `039beae59e0d3478d5412260d34a1f83618571e8`, run [44910310968](https://github.com/Post2Drive/Agora/actions/runs/44910310968): all four matrix jobs passed.
 
 These are exact-head GitHub Actions results, not local test runs. PR #77's documentation CI run 235 also passed all four matrix jobs. The #79 Windows 3.11 first attempt had a transient SQLite `database is locked` failure; its rerun passed, and the cause remains a hardening item.
@@ -62,7 +64,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Decision record/store and lifecycle | **Available — Python API** | #37/#42 and audit events #47. No single end-to-end command. |
 | Principal-based approval and outcome wrappers | **Available — partial synthetic migration** | #80 makes `approve_as()` call the principal-native `authorize_decision_approval_principal()` gate and derive the actor from `Principal`; public legacy `approve()` still accepts role/subject strings. #70 `record_outcome_as()` / `review_outcome_as()` still delegate to legacy role-string APIs. No OIDC/production authentication. |
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
-| Anchored audit chain | **Available — local-sidecar API; partial wiring** | #63 local-sidecar writer; #71 policy/data-boundary injection; #74 lifecycle/outcome append wiring and opt-in `require_anchored=True` on three principal entry points. The anchor gate remains opt-in; legacy optional-audit paths remain. Trust remains `local_sidecar`. |
+| Anchored audit chain | **Available — local-sidecar API; partial wiring** | #63 local-sidecar writer; #71 policy/data-boundary injection; #74 lifecycle/outcome append wiring; #75 structural `AuditAppender` protocol; opt-in `require_anchored=True` on three principal entry points. The anchor gate remains opt-in; legacy optional-audit paths remain. Trust remains `local_sidecar`. |
 | Observed outcome recording/review | **Available — Python API, partial principal migration** | #53 append-only store; #70 principal wrappers require operator/reviewer but still delegate to legacy role-string functions; #74 adds opt-in anchor gates. The underlying API and audit writer remain optional; no CLI. |
 | Outcome dependency review markers | **Not implemented** | #60 is a specification only; no marker store/propagation worker. |
 | Decision/audit reconciliation | **Not implemented** | #57 is a specification only; no queue, detector, worker or repair command. |
@@ -86,6 +88,8 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #70 | Principal-first outcome record/review bridge | Merged |
 | #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
 | #72 | Earlier documentation refresh based on pre-#71 main | Closed; superseded |
+| #74 | Anchored lifecycle/outcome append wiring and opt-in principal anchor gates | Merged |
+| #75 | Structural `AuditAppender` protocol for lifecycle/outcome writers | Merged |
 | #77 | Five-document readiness refresh | Merged |
 | #78 | Principal-bound policy helper and missing-policy gate | Merged |
 | #79 | Opt-in policy requirement on import/binding/scenario-input | Merged |
