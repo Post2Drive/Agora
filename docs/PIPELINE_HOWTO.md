@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; a guided synthetic CLI now exists, but M1/M2 exit gates remain open.  
-**Assessment base:** `main` at `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026)  
+**Assessment base:** `main` at `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, reconciliation/held-outcome listing, backup/restore/tamper drill or tested runbook exists.
 
-The repository also provides separate CLI commands and Python APIs. #89 makes six protected API flags default True; #92 retires public role-string outcome exports so `record_outcome_as()` / `review_outcome_as()` are the public routes. Explicit `False` overrides remain accepted, direct `enforce_policy()` still defaults off, and `audit=None` policy-denial logging remains unanchored. The `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. `agora.cli` still imports `.sim.engine` at module scope before dispatch; the pilot module itself makes no engine call. Scenario-input remains disconnected from the engine.
+The repository also provides separate CLI commands and Python APIs. #89 makes six protected API flags default True; #92 retires public role-string outcome exports so `record_outcome_as()` / `review_outcome_as()` are the public routes. #94 removes the module-level `.sim.engine` import from `agora.cli` and lazy-loads it only inside simulation-dependent handlers. Explicit `False` overrides remain accepted, direct `enforce_policy()` still defaults off, and `audit=None` policy-denial logging remains unanchored. The `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. Scenario-input remains disconnected from the engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -30,7 +30,7 @@ This guide documents the available components and their boundaries. It does not 
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
 | One callable end-to-end entry point | **AVAILABLE — guided synthetic CLI (#88), partial M1 evidence** | `agora pilot --workdir <new-empty-directory>` runs provision/import/bind/decision/approval/outcome record/review/audit verify/report with per-stage results and first-denial stop; no engine call. It does not persist the M2 run record or use `build_scenario_input()`. |
 
-## 2.1 Guided synthetic pilot command on main (#88)
+## 2.1 Guided synthetic pilot command on main (#88; CLI import isolation #94)
 
 The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.main()`. The supported invocation is:
 
@@ -38,7 +38,7 @@ The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`. The `agora.pilot` module itself contains no simulation-engine import/call, but `agora.cli` imports `.sim.engine` at module scope before dispatch, so the CLI path loads that module; no simulation is invoked. Claude's queued M2 slice is to lazy-load those imports only in engine-dependent handlers and prove `agora pilot` works in a fresh process that blocks `agora.sim.engine` imports.
+Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`. The `agora.pilot` module and `agora.data_cli` contain no simulation-engine import/call. PR #94 removes the module-level `.sim.engine` import from `agora.cli`; a fresh-process test proves `import agora.cli` and `agora pilot --help` do not load the engine. No simulation is invoked. The test does not yet exercise a complete `agora pilot --workdir` invocation in that fresh process.
 
 This command is a merged M1 component, not an M2-complete operator workflow. It does not call `build_scenario_input()`, persist the immutable operator run record, provide a standalone audit timeline, reconcile cross-store records, list held outcomes, back up/restore stores, run a tamper drill or execute the operator runbook. Do not treat the in-code fixture as the checked-in dataset required by M2. Exact-head CI run `44945307064` passed all four jobs; no local execution is claimed by this document refresh.
 
