@@ -203,7 +203,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
-**Stage D — policy-denial and data-boundary threading: DEFAULT-ON WITH ONE DIRECT-HELPER BYPASS.** #96 removes `require_policy` kwargs from `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and rejects unanchored denial writes, but the helper still accepts explicit `require_policy=False`, which makes a missing policy a no-op. Add a negative test and mutation proof.
+**Stage D — policy-denial and data-boundary threading: TWO DIRECT-HELPER BYPASSES REMAIN.** #96 removes `require_policy` kwargs from `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. #97 defaults direct `enforce_policy()` to `POLICY_REQUIRED=True` and refuses the local fallback when `audit=None`; however, explicit `require_policy=False` still makes a missing policy a no-op, and a supplied plain `AuditChainStore` is accepted without `require_anchored()` validation. Add negative tests and mutation proofs for both.
 
 **Stage B — decision lifecycle: PRINCIPAL ANCHOR REQUIRED BY PUBLIC API.** #96 removes the `require_anchored` kwarg from `approve_as()`. #97 removes the `AGORA_TEST_ONLY_LEGACY_APPROVE` env switch; legacy `approve()` is disabled by default and enabled only by the test-only `LEGACY_APPROVE_ENABLED` module flag.
 
