@@ -51,7 +51,9 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Evidence and interpretation rules
 
-- Recent exact-head GitHub Actions evidence: #77 run 235 (`44931495436`), #78 run 233 (`44930549886`), #79 run 236 (`44931670540`), and #80 run 239 (`44934473818`) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #79's first Windows 3.11 attempt failed with a SQLite `database is locked` error; a rerun passed. Earlier evidence remains as listed below.
+- Earlier exact-head GitHub Actions evidence: #53 run 164, #54 run 165, #55 run 175, #56 run 173, #57 run 174, #58 run 172, #63 run 201 (`44917009154`), #66 run 198 (`44912719682`), #70 run 209 (`44923562288`) and #71 run 211 (`44926109220`).
+- Newer exact-head runs: #77 run 235 (`44931495436`), #78 run 233 (`44930549886`), #79 run 236 (`44931670540`) and #80 run 239 (`44934473818`) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+- CI note: #79's first Windows 3.11 attempt failed with SQLite `database is locked`; the rerun passed. The cause is not confirmed and remains a concurrency-hardening item.
 - The PR descriptions report clean-checkout test/mutation evidence for implementation slices #53 and #58. CI success is additional evidence, not a substitute for independent code review or owner approval.
 - The governed-pipeline tests use synthetic fixtures only. They prove integration boundaries and fail-closed paths; they do not run `agora/sim/**` or establish predictive validity.
 - Report provenance keeps exploratory outputs visibly simulated. `VALIDATED_PREDICTION_ENABLED` remains `False`.
