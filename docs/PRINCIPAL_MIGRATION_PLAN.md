@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 3f8365c0c7920206c61ef01ec6c4d000b8cf0f92 (21 November 2026), including merged #58, #70 and #71  
+**Assessment base:** main at dcf66c3eab49564150faf8748fed733fe725e0a5 (21 November 2026), including merged #58, #70 and #71  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -28,7 +28,7 @@ The following inventory was checked against main at the assessment SHA:
 
 ### 2.1 Principal implementation status
 
-PR #58 established the synthetic Principal/PDP and `approve_as()` bridge. PR #70 then added `required_role` filtering to `decide_principal()` plus `record_outcome_as()` and `review_outcome_as()`. The wrappers require Principal, derive actor and subject from it, enforce `operator` / `reviewer`, and reject caller-supplied recorder/reviewer, role and subject authority fields. They still delegate to the legacy role-string outcome functions; legacy APIs remain available. PR #71 added an `audit=` parameter for anchored denial writes in data-boundary policy calls, but did not migrate the policy callback to Principal. These are partial migration slices, not a completed identity boundary.
+PR #58 established the synthetic Principal/PDP and `approve_as()` bridge. PR #70 then added `required_role` filtering to `decide_principal()` plus `record_outcome_as()` and `review_outcome_as()`. The wrappers require Principal, derive actor and subject from it, enforce `operator` / `reviewer`, and reject caller-supplied recorder/reviewer, role and subject authority fields. They still delegate to the legacy role-string outcome functions; legacy APIs remain available. PR #71 added an `audit=` parameter for anchored denial writes in data-boundary policy calls; #74 adds anchor gates to three principal entry points but does not migrate the shared policy callback to Principal. These are partial migration slices, not a completed identity boundary.
 
 Before each stage, re-read agora/principal.py and its tests on current main; do not assume APIs beyond what is merged.
 
@@ -105,7 +105,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
 - Both wrappers reject caller-supplied `recorder`/`reviewer`, `role` and `subject` authority fields.
 - Both wrappers delegate to the legacy `record_outcome()` / `review_outcome()` role-string functions internally. The legacy APIs have not been removed or made unreachable from production-capable paths.
-- The audit argument remains optional and is not yet wired to the anchored writer. PR #71 did not change outcome append paths.
+- #74 wires outcome append helpers to the supplied audit writer and adds an opt-in `require_anchored=True` gate on principal outcome wrappers; other legacy paths remain optional.
 
 **Remaining Stage 4 work:**
 
@@ -153,3 +153,11 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - Keep VALIDATED_PREDICTION_ENABLED=False.
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
+
+
+## Current migration status — main dcf66c3eab49564150faf8748fed733fe725e0a5
+
+#78 (slice 2) is merged: `principal_policy(principal, required_role)` returns a `PolicyCallable` bound to an adapter-issued Principal, and `enforce_policy(require_policy=True)` denies and audits a missing policy. Not yet wired: ingest, binding and scenario-input do not pass `require_policy`; `authorize_decision_approval` is still role-string (slice 3).
+
+
+#74 added anchored appends and opt-in anchor gates on the principal approval/outcome wrappers; it did not complete principal migration. Shared `enforce_policy()` still uses the legacy `(operation, resource)` callback contract. Decision lifecycle methods other than `approve_as()` remain legacy role-string interfaces; outcome wrappers still bridge to legacy functions. Next slice (3): thread `require_policy` through ingest/binding/scenario-input and migrate `authorize_decision_approval`; then the remaining decision call sites, rejecting missing/expired/untrusted/wrong-role/cross-project/cross-tenant/low-assurance principals before reads or mutations. Mutation proofs must show caller-supplied role/subject cannot elevate authority and removing any gate causes a focused test failure. No OIDC, real credentials or network identity.

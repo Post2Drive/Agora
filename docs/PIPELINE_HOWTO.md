@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92` (21 November 2026)  
+**Assessment base:** `main` at `dcf66c3eab49564150faf8748fed733fe725e0a5` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 There is **no single CLI/API entry point** on this mainline that executes import → bind → decision → principal approval → anchored audit → observed outcome → simulated-labelled report as one governed workflow.
 
-The repository provides several separate CLI commands and Python APIs. #71 adds the explicit anchored-writer factory and threads an optional writer through policy denial, CSV import, ontology materialization and scenario-input construction (Stages A/D). Decision lifecycle and outcome/review append paths are not yet wired (Stages B/C); protected mode does not yet require a writer. #70's outcome Principal wrappers still bridge to legacy role-string functions. The scenario-input package remains disconnected from the simulation engine.
+The repository provides several separate CLI commands and Python APIs. #71 adds the explicit anchored-writer factory and threads an optional writer through policy denial, CSV import, ontology materialization and scenario-input construction (Stages A/D). #74 wires lifecycle/outcome append paths and adds opt-in protected gates on three principal entry points; legacy/unprotected APIs remain. #70's outcome Principal wrappers still bridge to legacy role-string functions. The scenario-input package remains disconnected from the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -21,7 +21,7 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — limited synthetic slice** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58). This is not production identity; legacy role-string approval remains underneath the bridge and other call sites are not migrated. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API; partially wired** | #63 supplies the local-sidecar writer; #71 adds `open_anchored_audit()` and optional `audit=` threading through policy-denial/import/binding/scenario-input paths. Decision lifecycle and outcome/review paths remain unwired; writer remains optional. Trust is `local_sidecar`, not external anchoring. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partially wired** | #63 supplies the local-sidecar writer; #71 adds `open_anchored_audit()` and optional `audit=` threading through policy-denial/import/binding/scenario-input paths. #74 wires lifecycle/outcome appends; three principal entry points can require the anchored writer, while other legacy paths remain optional. Trust is `local_sidecar`, not external anchoring. |
 | Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #53 supplies append-only observed outcomes/reviews; #70 adds Principal-gated `record_outcome_as()` / `review_outcome_as()` requiring operator/reviewer. Wrappers still delegate to legacy role-string APIs and accept optional audit; no anchored outcome wiring or CLI. Simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
@@ -134,7 +134,7 @@ Main contains the local append-only hash chain from #38/#47 and the merged local
 
 The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-**Integration status after #71:** policy-denial/import/binding/scenario-input paths accept an optional anchored writer. Decision lifecycle and outcome/review append boundaries remain unwired. `audit=None` is still possible and protected mode does not yet require a writer. Do not claim approvals or outcomes are anchored. Trust remains local-sidecar; this is not external anchoring or protection against coordinated rollback.
+**Integration status after #74:** policy-denial/import/binding/scenario-input paths accept an optional anchored writer. Decision lifecycle and outcome/review append boundaries are wired by #74, but only three principal entry points have opt-in required-anchor gates. `audit=None` is still possible and protected mode does not yet require a writer. Do not claim approvals or outcomes are anchored. Trust remains local-sidecar; this is not external anchoring or protection against coordinated rollback.
 
 ## 9. Step F — record and review an observed outcome
 
@@ -194,3 +194,8 @@ Record the Git SHA, operator, fixture IDs, schema/import hashes, binding fingerp
 Stop immediately if real/personal/sensitive data, credentials, network access, external write-back, an unapproved simulation, a policy bypass, a non-exact identifier, an unaudited approval, or an output without simulated/exploratory labelling is encountered.
 
 Passing a component-level demonstration means only that the documented local synthetic component ran. It does not establish that the complete pipeline exists or is ready for a pilot.
+
+
+## Stage B/C status — PR #74/#75
+
+Main `dcf66c3eab49564150faf8748fed733fe725e0a5` includes #74: lifecycle/outcome appends use the supplied audit writer, and `approve_as()`, `record_outcome_as()` and `review_outcome_as()` can require an anchored writer with `require_anchored=True`. The gate runs before state mutation. Legacy/unprotected paths remain; principal wrappers still bridge to role-string APIs. Exact-head run 221 (`44928837108`) passed all four matrix jobs. Reconciliation and outcome markers remain specifications only; the end-to-end command remains NOT IMPLEMENTED.
