@@ -285,3 +285,19 @@ def test_audit_events_cannot_be_updated_or_deleted(tmp_path):
             (proposed.decision_id,),
         )
     store.close()
+
+
+def test_legacy_role_string_approve_fails_closed_without_test_switch(tmp_path, monkeypatch):
+    monkeypatch.delenv("AGORA_TEST_ONLY_LEGACY_APPROVE", raising=False)
+    store, proposed = prepared_store(tmp_path)
+    with pytest.raises(ApprovalTransitionError, match="legacy role-string approve"):
+        approve(store, "decision-approval-001", proposed.version, **approve_args(proposed))
+    assert [r.status for r in store.versions("decision-approval-001")][-1] == "proposed"
+
+
+@pytest.mark.parametrize("value", ["", "0", "true", "yes"])
+def test_legacy_switch_requires_exact_value(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("AGORA_TEST_ONLY_LEGACY_APPROVE", value)
+    store, proposed = prepared_store(tmp_path)
+    with pytest.raises(ApprovalTransitionError, match="legacy role-string approve"):
+        approve(store, "decision-approval-001", proposed.version, **approve_args(proposed))

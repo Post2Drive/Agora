@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from collections.abc import Mapping
 from typing import Any
+import os
 import uuid
 
 from agora.audit_chain import AuditAppender
@@ -211,6 +212,13 @@ def _commit_approval(
     return updated
 
 
+LEGACY_APPROVE_ENV = "AGORA_TEST_ONLY_LEGACY_APPROVE"
+
+
+def _legacy_approve_enabled() -> bool:
+    return os.environ.get(LEGACY_APPROVE_ENV) == "1"
+
+
 def approve(
     store: DecisionRecordStore,
     decision_id: str,
@@ -230,8 +238,14 @@ def approve(
     """LEGACY role-string approval (caller asserts role). Prefer approve_as().
 
     Kept only until call sites migrate to approve_as(); production paths must
-    not use it (see docs/PRINCIPAL_MIGRATION_PLAN.md).
+    not use it (see docs/PRINCIPAL_MIGRATION_PLAN.md). Fails closed unless the
+    explicit test-only switch AGORA_TEST_ONLY_LEGACY_APPROVE=1 is set.
     """
+    if not _legacy_approve_enabled():
+        raise ApprovalTransitionError(
+            "legacy role-string approve() is disabled; use approve_as() with a "
+            f"Principal (test-only switch: {LEGACY_APPROVE_ENV}=1)"
+        )
     current = _current(store, decision_id, expected_version)
     moment = _time(now)
     if not isinstance(subject, Mapping) or subject.get("subject_id") != actor:
