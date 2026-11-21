@@ -70,6 +70,18 @@ class Store:
             raise RuntimeError(f"{self.path} was made by an older Agora version. "
                                "Delete agora.db to start the run again.")
         self.db.executescript(SCHEMA)
+        self.db.executescript(
+            """
+            CREATE TRIGGER IF NOT EXISTS protect_input_provenance_update
+            BEFORE UPDATE OF value ON meta
+            WHEN OLD.key = 'input_provenance'
+            BEGIN SELECT RAISE(ABORT, 'input provenance is append-only'); END;
+            CREATE TRIGGER IF NOT EXISTS protect_input_provenance_delete
+            BEFORE DELETE ON meta
+            WHEN OLD.key = 'input_provenance'
+            BEGIN SELECT RAISE(ABORT, 'input provenance is append-only'); END;
+            """
+        )
         self.db.commit()
 
     # ------------------------------------------------------------------ meta
@@ -78,6 +90,8 @@ class Store:
         return json.loads(row[0]) if row else default
 
     def set_meta(self, key: str, value) -> None:
+        if key == "input_provenance":
+            raise ValueError("input_provenance is reserved; use set_input_provenance")
         self.db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, json.dumps(value)))
 
     # ------------------------------------------------------ input provenance

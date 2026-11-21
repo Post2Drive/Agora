@@ -38,10 +38,23 @@ def test_input_provenance_is_append_only_and_verified(tmp_path):
 def test_tampered_manifest_is_rejected(tmp_path):
     store = Store(tmp_path / "agora.db")
     store.set_input_provenance(_manifest())
+    store.db.execute("DROP TRIGGER protect_input_provenance_update")
     store.db.execute("UPDATE meta SET value=? WHERE key='input_provenance'", (json.dumps({"scenario_hash": "sha256:scenario-1", "input_manifest": {"scenario_hash": "sha256:scenario-1"}, "manifest_hash": "sha256:wrong"}),))
     store.db.commit()
     with pytest.raises(RuntimeError, match="hash mismatch"):
         store.get_input_provenance()
+    store.close()
+
+
+def test_reserved_meta_key_cannot_bypass_append_only_store(tmp_path):
+    store = Store(tmp_path / "agora.db")
+    with pytest.raises(ValueError, match="reserved"):
+        store.set_meta("input_provenance", {"scenario_hash": "sha256:other"})
+    store.set_input_provenance(_manifest())
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        store.db.execute("UPDATE meta SET value=? WHERE key='input_provenance'", ("{}",))
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        store.db.execute("DELETE FROM meta WHERE key='input_provenance'")
     store.close()
 
 
