@@ -1,7 +1,7 @@
 # Synthetic Operator-Pilot Fixture Specification
 
 **Status:** Draft specification for Claude and owner review; no fixture files are added by this document.  
-**Assessment base:** `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
+**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
 **Data class:** Invented synthetic records only
 
 ## 1. Purpose

@@ -1,8 +1,8 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `c9cfdc94734920e64f858cb718275d1931af9537` (22 November 2026)  
-**Milestone dependency:** this docs PR adds a draft `docs/MILESTONE_OPERATOR_PILOT.md` and fixture specification for Claude/owner review. Neither is merged or owner-approved yet. This file remains a provisional status map, not an executable runbook.
+**Assessment base:** `7afa1414acd9c2e68361faab81a5d246597a5919` (22 November 2026)  
+**Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
 
@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `c9cfdc94` | Evidence / missing item |
+| M2 requirement | Mainline status at `7afa1414` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | No single operator install/start command is documented or verified. |
 | Checked-in synthetic dataset | **NOT YET VERIFIED** | The older how-to references `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml`; those exact paths are absent on main. No replacement checked-in dataset has been verified in this review. |
@@ -31,7 +31,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **AVAILABLE — local CSV import CLI:** `agora data import-csv`, `agora data snapshots`, `agora data show` and `agora data rejected`.
 - **AVAILABLE — Python APIs:** ontology binding/materialization, scenario-input construction, decision records, principal-native `approve_as()`, outcome/review APIs and local anchored-audit primitives.
 - **PARTIAL — protected policy:** #78/#79 provide a Principal-bound callback and opt-in missing-policy denial; data-boundary defaults remain unprotected.
-- **PARTIAL — principal approval:** #80 provides `approve_as()`; #82 test-gates the legacy role-string function, but the compatibility switch remains an environment variable.
+- **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #82 default-denies legacy role-string `approve()` behind an environment-variable switch, which is not structurally test-only.
 - **PARTIAL — anchored audit:** #71/#74 wire append points and opt-in gates; legacy optional-audit paths remain.
 - **NOT YET — single orchestrator:** no `agora pilot` or governed-pipeline command is present.
 - **NOT YET — reconciliation/held outcomes:** no implementation beyond #57/#60 specifications.
@@ -46,11 +46,11 @@ The following headings reserve the runbook structure. Each step must be replaced
 2. **Fixture selection — NOT YET:** select the checked-in synthetic dataset and record exact immutable fixture/schema/binding IDs and hashes.
 3. **Policy and anchor verification — NOT YET:** verify principal, scope, required policy, anchored writer, chain ID and anchor state before any protected read or write.
 4. **Guided import/bind/scenario-input — NOT YET:** run each stage with exact IDs, per-step results and fail-closed stop codes; no simulation engine call.
-5. **Decision and principal approval — PARTIAL API ONLY:** use principal-native `approve_as()`; #82 test-gates legacy role-string `approve()`, but the compatibility switch must remain test-only and the anchor requirement is not default-on.
+5. **Decision and principal approval — PARTIAL API ONLY:** use principal-native `approve_as()`; #84 closes caller-controlled policy-resource input for this path. Legacy `approve()` remains in source behind a runtime-enableable environment switch (#82), and the anchor requirement is not default-on.
 6. **Audit timeline and verification — NOT YET:** show event sequence, chain verification and anchor comparison in plain language without exposing raw values.
 7. **Reconciliation and held outcomes — NOT YET:** list unmatched/held records; no automatic repair without explicit independent approval.
 8. **Backup/restore and tamper drill — NOT YET:** document and test copy/restore, anchor continuity, tamper detection and fail-closed recovery.
-9. **Run record and report — PARTIAL:** persist and verify the complete provenance envelope; any report must remain exploratory/simulated-labelled and must not call the engine as part of this M2 flow.
+9. **Run record and report — PARTIAL:** persist and verify the complete provenance envelope using the field map in `docs/PILOT_RUN_RECORD_FIELDS.md` and parent contract `docs/RUN_PROVENANCE_SPEC.md`; any report must remain exploratory/simulated-labelled and must not call the engine as part of this M2 flow.
 10. **Dress rehearsal — NOT YET:** only after the M2 checklist, tested runbook, exact-head CI and separate owner approval; log the exact command, SHA, fixture hashes, stage results, denials and operator sign-off.
 
 ## 5. Mandatory stop conditions
