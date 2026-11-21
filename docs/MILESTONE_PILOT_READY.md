@@ -50,7 +50,7 @@ Confirmed merged implementation PRs:
 - #92 — retires public role-string `record_outcome()` / `review_outcome()` exports and routes public writes through Principal wrappers; merged before #94 (mainline merge `1fbde112`). Exact-head Actions run `44950576945` passed all four matrix jobs.
 - #94 — lazy-loads `.sim.engine` only in engine-dependent CLI handlers; fresh-process tests cover `import agora.cli` and `agora pilot --help`. Exact-head Actions run `44955653075` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 - #96 — removes explicit `require_policy` / `require_anchored` opt-out kwargs from six protected public entry points; exact-head CI run `44956724553` passed 4/4.
-- #97 — removes the legacy approval env switch, defaults direct policy enforcement from `POLICY_REQUIRED`, and rejects unanchored denial writes; exact-head CI run `44958568446` passed 4/4.
+- #97 — removes the legacy approval env switch, defaults direct policy enforcement from `POLICY_REQUIRED`, and refuses the local unanchored fallback when `audit=None`; a supplied plain `AuditChainStore` is still accepted and remains a gap. Exact-head CI run `44958568446` passed 4/4.
 Exact-head GitHub Actions evidence:
 - #63 head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`, run [44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154): all four Ubuntu/Windows × Python 3.11/3.12 jobs passed.
 - #66 head `6e0b483d628e5b4317e2cd3296a0bf0604d403f6`, run [44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682): all four matrix jobs passed.
