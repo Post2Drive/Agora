@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 19f51d84d3ecc8392eb8713e392f93cb58a736bf (21 November 2026), including merged #58  
+**Assessment base:** main at 3f8365c0c7920206c61ef01ec6c4d000b8cf0f92 (21 November 2026), including merged #58, #70 and #71  
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -21,16 +21,14 @@ The following inventory was checked against main at the assessment SHA:
 | PDP | agora/policy.py: decide(subject, role, operation, resource) and authorize(subject, role, operation, resource) | The role is a string supplied by the caller of the PDP. |
 | Approval permission adapter | agora/decisions/permissions.py: authorize_decision_approval(subject, role, resource) | Passes the caller's role directly to decide(). |
 | Decision approval | agora/decisions/approval.py: approve(... actor, role, subject, ...) | Actor and role are separate caller inputs; the subject mapping is checked against actor but is not an authenticated principal. |
-| Outcome recording | agora/decisions/outcomes.py: record_outcome(... recorder, role, subject, ...) | Recorder identity and operator role are caller-supplied values. |
-| Outcome review | agora/decisions/outcomes.py: review_outcome(... reviewer, role, subject, ...) | Reviewer identity and reviewer role are caller-supplied values. |
-| Shared enforcement hook | agora/policy_enforcement.py: PolicyCallable(operation, resource) and enforce_policy(policy, ...) | The callback can close over identity/role; enforce_policy itself receives no principal. policy=None is currently a no-op. |
+| Outcome recording | `record_outcome()` legacy API plus `record_outcome_as(..., principal=...)` (#70) | New wrapper derives actor/role from Principal and requires `operator`, but delegates to the legacy role-string function. Legacy API remains. |
+| Outcome review | `review_outcome_as(..., principal=...)` plus legacy `review_outcome()` (#70) | New wrapper derives actor/role from Principal and requires `reviewer`, but delegates to the legacy role-string function. Legacy API remains. |
+| Shared enforcement hook | `PolicyCallable(operation, resource)` and `enforce_policy(policy, ..., audit=...)` (#71) | #71 adds anchored-writer injection for denial events, not a Principal parameter. The callback remains legacy and `policy=None` remains a no-op. |
 | Data-boundary callers | agora/tabular.py, agora/ontology/binding.py, agora/scenario_inputs.py | Ingestion, binding and scenario-input policy calls must receive the same trusted principal context and must not silently bypass a required policy. |
 
 ### 2.1 Principal implementation status
 
-PR #58 is merged (main 19f51d8). It adds agora/principal.py with an immutable Principal, Assurance, a test-only SyntheticFixtureAdapter (refuses production mode), decide_principal(), and agora/decisions/approval.py::approve_as(). Exact-head CI passed on all four Ubuntu/Windows × Python 3.11/3.12 jobs before merge.
-
-approve_as() is a bridge: it derives the role from the principal, then delegates to the existing role-string approve(). The legacy approve(), decide(), authorize(), record_outcome(), review_outcome() and the policy-callback path remain role-string based on main. The migration of those call sites is not done.
+PR #58 established the synthetic Principal/PDP and `approve_as()` bridge. PR #70 then added `required_role` filtering to `decide_principal()` plus `record_outcome_as()` and `review_outcome_as()`. The wrappers require Principal, derive actor and subject from it, enforce `operator` / `reviewer`, and reject caller-supplied recorder/reviewer, role and subject authority fields. They still delegate to the legacy role-string outcome functions; legacy APIs remain available. PR #71 added an `audit=` parameter for anchored denial writes in data-boundary policy calls, but did not migrate the policy callback to Principal. These are partial migration slices, not a completed identity boundary.
 
 Before each stage, re-read agora/principal.py and its tests on current main; do not assume APIs beyond what is merged.
 
@@ -101,9 +99,19 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 4 — migrate outcome recording and review
 
-1. Change record_outcome() to accept Principal; derive recorder from principal.subject_id and require the operator permission from principal.roles.
-2. Change review_outcome() to accept Principal; derive reviewer from principal.subject_id and require the reviewer permission.
-3. Remove caller-supplied role and subject mappings from the public outcome APIs.
+**Current status: PARTIALLY IMPLEMENTED by merged PR #70; exit gate remains open.**
+
+- `record_outcome_as(store, *, principal, **kwargs)` derives recorder/actor from Principal and calls `decide_principal(..., required_role="operator")`.
+- `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
+- Both wrappers reject caller-supplied `recorder`/`reviewer`, `role` and `subject` authority fields.
+- Both wrappers delegate to the legacy `record_outcome()` / `review_outcome()` role-string functions internally. The legacy APIs have not been removed or made unreachable from production-capable paths.
+- The audit argument remains optional and is not yet wired to the anchored writer. PR #71 did not change outcome append paths.
+
+**Remaining Stage 4 work:**
+
+1. Migrate the underlying outcome store/API so Principal is the authority source at the actual write boundary, not only a wrapper around a role-string function.
+2. Remove caller-supplied role/subject mappings from every production-capable outcome path; keep legacy compatibility only in explicitly ungoverned/test contexts.
+3. Require the configured anchored writer in protected outcome and review paths; no `audit=None` or plain-chain fallback.
 4. Preserve exact approved decision-version linkage, measure allow-list, source hash, observed-only provenance, measurement window and append-only correction semantics.
 5. Preserve separation of duties: the principal reviewing an outcome must differ from its recorder.
 6. Keep outcome values, units, notes and reviewer rationale out of the shared audit chain.
@@ -121,7 +129,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 5. After the repository has no production-capable legacy callers, make legacy authorization fail closed and remove the compatibility interface in a separate reviewed change.
 6. Re-run code search and the full CI matrix after each migration slice. Do not infer completion from a passing unit test alone.
 
-**Exit gate:** no untrusted request can supply its own role, actor, tenant, project scope or assurance; every governed boundary consumes an adapter-issued principal; the legacy path is unreachable in production and then removed.
+**Stage 4 exit gate:** every governed outcome write/review consumes an adapter-issued Principal at the underlying authority boundary; actor, role and subject cannot be caller-selected; exact decision/version and observed-only provenance checks remain; reviewer differs from recorder; anchored audit is required in protected mode; legacy role-string paths are unreachable from production-capable calls and then removed in a separately reviewed change.
 
 ## 5. Rollout and deprecation gates
 
