@@ -11,9 +11,9 @@ This runbook is not an integrated data-to-simulation workflow. On the assessed m
 - Ontology binding and scenario-input package builders exist as Python APIs.
 - The scenario-input package is **not wired into** `agora/sim/engine.py`; the package must not be described as the input consumed by a simulation run.
 - The decision record store and approval lifecycle exist as Python APIs.
-- The decision-outcome recording/review implementation is not yet merged on this runbook's assessed base. Outcome review is therefore a **blocked follow-on stage**, not an executable step.
+- The decision-outcome store (#53) is merged as a Python API. It has no CLI, no reconciliation queue and no dependency review markers; see Step F.
 - The approval API still accepts a caller-supplied role string. Use synthetic identities only; this is not production authentication or trusted authorization.
-- Purpose/retention propagation at the binding hook remains an open integration gap on this base. Keep the pilot dataset to public/internal synthetic columns. Do not use personal or sensitive fields.
+- Purpose/retention propagation at the binding hook was closed by #54: callers must pass `purpose` and `retention` to `materialize_instances` (default `None` fails closed for personal/sensitive data). Keep the pilot dataset to public/internal synthetic columns anyway. Do not use personal or sensitive fields.
 - No end-to-end pilot command orchestrates all these stages.
 
 Do not use Nutrivance, NCC Park Square, customer records, real sales, personal data, credentials or production decisions. No external write-back. `VALIDATED_PREDICTION_ENABLED` remains `False`.
@@ -77,7 +77,7 @@ Use the exact imported snapshot ID and a reviewed, versioned ontology pack/bindi
 
 Expected artefact: an in-memory list of provenance-rich instances carrying row/import IDs, source locator, schema and binding fingerprints, ontology property values and sensitivity metadata. The API does not itself provide a complete pilot CLI/export workflow.
 
-Stop if the binding references an unknown property/version, the snapshot columns do not match, policy denies, or any personal/sensitive field is discovered. This runbook's base does not close the purpose/retention propagation gap at this hook.
+Stop if the binding references an unknown property/version, the snapshot columns do not match, policy denies, or any personal/sensitive field is discovered. Pass `purpose=` and `retention=` explicitly to `materialize_instances`; omitting them denies personal/sensitive data under the central PDP (#54).
 
 ## 6. Step C — build a deterministic scenario-input package
 
@@ -136,11 +136,16 @@ Expected artefacts: immutable decision versions and approval event history in th
 
 Verify the audit chain with `AuditChainStore.verify()`. A valid internal hash chain does not detect tail truncation without an independent anchor.
 
-## 9. Step F — observed outcome review (blocked; do not execute on this base)
+## 9. Step F — observed outcome recording and review (Python API only)
 
-The outcome contract is specified in `docs/DECISION_OUTCOMES_SPEC.md`, but its implementation is not merged on this assessed mainline. Do not import or call code from an unmerged PR and do not fabricate an outcome table or review command.
+`agora.decisions.outcomes.DecisionOutcomeStore` (#53) records observed outcomes against an **approved** decision version and supports independent review. Use a reviewed local Python harness; there is no CLI.
 
-When a separately reviewed implementation is merged, a future runbook revision may add the exact record/review APIs, evidence registry prerequisites, policy operation, actor separation and reconciliation steps. Any outcome must be observed evidence with an immutable source reference; simulated preferences/actions are never observed outcomes.
+- `record_outcome(...)`: requires an approved decision version, an exact measure from the decision's `outcome_measures`, a finite scalar value, a measurement window containing `observed_at`, a `source_ref` with source registry ID, evidence ID and a sha256 content hash (never `latest`), `provenance_class="observed"`, and the `operator` role. The recorder must equal the policy subject.
+- `review_outcome(...)`: `reviewer` role, and the reviewer must differ from the recorder. Allowed transitions are recorded to reviewed or disputed, disputed to reviewed, and reviewed to disputed.
+- Corrections append a new outcome that must keep the same measure; nothing is updated or deleted.
+- Audit events are written when an audit store is supplied.
+
+For the rehearsal, use a synthetic evidence reference clearly labelled synthetic; it demonstrates the API path only. Simulated preferences, actions, conversions or reports are never observed outcomes. Not implemented: reconciliation queue, dependency review markers, automatic downstream flagging.
 
 ## 10. Deny cases to demonstrate
 
@@ -191,6 +196,6 @@ The pilot operator signs the execution record; the data steward signs the snapsh
 
 ## 13. Current capability references
 
-This runbook describes only merged mainline modules: data snapshot CLI (#28), scenario-input adapter and binding (#31, #43), run provenance contract (#35), decision schema/store (#37), audit-chain store (#38), PDP (#39), approval state machine (#42), report provenance gate (#44), retention/erasure design (#45), and governed-pipeline synthetic test (#46). Identity and audit-anchor design specs are merged (#51–#52), but their implementations are not claimed here.
+This runbook describes only merged mainline modules: data snapshot CLI (#28), scenario-input adapter and binding (#31, #43), run provenance contract (#35), decision schema/store (#37), audit-chain store (#38), PDP (#39), approval state machine (#42), report provenance gate (#44), retention/erasure design (#45), and governed-pipeline synthetic test (#46). Decision outcomes (#53) and the binding purpose/retention fix (#54) are merged. Identity and audit-anchor design specs are merged (#51–#52); the identity first slice is in review as #58 and the anchor implementation is not built, so neither is claimed here.
 
-The scenario-input-to-engine bridge is still not wired. Decision outcomes/review are not implemented on this runbook base. The purpose/retention propagation fix is still pending merge. No simulation wiring, calibration, backtest, forecast, study mutation, real data, credentials, network, or external write-back is part of this runbook.
+The scenario-input-to-engine bridge is still not wired. No simulation wiring, calibration, backtest, forecast, study mutation, real data, credentials, network, or external write-back is part of this runbook.
