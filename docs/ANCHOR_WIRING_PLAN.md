@@ -184,10 +184,10 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63/#71/#74/#75/#88/#89/#94/#96/#97:** local-sidecar primitive, writer factory, policy/data-boundary threading, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval and fail-closed unanchored-denial handling are merged. Direct `enforce_policy(..., require_policy=False)` remains a bypass.
+- **PR #63/#71/#74/#75/#88/#89/#94/#96/#97:** local-sidecar primitive, writer factory, policy/data-boundary threading, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval and fail-closed unanchored-denial handling are merged. Direct `enforce_policy(..., require_policy=False)` and acceptance of a supplied plain appender remain bypasses.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
-- **Principal migration:** #96 removes public `require_anchored=False` kwargs and #97 removes the legacy approval env switch; only the test-only module flag remains. Direct policy enforcement still accepts explicit `require_policy=False`.
+- **Principal migration:** #96 removes public `require_anchored=False` kwargs and #97 removes the legacy approval env switch; only the test-only module flag remains. Direct policy enforcement still accepts explicit `require_policy=False` and a supplied non-anchored appender.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
@@ -213,7 +213,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553` and #97 run `44958568446` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-**Remaining acceptance gates:** remove the direct `enforce_policy(..., require_policy=False)` bypass with a negative test/mutation proof; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, plain-language verification, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** remove the direct `enforce_policy(..., require_policy=False)` bypass and reject supplied plain appenders with negative tests/mutation proofs; add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add reconciliation, outcome markers, audit timeline, plain-language verification, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
