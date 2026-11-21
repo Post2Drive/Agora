@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import sqlite3
 
 import pytest
 
@@ -34,7 +36,19 @@ def _manifest():
 
 
 def test_legacy_report_provenance_is_explicit_and_not_resumable(tmp_path):
+    # A pre-contract run database has only its original meta table. Opening it
+    # through the report path must not add the current Store schema or triggers.
+    db_path = tmp_path / "agora.db"
+    connection = sqlite3.connect(str(db_path))
+    connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+    connection.commit()
+    connection.close()
+    before = hashlib.sha256(db_path.read_bytes()).hexdigest()
+
     provenance = _report_provenance(tmp_path)
+
+    after = hashlib.sha256(db_path.read_bytes()).hexdigest()
+    assert after == before
     assert provenance["provenance_status"] == "legacy_missing"
     assert provenance["legacy"] is True
     assert provenance["mode"] == "exploratory"
