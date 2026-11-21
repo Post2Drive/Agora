@@ -436,7 +436,8 @@ def plan_outline(llm, a: dict) -> list[dict]:
         out.append({"key": key, "title": title,
                     "goal": str(x.get("goal") or (LIBRARY[key][1] if key in LIBRARY else ""))[:300]})
     if not out:
-        return default    if out[0]["key"] != "summary":
+        return default
+    if out[0]["key"] != "summary":
         out = [s for s in default if s["key"] == "summary"] + [s for s in out if s["key"] != "summary"]
     if "risks" not in seen:
         out.append(next(s for s in default if s["key"] == "risks"))
