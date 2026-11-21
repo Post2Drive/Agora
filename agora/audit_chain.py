@@ -1,0 +1,92 @@
+"""Standalone append-only, redacted hash-chain audit storage."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any, Mapping
+
+
+GENESIS = "0" * 64
+_REDACT_KEYS = {"email", "phone", "address", "ssn", "name", "personal", "sensitive", "raw_value"}
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def _redact(value: Any, key: str | None = None) -> Any:
+    if key and (key.casefold() in _REDACT_KEYS or any(token in key.casefold() for token in ("email", "phone", "address", "ssn"))):
+        return "[REDACTED]"
+    if isinstance(value, Mapping):
+        return {str(k): _redact(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
+
+
+def redact_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Return an audit-safe copy with personal/sensitive fields removed."""
+    if not isinstance(event, Mapping) or not event:
+        raise ValueError("audit event must be a non-empty mapping")
+    return _redact(dict(event))
+
+
+class AuditChainStore:
+    def __init__(self, path: str | Path):
+        self.path = Path(path)
+        self.db = sqlite3.connect(str(self.path))
+        self.db.execute("CREATE TABLE IF NOT EXISTS audit_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, previous_hash TEXT NOT NULL, event_json TEXT NOT NULL, event_hash TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL)")
+        self.db.execute("CREATE TRIGGER IF NOT EXISTS protect_audit_event_update BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit chain is append-only'); END")
+        self.db.execute("CREATE TRIGGER IF NOT EXISTS protect_audit_event_delete BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit chain is append-only'); END")
+        self.db.commit()
+
+    def _state(self) -> tuple[str, int]:
+        rows = self.db.execute("SELECT seq,event_id,previous_hash,event_json,event_hash FROM audit_events ORDER BY seq").fetchall()
+        previous = GENESIS
+        for seq, _event_id, prior, raw, stored in rows:
+            if prior != previous:
+                return "", seq
+            try:
+                event = json.loads(raw)
+                actual = hashlib.sha256(_canonical({"previous_hash": prior, "event": event}).encode()).hexdigest()
+            except (ValueError, TypeError, json.JSONDecodeError):
+                return "", seq
+            if actual != stored:
+                return "", seq
+            previous = stored
+        return previous, None
+
+    def append(self, event: Mapping[str, Any]) -> dict[str, Any]:
+        safe = redact_event(event)
+        event_id = safe.get("event_id")
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise ValueError("audit event requires a non-empty event_id")
+        if any(key in safe for key in ("previous_hash", "event_hash")):
+            raise ValueError("hash fields are reserved")
+        if "recorded_at" not in safe:
+            safe["recorded_at"] = datetime.now(timezone.utc).isoformat()
+        previous, broken = self._state()
+        if broken is not None:
+            raise ValueError(f"audit chain is broken at sequence {broken}")
+        if self.db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (event_id,)).fetchone():
+            raise ValueError("audit event replay detected")
+        event_hash = hashlib.sha256(_canonical({"previous_hash": previous, "event": safe}).encode()).hexdigest()
+        self.db.execute("INSERT INTO audit_events(event_id,previous_hash,event_json,event_hash,recorded_at) VALUES (?,?,?,?,?)", (event_id, previous, _canonical(safe), event_hash, safe["recorded_at"]))
+        self.db.commit()
+        return {"event_id": event_id, "previous_hash": previous, "event": safe, "event_hash": event_hash}
+
+    def verify(self) -> dict[str, Any]:
+        previous, broken = self._state()
+        if broken:
+            return {"valid": False, "first_broken_sequence": broken}
+        return {"valid": True, "entries": self.db.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0], "last_hash": previous}
+
+    def close(self) -> None:
+        self.db.close()
+
+
+__all__ = ["AuditChainStore", "GENESIS", "redact_event"]
