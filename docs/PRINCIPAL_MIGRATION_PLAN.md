@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at 87c7cc95b3e7c231f52dca4924d6fc433c698462 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88 and #89; #90 is the open ChatGPT docs draft.
+**Assessment base:** main at 87c7cc95b3e7c231f52dca4924d6fc433c698462 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88 and #89; #91 is the open ChatGPT docs draft.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
