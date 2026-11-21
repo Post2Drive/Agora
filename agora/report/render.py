@@ -17,10 +17,67 @@ def _cite_html(text: str) -> str:
     return re.sub(r"\[p(\d+)\]", r'<a class="cite" href="#q\1">[p\1]</a>', _e(text))
 
 
+_FORBIDDEN_EXPLORATORY = re.compile(
+    r"\\bforecast(?:s)?\\b|\\bvalidated\\s+demand\\b|\\bsales\\s+predictions?\\b",
+    re.IGNORECASE,
+)
+
+
+def validate_exploratory_output(report: dict) -> None:
+    """Reject prohibited predictive claims in exploratory report text."""
+    if report.get("mode", "exploratory") != "exploratory":
+        return
+    parts = [str(report.get("title", ""))]
+    for section in report.get("sections", []):
+        if isinstance(section, dict):
+            parts.extend((str(section.get("title", "")), str(section.get("text", ""))))
+    quotes = report.get("quotes") or {}
+    if isinstance(quotes, dict):
+        parts.extend(str(value) for value in quotes.values())
+    for value in parts:
+        match = _FORBIDDEN_EXPLORATORY.search(value)
+        if match:
+            raise ValueError(
+                f"exploratory report contains prohibited claim language: {match.group(0)}"
+            )
+
+
+def _provenance_markdown(provenance: dict) -> list[str]:
+    if provenance.get("provenance_status", "legacy_missing") == "legacy_missing":
+        return [
+            "**LEGACY RUN — input provenance is missing; this run is not eligible for scenario-input resume.**",
+            f"Run ID: {provenance.get('run_id', 'unknown')}",
+            "Mode: exploratory simulation; results are simulated, not observed outcomes.",
+        ]
+    redactions = provenance.get("redaction_summary") or {}
+    props = ", ".join(redactions.get("property_ids") or []) or "none"
+    return [
+        "**RUN PROVENANCE — VERIFIED**",
+        f"Run ID: {provenance.get('run_id')}",
+        f"Scenario hash: {provenance.get('scenario_hash')}",
+        f"Import: {provenance.get('import_id')} · dataset {provenance.get('dataset_id')} · schema {provenance.get('schema_id')} v{provenance.get('schema_version')}",
+        f"Binding: {provenance.get('binding_id')} v{provenance.get('binding_version')} · {provenance.get('binding_fingerprint')}",
+        f"Ontology: {provenance.get('ontology_pack_id')} v{provenance.get('ontology_schema_version')} · {provenance.get('ontology_pack_fingerprint')}",
+        f"Transformation-policy fingerprint: {provenance.get('transformation_policy_fingerprint') or 'none'}",
+        f"Redactions: {redactions.get('redacted_values', 0)} values · properties: {props}",
+        f"Source: role {provenance.get('data_role')} · registry {provenance.get('source_registry_id')} · file SHA-256 {provenance.get('file_sha256')}",
+        "Mode: exploratory simulation; results are simulated, not observed outcomes.",
+    ]
+
+
+def _provenance_html(provenance: dict) -> str:
+    lines = _provenance_markdown(provenance)
+    heading = "LEGACY RUN" if provenance.get("provenance_status", "legacy_missing") == "legacy_missing" else "Run provenance"
+    body = "".join(f"<p>{_e(line.replace('**', ''))}</p>" for line in lines)
+    return f'<div class="chart provenance"><h3>{_e(heading)}</h3>{body}</div>'
+
+
 # ------------------------------------------------------------------ markdown
 def to_markdown(r: dict) -> str:
+    validate_exploratory_output(r)
     a = r["analysis"]
     qualification = r.get("qualification") or {}
+    provenance = r.get("provenance") or {"provenance_status": "legacy_missing"}
     if r.get("mode") == "validated_prediction":
         approved = ", ".join(qualification.get("approved_claims") or [])
         scope = qualification.get("scope") or {}
@@ -31,7 +88,7 @@ def to_markdown(r: dict) -> str:
                        f"Scope: {scope_text}. Approved claims: {approved}")
     else:
         mode_banner = "**EXPLORATORY SIMULATION — simulated outputs, not validated real-world predictions.**"
-    lines = [mode_banner, "", f"# {r['title']}", "",
+    lines = [mode_banner, ""] + _provenance_markdown(provenance) + ["", f"# {r['title']}", "",
              f"_Agora simulation report · {r['generated']} · model {r['model']}_", ""]
     for s in r["sections"]:
         lines += [f"## {s['title']}", "", s["text"], ""]
@@ -143,7 +200,9 @@ a.cite{color:var(--accent);text-decoration:none;font-family:system-ui,sans-serif
 
 
 def to_html(r: dict) -> str:
+    validate_exploratory_output(r)
     a = r["analysis"]
+    provenance = r.get("provenance") or {"provenance_status": "legacy_missing"}
     o, op = a["overview"], a["opinion"]
     c = a.get("choice") or {}
     kpis = ""
@@ -265,6 +324,7 @@ def to_html(r: dict) -> str:
         mode_banner_html = ('<div class="mode-banner"><strong>EXPLORATORY SIMULATION</strong> — '
                             'simulated outputs, not validated real-world predictions. '
                             f'<span>Qualification: {_e(qualification.get("status", "not_assessed"))}</span></div>')
+    provenance_html = _provenance_html(provenance)
     research = r.get("research") or []
     if research:
         body.append('<h2 id="research">How this report was researched</h2><ol class="quotes">' + "".join(
@@ -274,12 +334,12 @@ def to_html(r: dict) -> str:
     quotes = "".join(f'<li id="q{pid}">{_e(q)}</li>' for pid, q in r["quotes"].items() if q)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Agora report</title><style>{CSS}</style></head>
-<body><main>{mode_banner_html}<div class="meta">Agora simulation report · {_e(r["generated"])} · model {_e(r["model"])}</div>
+<body><main>{mode_banner_html}{provenance_html}<div class="meta">Agora simulation report · {_e(r["generated"])} · model {_e(r["model"])}</div>
 <h1>{_e(r["title"])}</h1>
 <p class="meta">{o["days"]} simulated days · {o["llm_voices"]} AI voices · {o["crowd"]:,} crowd agents · {o["posts"]:,} posts · {o["shares"]:,} shares and forwards</p>
 {"".join(body)}
 {f'<h2 id="quotes">Quoted posts</h2><ol class="quotes">{quotes}</ol>' if quotes else ""}
 <p class="note">Every number on this page is computed from the simulation. The text is written by a language model from
 those numbers; sentences with numbers it was not given are removed. Starting opinions and action likelihoods are
-assumptions until calibrated with real data — read results as comparisons and directions, not exact forecasts.</p>
+assumptions until calibrated with real data — read results as comparisons and directions, not precise real-world outcomes.</p>
 </main></body></html>"""
