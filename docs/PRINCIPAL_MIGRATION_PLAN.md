@@ -1,5 +1,7 @@
 # Principal Migration Plan
 
+> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
+
 **Status:** Documentation plan only; no implementation or production-authentication approval  
 **Assessment base:** main at 810f33b1a89dc227f9d54764e324488e20a64817 (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93 and #94; no ChatGPT docs PR was open at the start of this refresh.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)

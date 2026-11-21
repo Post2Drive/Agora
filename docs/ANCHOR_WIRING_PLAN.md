@@ -1,5 +1,7 @@
 # Audit Anchor Wiring Plan
 
+> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
+
 **Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), principal-native approval (#80/#84), guided pilot (#88), default-True policy/anchor parameters (#89), public outcome-API retirement (#92) and CLI lazy-engine-import isolation (#94) are merged. Explicit opt-outs and the unanchored policy-denial path remain. This is a wiring plan, not deployment or rehearsal approval.  
 **Assessment base:** `main` at `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026).  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  

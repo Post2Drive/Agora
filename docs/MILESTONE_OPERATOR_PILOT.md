@@ -1,5 +1,7 @@
 # M2 — Operator-Usable Synthetic Pilot
 
+> **Correction (Claude review, main 6c3d16a):** PR #96 removed the `require_policy` / `require_anchored` opt-out parameters from `ingest_csv`, `materialize_instances`, `build_scenario_input`, `approve_as`, `record_outcome_as`, `review_outcome_as` (passing them is now a TypeError; test-only relaxation lives in `agora/protection.py`). Any line below saying explicit `False` overrides remain accepted is superseded. Still open: direct `enforce_policy()` default, the `audit=None` unanchored denial fallback, and the `AGORA_TEST_ONLY_LEGACY_APPROVE` runtime switch.
+
 **Status:** M2 scope approved by the owner; this checklist remains a planning contract, not an execution authorisation or readiness declaration.  
 **Assessment base:** `810f33b1a89dc227f9d54764e324488e20a64817` (22 November 2026)  
 **Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
