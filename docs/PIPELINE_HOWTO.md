@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; a guided synthetic CLI now exists, but M1/M2 exit gates remain open.  
-**Assessment base:** `main` at `87c7cc95b3e7c231f52dca4924d6fc433c698462` (22 November 2026)  
+**Assessment base:** `main` at `1fbde112d00fc4fc579e9be6385104d655a9ced4` (22 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, reconciliation/held-outcome listing, backup/restore/tamper drill or tested runbook exists.
 
-The repository also provides separate CLI commands and Python APIs. #89 is merged: the three data-boundary APIs default `require_policy=True`, and `approve_as()` / the Principal outcome wrappers default `require_anchored=True`. Explicit `False` overrides remain accepted, direct `enforce_policy()` still defaults off, and `audit=None` policy-denial logging remains unanchored. #86 outcome wrappers still delegate to public role-string functions, and the `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. The scenario-input package remains disconnected from the simulation engine.
+The repository also provides separate CLI commands and Python APIs. #89 makes six protected API flags default True; #92 retires public role-string outcome exports so `record_outcome_as()` / `review_outcome_as()` are the public routes. Explicit `False` overrides remain accepted, direct `enforce_policy()` still defaults off, and `audit=None` policy-denial logging remains unanchored. The `AGORA_TEST_ONLY_LEGACY_APPROVE=1` escape remains. `agora.cli` still imports `.sim.engine` at module scope before dispatch; the pilot module itself makes no engine call. Scenario-input remains disconnected from the engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -22,8 +22,8 @@ This guide documents the available components and their boundaries. It does not 
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89 make `approve_as()` principal-native with stored-decision-derived policy input and default-on anchor check. Explicit `False` remains accepted; legacy `approve()` retains its runtime environment switch. |
-| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89 provide writer, factory, append wiring and default-on anchor checks on three Principal wrappers. Explicit opt-out, legacy outcome paths and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
-| Observed outcome recording/review | **AVAILABLE — Python API, partial principal migration** | #86 ignores caller resource data and #89 defaults Principal wrappers to anchored audit, but wrappers still delegate to public role-string functions. |
+| Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89 provide writer, factory, append wiring and default-on anchor checks on three Principal wrappers; #92 retires public role-string outcome exports. Explicit opt-out and unanchored policy-denial fallback remain. Trust is `local_sidecar`. |
+| Observed outcome recording/review | **AVAILABLE — Principal public routes; protected mode partial** | #92 retires public role-string exports. Explicit `require_anchored=False` remains accepted; private helper audit can be omitted when the wrapper guard is bypassed. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
 | M2 run record | **NOT AVAILABLE in the pilot** | `agora/pilot.py` returns an in-memory `PilotResult`; it does not persist/verify the immutable `RUN_PROVENANCE_SPEC.md` envelope. |
@@ -38,7 +38,7 @@ The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`. The `agora.pilot` module itself contains no simulation-engine import/call, but `agora.cli` currently imports `.sim.engine` at module scope before dispatch, so the CLI path loads that module; no simulation is invoked.
+Use a new empty local work directory. The pilot creates its own `synthetic-pilot` project and uses the in-module `SYNTHETIC_CSV`, schema and binding definitions; it does not use the proposed checked-in `fixtures/pilot.*` files. It reports `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify` and `report` results. The first denial/failure stops later stages and reports them as skipped. Its report states synthetic/simulated and `engine_invoked=false`. The `agora.pilot` module itself contains no simulation-engine import/call, but `agora.cli` imports `.sim.engine` at module scope before dispatch, so the CLI path loads that module; no simulation is invoked. Claude's queued M2 slice is to lazy-load those imports only in engine-dependent handlers and prove `agora pilot` works in a fresh process that blocks `agora.sim.engine` imports.
 
 This command is a merged M1 component, not an M2-complete operator workflow. It does not call `build_scenario_input()`, persist the immutable operator run record, provide a standalone audit timeline, reconcile cross-store records, list held outcomes, back up/restore stores, run a tamper drill or execute the operator runbook. Do not treat the in-code fixture as the checked-in dataset required by M2. Exact-head CI run `44945307064` passed all four jobs; no local execution is claimed by this document refresh.
 
@@ -150,8 +150,8 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 **Integration status on main after #89:**
 
-- #89 makes `require_anchored=True` the default on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; explicit `False` remains accepted.
-- Public `record_outcome()` / `review_outcome()` remain callable with optional audit, and the Principal wrappers still delegate to them.
+- #89 makes `require_anchored=True` the default on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; explicit `False` remains accepted. #92 retires the public role-string outcome exports.
+- #92 removes public `record_outcome()` / `review_outcome()` exports. `record_outcome_as()` / `review_outcome_as()` are the public routes; explicit `require_anchored=False` remains accepted.
 - `approve()` remains default-deny but can still be enabled with `AGORA_TEST_ONLY_LEGACY_APPROVE=1`.
 - Direct `enforce_policy()` still defaults `require_policy=False`; when `audit=None`, policy-denial logging uses an unanchored local `AuditChainStore`.
 - No standalone audit timeline or plain-language verification command exists; only the pilot's `audit_verify` stage is available.
@@ -160,9 +160,9 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 **Status: AVAILABLE — Python API; principal migration partial**
 
-The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
+The #53 implementation provides `DecisionOutcomeStore` and append-only outcome/review storage. After #92, the public write routes are `record_outcome_as()` / `review_outcome_as()`; the role-string `_record_outcome()` / `_review_outcome()` helpers are private implementation details. The path requires an approved decision version, exact declared measure, measurement window, exact source reference with a content hash and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
-There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data and #89 defaults their anchor check on. The wrappers still delegate to public role-string `record_outcome()` / `review_outcome()`; explicit `require_anchored=False` remains accepted, and the legacy functions still accept optional audit.
+There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data; #89 defaults their anchor check on; #92 retires the public role-string outcome exports. Explicit `require_anchored=False` remains accepted, so the wrapper gate is not yet non-bypassable.
 
 Outcome dependency review markers are not implemented. Reconciliation between decision and audit stores is not implemented.
 
@@ -187,7 +187,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 The following gaps remain after the #88 guided pilot command:
 
 1. #89's default-on policy/anchor parameters are now merged (run `44948055801`, 4/4 green). Remove production-capable explicit False opt-outs and make the configured anchored writer mandatory for policy-denial/data-boundary paths; `audit=None` still uses an unanchored chain.
-2. Retire the public role-string `record_outcome()` / `review_outcome()` APIs and remove the runtime-enableable legacy `approve()` environment switch; keep no production-capable role-string authority path.
+2. Remove the runtime-enableable legacy `approve()` environment switch; public role-string outcome exports were retired by #92.
 3. Require the same configured `AnchoredAuditChain` for policy-denial/data-boundary paths; remove unanchored `audit=None` fallback and prove denial precedes protected reads.
 4. Implement decision/audit reconciliation (#57) and outcome dependency markers/held-outcome listing (#60); both remain specifications only.
 5. Persist and verify the immutable operator run record in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
