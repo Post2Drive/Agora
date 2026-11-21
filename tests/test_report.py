@@ -83,6 +83,9 @@ def test_report_without_model_states_numbers(ran):
     a = r["analysis"]
     lake = next(f for f in a["funnel"] if f["name"] == "register_lakeview")
     assert f"{lake['count']} of {lake['eligible']}" in r["sections"][0]["text"]
+    assert r["provenance"]["provenance_status"] == "legacy_missing"
+    assert "LEGACY RUN" in (ran / "report" / "report.md").read_text(encoding="utf-8")
+    assert "LEGACY RUN" in (ran / "report" / "report.html").read_text(encoding="utf-8")
 
 
 def test_chat_interview_ask_history(ran):
