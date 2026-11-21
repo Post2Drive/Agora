@@ -2,12 +2,12 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 21 November 2026  
-**Main base:** `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`  
+**Main base:** `adacbd71726324de71cdbf9d20943701c553d252`  
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-The documentation and implementation queue is now merged through PR #71. Main includes the principal-first outcome bridge (#70) and the anchored-writer factory plus policy-denial wiring (#71, stages A and D), in addition to the earlier local-sidecar anchor (#63) and Windows lock fix (#66). These are meaningful implementation slices, **not** evidence that decision/outcome anchoring, complete principal migration or the callable synthetic governed pipeline is complete.
+The documentation and implementation queue is now merged through PR #74. Main includes the principal-first outcome bridge (#70) and the anchored-writer factory plus policy-denial wiring (#71, stages A and D), in addition to the earlier local-sidecar anchor (#63) and Windows lock fix (#66). These are meaningful implementation slices, **not** evidence that decision/outcome anchoring, complete principal migration or the callable synthetic governed pipeline is complete.
 
 Main still does not provide one entry point that orchestrates import → bind → decision → principal approval → anchored audit → observed outcome/review → simulated-labelled report. CSV import is a CLI; binding, scenario-input construction, decision approval and outcomes are separate APIs; the scenario-input package is not wired into the simulation engine. #70 adds principal-gated outcome wrappers, but they bridge to legacy role-string APIs. #71 wires an anchored writer into policy-denial/import/binding/scenario-input paths only; decision lifecycle and outcome/review append paths remain unwired.
 
@@ -19,7 +19,7 @@ This assessment does not authorise simulation, calibration, backtest, forecast, 
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`.
+Assessment base: `adacbd71726324de71cdbf9d20943701c553d252`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -82,7 +82,7 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
 | #72 | Earlier documentation refresh based on pre-#71 main | Open draft; superseded by this refresh |
 
-Main is `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`. PR #71 is merged. PR #72, the superseded pre-#71 documentation draft, is closed. PR #73 is the current documentation refresh, open/draft/unmerged.
+Main is `adacbd71726324de71cdbf9d20943701c553d252`. PR #71 is merged. PR #72, the superseded pre-#71 documentation draft, is closed. PR #73 is the current documentation refresh, open/draft/unmerged.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -105,7 +105,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`, after #70 and #71 merged. Stages A/D of anchor wiring are implemented; Stages B/C, principal migration slice 2, protected-mode enforcement and the single callable orchestrator remain open. The reconciliation and outcome hold/review procedures are documentation proposals only and still require owner approval and rehearsal before they can satisfy a milestone gate.
+This assessment is refreshed against main `adacbd71726324de71cdbf9d20943701c553d252`, after #70 and #71 merged. Stages A/D of anchor wiring are implemented; Stages B/C, principal migration slice 2, protected-mode enforcement and the single callable orchestrator remain open. The reconciliation and outcome hold/review procedures are documentation proposals only and still require owner approval and rehearsal before they can satisfy a milestone gate.
 
 ## 7. Permanent safety boundaries
 
@@ -115,3 +115,10 @@ This assessment is refreshed against main `3f8365c0c7920206c61ef01ec6c4d000b8cf0
 - Do not use real data, personal/customer records, credentials, real drivers, network access or external write-back.
 - Do not edit `agora/sim/**`; scenario-input-to-engine wiring remains blocked pending Claude's written approval and separate owner approval.
 - A green CI run does not authorise a PR merge, ready-for-review transition or external action.
+
+
+## Current mainline correction — PR #74 (21 November 2026)
+
+This section supersedes earlier status text in this document that described Stages B/C as unwired. Main is `adacbd71726324de71cdbf9d20943701c553d252`, the merge of #74. PR #74 merged at exact head `ca92a206219bb7da6de4b4f50a157b74ac6103c7`; exact-head Actions run 221 (`44928837108`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+
+Main now has `require_anchored()` and `require_anchored=True` on `approve_as()`, `record_outcome_as()` and `review_outcome_as()`, checked before state mutation. Decision lifecycle and outcome/review append helpers accept the audit writer; anchor failures surface as typed partial-failure errors after business state may already be committed. This is partial Stage B/C, not universal protected mode: legacy lifecycle APIs and optional `audit=None` paths remain. Principal wrappers still bridge to legacy role-string APIs. Open PR #75 is not merged and must not be counted. Reconciliation (#57), outcome markers (#60) and the callable end-to-end pipeline remain incomplete.
