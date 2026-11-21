@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; this is not an integrated end-to-end pipeline  
-**Assessment base:** `main` at `90789ccfd866c038ce67753645b5e258134b9af3` (21 November 2026)  
+**Assessment base:** `main` at `0a00ef189fb63b4361c406fcfa665662ae03e15a` (21 November 2026)  
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
 There is **no single CLI/API entry point** on this mainline that executes import → bind → decision → principal approval → anchored audit → observed outcome → simulated-labelled report as one governed workflow.
 
-The repository provides several separate CLI commands and Python APIs. Some stages are only partially governed and some use legacy caller-supplied role strings. The local-sidecar audit-anchor implementation (#63) is now on main, but it is not wired into decision, outcome or policy call sites. The scenario-input package is not connected to the simulation engine.
+The repository provides several separate CLI commands and Python APIs. Some stages are only partially governed and some still use legacy caller-supplied role strings. PR #70 adds principal-gated `record_outcome_as()` and `review_outcome_as()` wrappers, but they delegate to legacy role-string functions after checking the required principal role. The local-sidecar audit-anchor implementation (#63) is on main but is not wired into decision, outcome or policy call sites. The scenario-input package is not connected to the simulation engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -20,9 +20,9 @@ This guide documents the available components and their boundaries. It does not 
 | Ontology binding | **AVAILABLE — Python API, partial governance** | `load_binding`, `validate_binding`, `materialize_instances`; policy callback still uses the legacy role-string enforcement contract. |
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
-| Principal-based approval | **AVAILABLE — limited synthetic slice** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58). This is not production identity; legacy role-string approval remains underneath the bridge and other call sites are not migrated. |
+| Principal-based approval | **AVAILABLE — limited synthetic slices** | `Principal`, test-only `SyntheticFixtureAdapter`, `decide_principal` and `approve_as()` (#58); #70 adds `required_role` filtering to `decide_principal()`. The approval bridge still delegates to legacy role-string `approve()`; this is not production identity and other call sites are not migrated. |
 | Anchored audit chain | **AVAILABLE — local-sidecar API, not wired** | #63 adds `AnchorStore`, `AnchoredAuditChain`, `bootstrap_anchor()` and `verify_anchored()`. It is merged on main but not wired into decision, outcome or policy call sites; trust is `local_sidecar`, not external anchoring. |
-| Observed outcome recording/review | **AVAILABLE — Python API, partial governance** | `DecisionOutcomeStore`, `record_outcome()`, `review_outcome()` (#53). Current APIs still accept caller-supplied role/subject values; no CLI. Simulated data is rejected as observed evidence. |
+| Observed outcome recording/review | **AVAILABLE — Python APIs, partial principal migration** | #53 provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()`; #70 adds `record_outcome_as()` and `review_outcome_as()` with principal-derived identity and required `operator` / `reviewer` roles. The new wrappers reject caller-supplied recorder/reviewer, role and subject fields, then bridge to the legacy role-string functions. No CLI or anchor wiring; simulated data is rejected as observed evidence. |
 | Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
 | Decision/audit reconciliation | **NOT AVAILABLE** | #57 is a specification only; no queue, detector, worker or repair command. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
@@ -124,7 +124,7 @@ The decision schema/store and lifecycle are Python APIs; there is no single deci
 
 For a synthetic-only rehearsal, define fixture identities in code/configuration controlled by the test harness (not request fields), issue a predeclared approver fixture, and call `approve_as(store, decision_id, expected_version, principal=approver_principal, expected_fingerprint=..., expected_scope=..., expected_evidence_refs=..., audit=...)` after a separate proposer and reviewer have prepared/reviewed the exact proposal.
 
-The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. However, `approve_as()` currently derives the role and delegates to the legacy role-string `approve()` path. The remaining PDP, policy-enforcement and outcome call sites are not migrated. `SyntheticFixtureAdapter` is not production authentication; do not use real credentials or OIDC.
+The API checks the exact current version, fingerprint, scope, evidence references, review date and separation of duties. `approve_as()` derives the role and delegates to the legacy role-string `approve()` path. PR #70 adds `record_outcome_as()` and `review_outcome_as()` in `agora.decisions.outcomes`; they call `decide_principal()` with `required_role="operator"` or `required_role="reviewer"`, derive the actor and subject from the Principal, and reject caller-supplied `recorder`/`reviewer`, `role` or `subject` kwargs. They then delegate to the legacy role-string outcome functions. This is a principal-gated bridge, not a complete migration of the decision lifecycle or PDP/policy-enforcement paths. `SyntheticFixtureAdapter` is not production authentication; do not use real credentials or OIDC.
 
 ## 8. Step E — audit evidence
 
@@ -142,7 +142,9 @@ The anchor is a separate local JSONL sidecar with owner-only creation permission
 
 The #53 implementation provides `DecisionOutcomeStore`, `record_outcome()` and `review_outcome()` in `agora.decisions.outcomes`. It requires an approved decision version, an exact declared measure, a measurement window, an exact source reference with a content hash, and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
-There is no CLI. The current API still accepts caller-supplied role and subject inputs; principal-based outcome recording/review is not implemented. A synthetic fixture may demonstrate schema and denial behaviour only, but **simulated preferences, agent actions, conversions and reports must never be entered as observed outcomes**. Use a genuinely observed source only in a separately authorised real-world workflow, which is outside this guide.
+PR #70 adds `record_outcome_as(store, *, principal, **kwargs)` and `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)`. The wrappers derive recorder/reviewer and role from the Principal, enforce the exact `operator` or `reviewer` role through `decide_principal(required_role=...)`, and reject caller-supplied `recorder`/`reviewer`, `role` and `subject` values. They still delegate to the legacy role-string functions internally, so the legacy APIs remain and this is not full principal-first migration. The audit argument remains optional and is not yet the merged anchored writer at protected call sites.
+
+There is no CLI. A synthetic fixture may demonstrate schema and denial behaviour only, but **simulated preferences, agent actions, conversions and reports must never be entered as observed outcomes**. Use a genuinely observed source only in a separately authorised real-world workflow, which is outside this guide.
 
 Outcome dependency review markers are not implemented. Reconciliation between decision and audit stores is not implemented.
 
@@ -167,7 +169,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 The following are **not** delivered by this guide:
 
 1. A single CLI/API orchestrator with exact immutable IDs passed between stages.
-2. Principal-first policy enforcement at import, binding, decision, outcomes and review call sites; removal of caller-controlled role authority.
+2. Principal-first migration at import/binding policy boundaries, decision lifecycle and all privileged operations. #70 provides principal-gated outcome wrappers but they still bridge to legacy role-string APIs; caller-controlled role authority remains in legacy paths.
 3. Wire the merged local-sidecar anchor implementation (#63) at decision, outcome and policy-denial append boundaries with serialized writes, safe lifecycle/close, permissions, durability and fail-closed recovery; document the residual local-sidecar trust limitation.
 4. Reconciliation implementation or an owner-approved and tested manual recovery procedure for decision/audit cross-store gaps.
 5. Outcome dependency markers or an owner-approved and tested manual hold/review procedure.
@@ -176,7 +178,22 @@ The following are **not** delivered by this guide:
 
 Until those items are evidenced, run only the individual components within their documented limits; do not call them an end-to-end governed pipeline.
 
-## 12. Evidence and stop conditions
+## 12. Future synthetic end-to-end command — NOT IMPLEMENTED
+
+**Status: NOT IMPLEMENTED. The following is a proposed interface sketch only; it is not a valid Agora command and must not be executed.**
+
+A future orchestrator may expose a single command with exact, immutable input references and an isolated synthetic fixture set, for example:
+
+```bash
+# PROPOSED ONLY — no such command exists on main
+agora governed-pipeline run --project ./tmp-governed-pilot --fixture-set ./fixtures/governed-synthetic
+```
+
+When implemented and separately approved, the command must orchestrate the documented local stages in order: validate the synthetic fixture set; import and pin the snapshot ID; validate/materialize the ontology binding; build the scenario-input package; create the decision; evaluate and approve using fixture-issued Principals; verify anchored audit at every protected append boundary; record and independently review only genuinely observed outcomes; and emit a separately simulated-labelled report. It must stop on any missing policy, principal, exact identifier, audit anchor, provenance check or required reviewer separation. It must not call `agora/sim/**` or start a simulation until the separate Claude-written approval and owner approval for simulation wiring are recorded.
+
+The current mainline has no orchestrator, no command with this name, and no integrated end-to-end path. Component APIs remain separate. This section is a design target, not operator instructions.
+
+## 13. Evidence and stop conditions
 
 Record the Git SHA, operator, fixture IDs, schema/import hashes, binding fingerprint, scenario-input hash, decision ID/version/fingerprint, synthetic actor labels, audit verification result, report run ID/mode and all stable denial/stop codes. Keep raw rows and sensitive values out of logs.
 
