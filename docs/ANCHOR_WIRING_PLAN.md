@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
 **Status:** Documentation plan only; no source-code change or implementation approval  
-**Assessment base:** `main` at `ef09a828868cfa774eff58bcb56e41a639408ae2` (21 November 2026). The code baseline remains `19f51d84d3ecc8392eb8713e392f93cb58a736bf`; the later #62 merge changed documentation only.  
+**Assessment base:** `main` at `0a00ef189fb63b4361c406fcfa665662ae03e15a` (21 November 2026), after PR #70 merged. The local-sidecar anchor implementation (#63), Windows audit-log lock fix (#66), and principal-first outcome slice (#70) are on main.  
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation under development:** PR #63, `feat/audit-anchor`, head `b135fdadd17bebfac4ab3137554bb4519070d5f9`; in the review queue per the latest collaboration entry (GitHub state remains open draft, not merged). Exact-head workflow run 184 completed with all four Ubuntu/Windows × Python 3.11/3.12 jobs green. No formal review submission or inline review thread was present at this check.
 
@@ -20,10 +20,10 @@ The following inventory was checked against the code at `19f51d84d3ecc8392eb8713
 ### 2.1 Audit primitives
 
 - `agora/audit_chain.py` defines `AuditChainStore(path)`, `append(event)`, `verify()` and `close()`. The store redacts to an allow-list, uses an append-only SQLite table, verifies the full hash chain and rejects replayed event IDs.
-- PR #63 adds `agora/audit_anchor.py` on its draft branch. It provides `AnchorStore(path, chain_id)`, `bootstrap_anchor(..., performed_by=...)`, `verify_anchored(chain, anchors)` and `AnchoredAuditChain(chain, anchors)`. The wrapper exposes `append()` and `verify()`; it does not currently expose `close()` or a context-manager lifecycle.
-- PR #63's `AnchorStore` appends JSONL records, flushes and calls `os.fsync`. It does not currently show explicit file-permission setting or an atomic temporary-file/rename protocol. The merged specification #52 calls for service-identity permissions and atomic write/rename plus fsync where supported. Resolve and document this implementation/specification gap before treating the storage section as complete.
+- Merged PR #63 provides `agora/audit_anchor.py`: `AnchorStore(path, chain_id)`, `bootstrap_anchor(..., performed_by=...)`, `verify_anchored(chain, anchors)` and `AnchoredAuditChain(chain, anchors)`. The wrapper exposes `append()`, `verify()` and `close()`; it serializes the verify → chain append → anchor advance sequence with a cross-process sidecar lock.
+- `AnchorStore` writes separate JSONL sidecar records, flushes and calls `os.fsync`; creation uses owner-only permissions. The implementation's local-sidecar trust boundary remains explicit. Compare the exact implementation against every #52 storage requirement during the wiring implementation; do not infer that CI proves all deployment hardening or atomicity requirements.
 - The wrapper checks the existing anchor before appending, appends to the chain, reads/verifies the resulting head, then advances the anchor. If the anchor write fails, it raises `AnchorWriteError` and leaves the chain event in place. The next protected append sees an unanchored tail and is refused.
-- The current wrapper has no visible cross-process lock covering the chain append plus anchor advance. The wiring implementation must prove concurrent writers cannot race the two-store sequence or create ambiguous anchor advancement.
+- The merged wrapper serializes the verify → chain append → anchor advance sequence with a cross-process sidecar lock. The Linux 3-process mutation proof did not detect removal of that lock, so the lock-removal mutation remains an explicit test-evidence gap; add a deterministic mutation/coordination proof before claiming the concurrency control is independently demonstrated.
 
 ### 2.2 Decision lifecycle
 
@@ -40,16 +40,11 @@ The shared `_audit()` helper calls `audit.append(event)` after the decision tran
 
 ### 2.3 Decision outcomes and reviews
 
-`agora/decisions/outcomes.py` accepts an optional `audit: AuditChainStore | None` in:
-
-- `record_outcome()`
-- `review_outcome()`
-
-The outcome or review row is committed to the decision store before the shared audit append. If the append fails, `OutcomeError` is raised while the outcome/review row remains stored. If `audit=None`, the shared audit append is skipped. This is another non-atomic boundary; do not report the operation as fully audited after an anchor failure.
+`agora/decisions/outcomes.py` accepts an optional `audit: AuditChainStore | None` in `record_outcome()` and `review_outcome()`. PR #70 also adds `record_outcome_as()` and `review_outcome_as()`: each derives actor/role/subject from a `Principal`, checks the exact `operator` or `reviewer` role with `decide_principal(required_role=...)`, and rejects caller-supplied recorder/reviewer, role and subject fields. These wrappers currently delegate to the legacy role-string functions; they are a principal-gated bridge, not removal of the legacy APIs. The outcome/review row is committed before the shared audit append; if append fails, `OutcomeError` is raised while the row remains stored. `audit=None` still skips the shared append. Do not report the operation as fully audited after an anchor failure.
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py` currently creates `AuditChainStore(project / "data" / "audit_chain.sqlite3")` internally when it must record a denial, appends the `policy_denied` event, and closes the store. It has no injected audit-writer/factory parameter and no anchor-path or chain-ID configuration. If this append fails, it raises `PolicyEnforcementError`.
+`agora/policy_enforcement.py::enforce_policy()` still accepts a legacy `PolicyCallable`; `policy=None` is a no-op. On denial it constructs `AuditChainStore(project / "data" / "audit_chain.sqlite3")` internally, appends `policy_denied`, and closes the store. It has no Principal input or injected anchored-writer/factory parameter, and no anchor-path or chain-ID configuration. If the denial append fails, it raises `PolicyEnforcementError`; the protected caller must remain denied.
 
 The shared `enforce_policy()` boundary is called by:
 
@@ -187,10 +182,10 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63:** in the review queue per the latest collaboration entry; GitHub still shows it as open draft, not merged. Exact-head CI run 184 is green across all four matrix jobs, but no formal review submission or inline review thread was present at this check. The code does not wire the wrapper into approval, outcomes or policy enforcement.
+- **PR #63:** merged at exact head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`; exact-head Actions run 201 ([44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154)) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. It supplies the local-sidecar wrapper but does not wire it into approval, outcomes or policy enforcement. The Linux lock-removal mutation was not detected.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** merged PR #57 is a specification only. No detector, queue, worker or repair command is implemented.
-- **Principal migration:** merged PR #58 provides only the synthetic `approve_as()` slice. Other role-string boundaries remain a separate migration task.
+- **Principal migration:** #58 provides the synthetic `approve_as()` bridge; #70 adds principal-gated outcome record/review wrappers and exact required-role filtering. These wrappers still call legacy role-string APIs. Decision lifecycle and policy-enforcement paths remain migration tasks.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
@@ -201,3 +196,34 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - No real data, personal/customer records, credentials, drivers, network connectors or external write-back.
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
+
+
+## 10. Post-PR #70 call-site and fail-closed wiring addendum
+
+**Assessment base:** `0a00ef189fb63b4361c406fcfa665662ae03e15a`  
+**Implementation evidence:** PR #70 merged at head `b159157958f39d797f557515bbaf441195028afd`; exact-head Actions run [44923562288](https://github.com/Post2Drive/Agora/actions/runs/44923562288) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. PR #70 changed `agora/decisions/outcomes.py`, `agora/principal.py` and `tests/test_principal_outcomes.py`. Its description reports 553 local tests and five mutation proofs; this is author-reported evidence, not a local test run in this documentation cycle.
+
+### 10.1 Exact current append and authority boundaries
+
+| Boundary | Current callable path | Current limitation / required anchor wiring |
+|---|---|---|
+| Decision proposal and lifecycle | `agora/decisions/approval.py`: `propose()`, `approve()`, `approve_as()`, `reject()`, `expire()`, `supersede()`; shared `_audit()` | Audit is optional and typed as `AuditChainStore | None`. `approve_as()` derives a Principal role, then delegates to legacy `approve()`; other lifecycle operations still accept actor strings. Pass one explicit anchored appender through every protected transition and deny protected mode when absent. |
+| Outcome record | `agora/decisions/outcomes.py::record_outcome()` and new `record_outcome_as()` | `record_outcome_as()` requires a Principal, uses `decide_principal(..., required_role="operator")`, bans caller-supplied `recorder`, `role`, `subject`, then delegates to legacy `record_outcome()`. The audit parameter remains optional; row commit precedes audit append. |
+| Outcome review | `agora/decisions/outcomes.py::review_outcome()` and new `review_outcome_as()` | The Principal wrapper requires `reviewer`, bans caller-supplied `reviewer`, `role`, `subject`, then delegates to legacy `review_outcome()`. Reviewer/recorder separation remains enforced. The review row commits before audit append. |
+| Policy denial | `agora/policy_enforcement.py::enforce_policy()` called by `agora/tabular.py::ingest_csv()`, `agora/ontology/binding.py::materialize_instances()`, and `agora/scenario_inputs.py::build_scenario_input()` | Still uses a legacy callback; `policy=None` is a no-op. Denial constructs a plain `AuditChainStore` internally. Replace this with an explicit principal/policy boundary and injected anchored-writer factory; preserve the rule that denial auditing completes before protected source bytes or snapshot stores are read. |
+
+### 10.2 Required fail-closed proofs for the next wiring implementation
+
+1. **Principal gate:** missing Principal, expired Principal, untrusted issuer, insufficient assurance, missing project scope, cross-project, cross-tenant and missing required role all deny. A multi-role Principal must be evaluated only against the exact `required_role`; a different allowed role must not satisfy the call.
+2. **Caller authority injection:** `record_outcome_as()` rejects `recorder`, `role` and `subject`; `review_outcome_as()` rejects `reviewer`, `role` and `subject`. Equivalent privileged entry points must not accept caller-selected identity or role.
+3. **Outcome partial failure:** the outcome/review row is already committed before audit append. If anchored append fails, return/raise the typed partial-failure state, preserve the exact outcome/review ID and decision version, do not retry the business operation, and never label it fully audited.
+4. **Decision partial failure:** if a decision transition is committed and its anchored audit append fails, surface the committed decision/version as not fully audited. Do not roll back or rewrite the decision record, and do not retry the transition blindly.
+5. **Policy denial before read:** for denied import, binding and scenario-input requests, verify the denial event is anchored before any source bytes or snapshot database are read. If the anchor is missing, mismatched, invalid or unwritable, the protected read remains denied; there is no plain-chain fallback.
+6. **Anchor state:** missing-after-provisioning, invalid history, wrong chain ID, same-file chain/anchor paths, truncation, mismatch and unanchored tail all fail closed. Ordinary startup must not bootstrap or reset an anchor.
+7. **Concurrency and durability:** prove multiple processes cannot race chain append and anchor advance; inject a lock failure and anchor write/fsync failure; verify safe close on success and all failure paths. Preserve the known Linux lock-removal mutation gap until a deterministic proof catches it.
+8. **Redaction and recovery:** verify the existing event allow-list remains intact; no observed values, rationale text, source content, credentials or principal claims enter shared audit events. A committed-but-unanchored row/event remains preserved for separately approved reconciliation; no direct SQLite/JSONL edits or blind retry.
+9. **Compatibility and protected mode:** legacy APIs may remain for explicitly ungoverned/test contexts, but production-capable protected paths must require the configured Principal and anchored appender. No implicit fallback to `audit=None`, a role string, or an unanchored `AuditChainStore`.
+
+### 10.3 Non-claims and ownership
+
+This addendum is a documentation plan only. It does not implement the wiring, approve any code change, or authorise a rehearsal. #70 is a principal-gated outcome bridge, not complete principal migration. #63 remains local-sidecar trust and is not external anchoring. Reconciliation (#57) and outcome dependency markers (#60) remain unimplemented specifications; the manual procedures in #68/#69 are proposals pending owner approval and rehearsal. Scenario-input-to-engine wiring remains separately blocked by Claude's written approval and separate owner approval. Keep `VALIDATED_PREDICTION_ENABLED=False`; do not touch `agora/sim/**`, existing studies, NCC Park Square or E0_C0_D0.
