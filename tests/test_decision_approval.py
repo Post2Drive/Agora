@@ -97,6 +97,16 @@ def test_non_approver_roles_cannot_approve(tmp_path, role):
     store.close()
 
 
+def test_stale_version_is_rejected(tmp_path):
+    store, proposed = prepared_store(tmp_path)
+    with pytest.raises(ApprovalTransitionError, match="stale decision version"):
+        approve(
+            store, proposed.decision_id, 1,
+            **approve_args(proposed),
+        )
+    store.close()
+
+
 def test_stale_fingerprint_is_rejected(tmp_path):
     store, proposed = prepared_store(tmp_path)
     with pytest.raises(ApprovalTransitionError, match="stale decision fingerprint"):
