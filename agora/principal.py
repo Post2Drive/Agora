@@ -95,7 +95,8 @@ class SyntheticFixtureAdapter:
 
 def decide_principal(
     principal: Principal | None, operation: str, resource: Mapping[str, Any],
-    *, now: datetime | None = None, trusted_issuers: frozenset[str] = frozenset({SyntheticFixtureAdapter.ISSUER}),
+    *, now: datetime | None = None, required_role: str | None = None,
+    trusted_issuers: frozenset[str] = frozenset({SyntheticFixtureAdapter.ISSUER}),
 ) -> tuple[dict[str, Any], str | None]:
     """Return (audit-safe decision, role that allowed it). Fails closed."""
     def deny(reason: str, subject: str = "unknown") -> tuple[dict[str, Any], None]:
@@ -124,8 +125,13 @@ def decide_principal(
     if principal.assurance < MIN_ASSURANCE.get(operation, Assurance.STANDARD):
         return deny("assurance_insufficient", sid)
 
+    candidates = sorted(principal.roles)
+    if required_role is not None:
+        if required_role not in principal.roles:
+            return deny("role_not_permitted", sid)
+        candidates = [required_role]
     last: dict[str, Any] | None = None
-    for role in sorted(principal.roles):
+    for role in candidates:
         result = decide({"subject_id": sid, "project_id": project}, role, operation, resource)
         if result["decision"] == "allow":
             return result, role
