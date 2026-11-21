@@ -86,6 +86,10 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #70 | Principal-first outcome record/review bridge | Merged |
 | #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
 | #72 | Earlier documentation refresh based on pre-#71 main | Closed; superseded |
+| #77 | Five-document readiness refresh | Merged |
+| #78 | Principal-bound policy helper and missing-policy gate | Merged |
+| #79 | Opt-in policy requirement on import/binding/scenario-input | Merged |
+| #80 | Principal-native decision approval gate | Merged |
 
 Main is `25231d68b6f9d5684b76b6204265cd225cc29449` (merge of #80). PRs #77 (docs), #78 (principal policy helper), #79 (opt-in data-boundary policy gate) and #80 (principal-native approval) are merged. No open PRs were returned at this inspection; #72 and #76 remain closed superseded docs drafts.
 
