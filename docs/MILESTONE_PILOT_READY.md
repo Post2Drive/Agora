@@ -102,9 +102,8 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #85 | Nine-document readiness refresh and operator run-record field map | Merged; exact-head CI run `44945012741` passed four jobs |
 | #86 | Outcome `_as` resource derivation and anchored denial tests | Merged (`a0777c1`); four exact-head jobs green, run `44942485500` |
 | #88 | Guided synthetic `agora pilot --workdir` entry point | Merged (`6e2d766`); exact-head CI run `44945307064` passed 4/4 |
-| #91 | Documentation refresh after #88/#89 | Open draft; docs-only, exact-head CI pending |
-| #88 | Guided synthetic `agora pilot --workdir` entry point | Merged (`6e2d766`); four exact-head jobs green, run `44945307064` |
 | #89 | Default-on policy/anchor parameters on six protected entry points | Merged (`87c7cc95`); exact-head CI run `44948055801` passed 4/4 |
+| #91 | Documentation refresh after #88/#89 | Open draft; docs-only; not merged or approved |
 
 Main is `87c7cc95b3e7c231f52dca4924d6fc433c698462` (merge of #89). #85/#86/#88/#89 are merged; #91 is the only open ChatGPT-owned draft docs PR.
 
