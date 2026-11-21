@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from agora import protection as _protection
+
 from dataclasses import dataclass
 import hashlib
 import json
@@ -226,12 +228,11 @@ def materialize_instances(
     audit: Any | None = None,
     purpose: str | None = None,
     retention: str | None = None,
-    require_policy: bool = True,
 ) -> list[dict[str, Any]]:
     """Read one explicit snapshot and return provenance-rich ontology instances.
 
     When supplied, policy is called as policy("binding", resource) before the
-    snapshot database is opened. None preserves the legacy behaviour.
+    snapshot database is opened. A policy is mandatory: None is denied (and audited).
 
     The policy runs before any read, so the snapshot's column policies are not
     available to it. Callers that bind personal or sensitive data declare the
@@ -240,7 +241,7 @@ def materialize_instances(
     """
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
-    if policy is not None or require_policy:
+    if policy is not None or _protection.POLICY_REQUIRED:
         _object, properties = _properties(pack, binding)
         sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
         source_sensitivity = max(
@@ -254,7 +255,7 @@ def materialize_instances(
                 audit=audit,
                 project=project,
                 operation="binding",
-                require_policy=require_policy,
+                require_policy=_protection.POLICY_REQUIRED,
                 resource={
                     "project_id": project.name or str(project),
                     "resource_ids": [binding.binding_id, binding.dataset_id],

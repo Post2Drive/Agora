@@ -97,12 +97,13 @@ def test_separation_of_duties_still_enforced_for_valid_approver(tmp_path):
     store.close()
 
 
+@pytest.mark.protected_defaults
 def test_require_anchored_without_anchored_writer_fails_closed_no_state_change(tmp_path):
     store, proposed, args = _setup(tmp_path)
     with pytest.raises(AnchorRequiredError):
         approve_as(store, proposed.decision_id, proposed.version,
                    principal=_adapter().issue("approver"), audit=None,
-                   require_anchored=True, **args)
+                   **args)
     assert store.versions(proposed.decision_id)[-1].status == "proposed"
     store.close()
 
@@ -113,13 +114,14 @@ def test_approve_as_has_no_role_or_subject_parameter():
     assert not {"role", "subject", "actor"} & set(params)
 
 
+@pytest.mark.protected_defaults
 def test_unanchored_plain_chain_also_fails_closed_with_anchor_error(tmp_path):
     audit = AuditChainStore(tmp_path / "a.sqlite3")
     store, proposed, args = _setup(tmp_path)
     with pytest.raises(AnchorRequiredError):
         approve_as(store, proposed.decision_id, proposed.version,
                    principal=_adapter().issue("approver"), audit=audit,
-                   require_anchored=True, **args)
+                   **args)
     assert store.versions(proposed.decision_id)[-1].status == "proposed"
     assert _events(audit) == []
     store.close(); audit.close()

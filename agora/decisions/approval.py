@@ -93,6 +93,7 @@ def _event(record: DecisionRecord, transition: str, actor: str, method: str,
     }
 
 
+from agora import protection as _protection  # noqa: E402
 from agora.audit_anchor import require_anchored as _require_anchored  # noqa: E402
 
 
@@ -284,7 +285,6 @@ def approve_as(
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
     audit: AuditAppender | None = None,
-    require_anchored: bool = True,
 ) -> DecisionRecord:
     """Approve using a trusted principal; role, scope and actor come from it.
 
@@ -293,7 +293,7 @@ def approve_as(
     accepted for compatibility but ignored; policy inputs come from the stored
     decision only.
     """
-    if require_anchored:
+    if _protection.ANCHOR_REQUIRED:
         _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     moment = _time(now)
