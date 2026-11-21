@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agora.audit_anchor import require_anchored
-from agora.audit_chain import AuditChainStore
+from agora.audit_chain import AuditAppender
 from agora.policy import decide
 from agora.principal import Principal, decide_principal
 
@@ -139,7 +139,7 @@ class DecisionOutcomeStore:
 
 
 def _audit(
-    audit: AuditChainStore | None, event_type: str, actor: str, decision_id: str, version: int,
+    audit: AuditAppender | None, event_type: str, actor: str, decision_id: str, version: int,
     outcome_id: str | None, *, decision: str = "allow", reason: str | None = None,
     policy_version: str | None = None,
 ) -> None:
@@ -206,7 +206,7 @@ def record_outcome(
     supersedes_outcome_id: str | None = None,
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> dict[str, Any]:
     """Append one observed outcome for an exact approved decision version."""
     try:
@@ -301,7 +301,7 @@ def review_outcome(
     evidence_ref: Mapping[str, Any] | None = None,
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> dict[str, Any]:
     """Append a review event; the reviewer must differ from the recorder."""
     outcome = store.get(decision_id, decision_version, outcome_id)
@@ -338,7 +338,7 @@ def review_outcome(
 
 
 def _principal_gate(
-    principal: Principal | None, required_role: str, audit: AuditChainStore | None,
+    principal: Principal | None, required_role: str, audit: AuditAppender | None,
     store: DecisionOutcomeStore, decision_id: str, decision_version: int,
     outcome_id: str | None, resource: Mapping[str, Any] | None, now: Any,
 ) -> None:

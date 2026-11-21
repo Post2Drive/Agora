@@ -86,3 +86,72 @@ def test_ingest_denial_anchored_before_source_read(tmp_path):
         assert writer.verify()["status"] == "anchored_verified"
         assert writer.verify()["sequence"] == 1
     assert not (tmp_path / "project" / "data" / "audit_chain.sqlite3").exists()
+
+
+# --- Stage B/C: decision lifecycle and outcomes through the anchored writer ---
+import json as _json
+
+from agora.decisions.approval import ApprovalTransitionError, approve, propose
+from agora.decisions.outcomes import OutcomeError, record_outcome, review_outcome
+from agora.decisions.store import DecisionRecordStore
+from tests.test_decision_approval import approve_args, draft_record
+from tests.test_decision_outcomes import approved_store, outcome_args, review_args
+
+
+def _types(chain):
+    return [_json.loads(r[0])["event_type"] for r in chain.db.execute(
+        "SELECT event_json FROM audit_events ORDER BY rowid")]
+
+
+def test_lifecycle_is_anchored_through_writer(tmp_path):
+    chain_path, anchor_path = _provision(tmp_path)
+    store = DecisionRecordStore(tmp_path / "d.db")
+    store.append(draft_record())
+    with open_anchored_audit(chain_path, anchor_path, "c1") as writer:
+        p = propose(store, "decision-approval-001", 1, actor="analyst",
+                    now="2026-11-21T10:00:00Z", audit=writer)
+        approve(store, p.decision_id, p.version, audit=writer, **approve_args(p))
+        assert writer.verify()["status"] == "anchored_verified"
+        assert _types(writer.chain) == ["decision_proposed", "decision_approved"]
+        assert AnchorStore(anchor_path, "c1").latest()["sequence"] == 2
+    store.close()
+
+
+def test_lifecycle_anchor_failure_is_visible_and_blocks_next_append(tmp_path, monkeypatch):
+    chain_path, anchor_path = _provision(tmp_path)
+    store = DecisionRecordStore(tmp_path / "d.db")
+    store.append(draft_record())
+    with open_anchored_audit(chain_path, anchor_path, "c1") as writer:
+        def boom(*a, **k):
+            raise OSError("disk full")
+        monkeypatch.setattr(writer.anchors, "advance", boom)
+        with pytest.raises(ApprovalTransitionError):
+            propose(store, "decision-approval-001", 1, actor="analyst",
+                    now="2026-11-21T10:00:00Z", audit=writer)
+        monkeypatch.undo()
+        # chain event persisted but unanchored: next protected append is refused
+        with pytest.raises(AnchorRequiredError):
+            writer.append({"event_id": "x1", "event_type": "t", "subject_id": "u",
+                           "operation": "import", "decision": "allow"})
+    store.close()
+
+
+def test_outcome_record_and_review_are_anchored(tmp_path):
+    chain_path, anchor_path = _provision(tmp_path)
+    _, store, approved = approved_store(tmp_path)
+    with open_anchored_audit(chain_path, anchor_path, "c1") as writer:
+        out = record_outcome(store, audit=writer, **outcome_args(approved))
+        review_outcome(store, approved.decision_id, approved.version, out["outcome_id"],
+                       audit=writer, **review_args())
+        assert writer.verify()["status"] == "anchored_verified"
+        assert _types(writer.chain)[-2:] == ["decision_outcome_recorded", "decision_outcome_reviewed"]
+        
+
+def test_outcome_anchor_failure_is_visible_row_remains(tmp_path, monkeypatch):
+    chain_path, anchor_path = _provision(tmp_path)
+    _, store, approved = approved_store(tmp_path)
+    with open_anchored_audit(chain_path, anchor_path, "c1") as writer:
+        monkeypatch.setattr(writer.anchors, "advance", lambda *a, **k: (_ for _ in ()).throw(OSError("x")))
+        with pytest.raises(OutcomeError, match="could not be appended"):
+            record_outcome(store, audit=writer, **outcome_args(approved, outcome_id="o-1"))
+        assert store.get(approved.decision_id, approved.version, "o-1")["outcome_id"] == "o-1"

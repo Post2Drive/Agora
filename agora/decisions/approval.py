@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 import uuid
 
-from agora.audit_chain import AuditChainStore
+from agora.audit_chain import AuditAppender
 from agora.principal import Principal, decide_principal
 
 from .permissions import DecisionPermissionError, authorize_decision_approval
@@ -94,7 +94,7 @@ from agora.audit_anchor import require_anchored as _require_anchored  # noqa: E4
 
 
 def _audit(
-    audit: AuditChainStore | None,
+    audit: AuditAppender | None,
     record: DecisionRecord,
     transition: str,
     actor: str,
@@ -142,7 +142,7 @@ def propose(
     actor: str,
     method: str = "manual",
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Move a draft to proposed; only its named proposer may submit it."""
     current = _current(store, decision_id, expected_version)
@@ -174,7 +174,7 @@ def approve(
     method: str = "manual",
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Approve only the exact current proposal after policy and separation checks."""
     current = _current(store, decision_id, expected_version)
@@ -242,7 +242,7 @@ def approve_as(
     method: str = "manual",
     resource: Mapping[str, Any] | None = None,
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
     require_anchored: bool = False,
 ) -> DecisionRecord:
     """Approve using a trusted principal; role, scope and actor come from it.
@@ -281,7 +281,7 @@ def reject(
     actor: str,
     method: str = "manual",
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Allow the assigned reviewer to reject a proposal."""
     current = _current(store, decision_id, expected_version)
@@ -302,7 +302,7 @@ def expire(
     expected_version: int,
     *,
     now: datetime | str,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Close an unapproved proposal after its review date has elapsed."""
     current = _current(store, decision_id, expected_version)
@@ -330,7 +330,7 @@ def supersede(
     replacement_fingerprint: str,
     method: str = "manual",
     now: datetime | str | None = None,
-    audit: AuditChainStore | None = None,
+    audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Mark a proposed/approved/rejected version superseded without rewriting it."""
     current = _current(store, decision_id, expected_version)
