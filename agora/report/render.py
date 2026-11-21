@@ -18,7 +18,7 @@ def _cite_html(text: str) -> str:
 
 
 _FORBIDDEN_EXPLORATORY = re.compile(
-    r"\\bforecast(?:s)?\\b|\\bvalidated\\s+demand\\b|\\bsales\\s+predictions?\\b",
+    r"\bforecast(?:s)?\b|\bvalidated\s+demand\b|\bsales\s+predictions?\b",
     re.IGNORECASE,
 )
 
