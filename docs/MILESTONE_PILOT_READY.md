@@ -82,7 +82,7 @@ These are GitHub Actions results, not local test runs. No current-main PR-trigge
 | #71 | Anchored writer factory and policy-denial wiring (Stages A/D) | Merged |
 | #72 | Earlier documentation refresh based on pre-#71 main | Open draft; superseded by this refresh |
 
-Main is `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`. PR #71 is merged; the open-PR search returns #72 only, an earlier documentation draft based on pre-#71 main and superseded by this refresh.
+Main is `3f8365c0c7920206c61ef01ec6c4d000b8cf0f92`. PR #71 is merged. PR #72 is the superseded pre-#71 documentation draft and is being closed; PR #73 is the current documentation refresh, open/draft/unmerged.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
