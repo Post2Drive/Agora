@@ -7,6 +7,7 @@ from typing import Any
 import uuid
 
 from agora.audit_chain import AuditChainStore
+from agora.principal import Principal, decide_principal
 
 from .permissions import DecisionPermissionError, authorize_decision_approval
 from .schema import DecisionRecord, DecisionRecordError, load_decision_record
@@ -226,6 +227,46 @@ def approve(
     return updated
 
 
+def approve_as(
+    store: DecisionRecordStore,
+    decision_id: str,
+    expected_version: int,
+    *,
+    principal: Principal | None,
+    expected_fingerprint: str,
+    expected_scope: Mapping[str, Any],
+    expected_evidence_refs: list[dict[str, Any]],
+    method: str = "manual",
+    resource: Mapping[str, Any] | None = None,
+    now: datetime | str | None = None,
+    audit: AuditChainStore | None = None,
+) -> DecisionRecord:
+    """Approve using a trusted principal; role, scope and actor come from it.
+
+    There is no role parameter: authority is derived from the adapter-issued
+    principal, so callers cannot self-assert approver rights.
+    """
+    current = _current(store, decision_id, expected_version)
+    policy_resource = dict(resource or {})
+    policy_resource.update(current.project_scope)
+    policy_resource["resource_ids"] = [decision_id]
+    policy_resource.setdefault("source_sensitivity", "internal")
+    moment = _time(now)
+    decision, role = decide_principal(principal, "decision_approval", policy_resource, now=moment)
+    if role is None:
+        _audit(audit, current, "approval_denied", decision["subject_id"], decision="deny",
+               reason=str(decision.get("reason", "policy_denied")),
+               operation="decision_approval", policy_version=decision.get("policy_version"))
+        raise DecisionPermissionError(decision)
+    return approve(
+        store, decision_id, expected_version, actor=principal.subject_id, role=role,
+        subject={"subject_id": principal.subject_id, "project_id": current.project_scope.get("project_id")},
+        expected_fingerprint=expected_fingerprint, expected_scope=expected_scope,
+        expected_evidence_refs=expected_evidence_refs, method=method, resource=resource,
+        now=moment, audit=audit,
+    )
+
+
 def reject(
     store: DecisionRecordStore,
     decision_id: str,
@@ -306,5 +347,5 @@ def supersede(
 
 
 __all__ = [
-    "ApprovalTransitionError", "approve", "expire", "propose", "reject", "supersede",
+    "ApprovalTransitionError", "approve", "approve_as", "expire", "propose", "reject", "supersede",
 ]
