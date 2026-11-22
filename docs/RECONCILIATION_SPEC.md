@@ -1,6 +1,6 @@
 # Decision Store and Audit-Chain Reconciliation Specification
 
-**Status:** Partial implementation. PR #100 adds a read-only detector for decision lifecycle/approval transitions; source metadata validation and partial-open connection cleanup remain the next claimed hardening slice. The queue, independent-review and repair workflow remains unimplemented. The detector does not verify the sidecar anchor or cover outcome/review rows.
+**Status:** Partial implementation. PR #100 adds a read-only detector for decision lifecycle/approval transitions; PR #104 hardens it by validating transition/status/actor/method/timestamp against the immutable decision payload, validating audit operation and exact resource IDs, and safely closing acquired connections on partial open. The queue, independent-review and repair workflow remains unimplemented. The detector does not verify the sidecar anchor or cover outcome/review rows.
 
 ## 1. Problem and objective
 
@@ -71,9 +71,9 @@ The merged detector currently:
 4. Classifies source transitions as `matched`, `missing`, `conflict` or `source_invalid`; lists orphan lifecycle audit events separately.
 5. Emits deterministic JSON findings followed by a summary. Exit codes are 0 for no detected gaps, 1 for listed gaps, and 2 when blocked by a missing/unreadable store or invalid chain.
 
-**Review limitations to close before relying on the detector as complete reconciliation:** the current source check does not compare `decision_approval_events.transition`, actor, method or timestamp with the immutable `decision_records.payload_json`; a tampered transition row and correspondingly re-hashed audit event can be reported as matched while the immutable record disagrees. It also does not validate audit `operation` or require `resource_ids` to be exactly `[decision_id, f"version-{version}"]`. If the audit DB opens but the decisions DB is missing, the second `_ro()` raises before the cleanup `finally` is entered, leaving the audit connection open. Claude has claimed this source-metadata/ExitStack hardening slice next. The detector still has no sidecar-anchor verification, stable correlation ID, queue/repair workflow, or outcome/review coverage.
+**Hardening now present in main (#104):** source transition/status/actor/method/timestamp are cross-checked against the immutable `decision_records.payload_json`; audit operation and exact two-element `resource_ids` are validated; `ExitStack` closes the first read-only connection if the second store cannot be opened. Remaining limitations are sidecar-anchor verification, stable correlation ID, queue/independent-review/repair workflow, and outcome/review coverage.
 
-PR #100 exact-head Actions run `44963254416` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Tests cover matching/missing/conflicting/orphan events, version/fingerprint issues, invalid chain, missing stores, read-only determinism, CLI exit codes and engine-import isolation; they do not cover transition/actor/method/timestamp mismatches against the immutable payload, audit operation/resource-ID shape, or partial-open connection cleanup. PR #102 separately adds the read-only held-outcome list; it is not reconciliation of outcome rows against the audit chain.
+PR #100 exact-head Actions run `44963254416` and PR #104 exact-head Actions run `44968039923` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #104 adds tests for transition/status, actor, method and timestamp mismatches against the immutable payload, wrong audit operation, extra resource IDs and partial-open connection cleanup. PR #102 separately adds the read-only held-outcome list; #106 makes connection-open failures return `STORE_UNREADABLE` / exit 2. Neither is reconciliation of outcome rows against the audit chain.
 
 ## 6. Idempotent repair protocol
 
@@ -175,11 +175,11 @@ The implementation test suite must show named tests fail if a mutation:
 ## 12. Rollout gates and non-goals
 
 1. Add immutable correlation metadata to new decision transition records; define how legacy transitions are classified when correlation data is absent.
-2. Implemented minimally by #100: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Its source metadata cross-checks and partial-open cleanup still need the claimed hardening; stable correlation, anchor verification, outcome/review coverage and queue/repair remain separate gaps. #102 provides a separate read-only held-outcome list, not cross-store reconciliation.
+2. Implemented minimally by #100 and hardened by #104: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Immutable source metadata, audit operation/resource IDs and partial-open connection cleanup are now checked. Stable correlation, anchor verification, outcome/review coverage and queue/repair remain separate gaps. #102/#106 provide a separate read-only held-outcome list with fail-closed connection-open handling, not cross-store reconciliation.
 3. Implement the append-only queue and independent review workflow.
 4. Add idempotent repair behind explicit configuration and approval.
 5. Prove crash/retry/concurrency behaviour and run mutation tests in a clean checkout.
 6. Integrate trusted principals and independent audit anchoring before any production use.
 7. Reconcile historical gaps only through an owner-approved, evidence-preserving migration plan.
 
-This document specifies the future queue/repair workflow beyond the minimal read-only detector in #100. The current command does not alter either store, run repairs, enable network access or external write-back, use real data or credentials, run simulations, or change `VALIDATED_PREDICTION_ENABLED` (which remains `False`).
+This document specifies the future queue/repair workflow beyond the minimal read-only detector in #100, hardened by #104. The current command does not alter either store, run repairs, enable network access or external write-back, use real data or credentials, run simulations, or change `VALIDATED_PREDICTION_ENABLED` (which remains `False`).

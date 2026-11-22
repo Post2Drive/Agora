@@ -1,7 +1,7 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026).
+**Assessment base:** `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026).
 **Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `8376f410` | Evidence / missing item |
+| M2 requirement | Mainline status at `112030a2` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
@@ -21,7 +21,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 | Legacy paths removed or test-only | **PARTIAL** | #92 retires public role-string outcome exports; #96 removes public wrapper opt-outs; #97 removes the legacy approval env switch and confines enablement to the test-only module flag. |
 | Readable audit timeline and plain-language chain/anchor verification | **PARTIAL / NOT OPERATOR-READY** | #88 includes an `audit_verify` stage in the guided run, but there is no standalone timeline/verification command. Trust remains `local_sidecar`. |
 | Backup/restore and tamper drill | **NOT YET** | Design guidance exists; no operator commands, tested procedure or logged drill is evidenced. |
-| Minimal reconciliation and held-outcome listing | **PARTIAL** | #100 lists decision lifecycle/audit gaps read-only (exit 0 intact, 1 gaps, 2 blocked); immutable source metadata validation and partial-open cleanup remain incomplete, and it does not check the anchor or repair. #102 lists disputed/unreviewed/invalid-history outcomes and orphan review rows read-only (exit 0 none held, 1 held, 2 blocked); it does not create markers or propagate source-dependency holds. |
+| Minimal reconciliation and held-outcome listing | **PARTIAL** | #100/#104 list decision lifecycle/audit gaps read-only (exit 0 intact, 1 gaps, 2 blocked); #104 validates immutable source metadata, expected audit operation/exact resource IDs and partial-open cleanup. The detector still does not check the sidecar anchor or repair. #102 lists disputed/unreviewed/invalid-history outcomes and orphan review rows read-only (exit 0 none held, 1 held, 2 blocked); #106 normalizes connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. It does not create markers or propagate source-dependency holds. |
 | Run records per `docs/RUN_PROVENANCE_SPEC.md` (no engine call) | **NOT YET** | #88 returns an in-memory `PilotResult`; it does not persist and verify the immutable M2 run-record envelope. |
 | Operator runbook commands executed by a test | **NOT YET** | This skeleton has no executable command set and no test that executes it. |
 | Logged dress rehearsal | **NOT YET** | No rehearsal is recorded or authorised by this draft. |
@@ -34,7 +34,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #96 removes its public anchor opt-out kwarg. #97 removes the legacy approval env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains.
 - **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #96 removes public `require_anchored=False` kwargs, #92 retires public role-string outcome exports, #97 removes the unanchored denial fallback, and #99 validates the policy-denial writer. Trust remains `local_sidecar`; low-level lifecycle and private outcome helpers still have optional audit arguments.
 - **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages and stops on first denial without invoking the engine. #94 keeps CLI pilot/data dispatch engine-import-free; fresh-process coverage exercises `--help`, not a complete `--workdir` invocation.
-- **PARTIAL — reconciliation and held outcomes:** #100 implements a read-only decision lifecycle detector only; it does not verify the anchor, reconcile outcome/review rows, persist a queue or repair gaps, and its source metadata/partial-open cleanup hardening remains queued. #102 adds a read-only held-outcome list; no dependency marker store or propagation exists.
+- **PARTIAL — reconciliation and held outcomes:** #100/#104 implement a read-only decision lifecycle detector with immutable source metadata and audit-event validation plus partial-open cleanup; it does not verify the anchor, reconcile outcome/review rows, persist a queue or repair gaps. #102/#106 add read-only held-outcome listing with fail-closed connection-open handling; no dependency marker store or propagation exists.
 
 Do not execute a component command as though it were the full M2 workflow.
 
@@ -48,7 +48,7 @@ The following headings reserve the runbook structure. Each step must be replaced
 4. **Guided import/bind/scenario-input — PARTIAL:** #88 guides import and binding with per-step results and first-denial stop, but does not call `build_scenario_input()`; no simulation-engine call is in scope.
 5. **Decision and principal approval — DEFAULT-ON PRINCIPAL PATH:** #80/#84 make `approve_as()` Principal-native; #96 removes its public anchor opt-out kwarg. #97 removes the legacy approval environment switch; `approve()` remains disabled by default and can be enabled only through the test-only `agora.protection.LEGACY_APPROVE_ENABLED` module flag. #92 retires the public role-string outcome APIs. #99 closes direct policy-helper bypasses.
 6. **Audit timeline and verification — NOT YET:** show event sequence, chain verification and anchor comparison in plain language without exposing raw values.
-7. **Reconciliation and held outcomes — PARTIAL:** `agora reconcile --decisions <db> --audit <db>` (#100) lists decision lifecycle/audit gaps read-only; exit 0 intact, 1 gaps, 2 blocked. Source-transition metadata validation and partial-open cleanup remain incomplete; no anchor check, queue or repair. `agora outcomes held --decisions <db>` (#102) lists disputed, never-reviewed, invalid-history and orphan-review cases read-only; exit 0 none held, 1 held, 2 blocked. It does not create dependency markers, inspect source-hash changes or propagate holds.
+7. **Reconciliation and held outcomes — PARTIAL:** `agora reconcile --decisions <db> --audit <db>` (#100/#104) lists decision lifecycle/audit gaps read-only; #104 validates transition/status/actor/method/timestamp against the immutable payload, audit operation and exact resource IDs, and partial-open cleanup; exit 0 intact, 1 gaps, 2 blocked. It still has no anchor check, queue or repair. `agora outcomes held --decisions <db>` (#102/#106) lists disputed, never-reviewed, invalid-history and orphan-review cases read-only; exit 0 none held, 1 held, 2 blocked. #106 maps connection-open SQLite errors to `STORE_UNREADABLE`. It does not create dependency markers, inspect source-hash changes or propagate holds.
 8. **Backup/restore and tamper drill — NOT YET:** document and test copy/restore, anchor continuity, tamper detection and fail-closed recovery.
 9. **Run record and report — PARTIAL:** #88 writes a synthetic-labelled report but does not persist the immutable run-record envelope in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`.
 10. **Dress rehearsal — NOT YET:** only after the M2 checklist, tested runbook, exact-head CI and separate owner approval; log the exact command, SHA, fixture hashes, stage results, denials and operator sign-off.

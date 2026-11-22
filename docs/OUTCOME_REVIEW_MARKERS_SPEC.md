@@ -1,9 +1,9 @@
 # Outcome Dependency Review Markers Specification
 
-**Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented. PR #102 adds a read-only held-outcome list only.
-**Assessment base:** main at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026)  
-**Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing (#102); assessment base main `8376f4106d767383069e05c5fadc6583645aa297`
-**Related specification:** decision/audit reconciliation (#57), with the minimal read-only detector in #100
+**Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented. PRs #102/#106 add a read-only held-outcome list and fail-closed connection-open error handling only.
+**Assessment base:** main at `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026)  
+**Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing / connection-open hardening (#102/#106); assessment base main `112030a219e2d6f7278a46a95be2468634bf563a`
+**Related specification:** decision/audit reconciliation (#57), with the read-only detector in #100 and immutable source-metadata/connection hardening in #104
 
 ## 1. Purpose
 
@@ -23,7 +23,7 @@ Main includes the append-only outcome and review stores from PR #53:
 - review_outcome() requires a reviewer distinct from the recorder and records reviewed/disputed state changes.
 - Outcome audit events use allow-listed metadata.
 
-The current implementation does not create dependency review markers or propagate a disputed/corrected outcome to dependent reports or later decisions. PR #102 adds `agora outcomes held --decisions <db>`, which lists outcomes that are disputed, never reviewed, have invalid review history, or have a review row without an outcome. It is read-only, emits opaque IDs/stable reason codes and does not create markers, inspect source-hash changes or traverse dependency edges. PR #100 implements only decision lifecycle/approval audit reconciliation; it does not reconcile outcome/review rows. This specification must not claim marker or propagation capability already exists.
+The current implementation does not create dependency review markers or propagate a disputed/corrected outcome to dependent reports or later decisions. PR #102 adds `agora outcomes held --decisions <db>`, which lists outcomes that are disputed, never reviewed, have invalid review history, or have a review row without an outcome; #106 normalizes connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. It remains read-only, emits opaque IDs/stable reason codes and does not create markers, inspect source-hash changes or traverse dependency edges. PRs #100/#104 implement only decision lifecycle/approval audit reconciliation; they do not reconcile outcome/review rows. This specification must not claim marker or propagation capability already exists.
 
 ## 3. Trigger events
 
@@ -147,7 +147,7 @@ Never include observed_value, unit, notes, raw source content, personal data, cr
 
 Marker storage and the audit chain may be separate SQLite stores. Do not claim a cross-store atomic transaction. If marker persistence succeeds but its audit append fails, or vice versa, surface a durable pending/reconciliation state and fail closed for protected reliance. Use a stable idempotency key so retry cannot create duplicate markers.
 
-The reconciliation specification in merged PR #57 and the minimal detector in #100 scope themselves to decision lifecycle/approval audit gaps. #102 lists held outcome/review states from the decision store but does not reconcile those rows against the audit chain. Marker/outcome reconciliation requires an explicit extension or separate approved design. No queue, worker or automatic repair is claimed here.
+The reconciliation specification in merged PR #57 and the minimal detector in #100, hardened by #104, scope themselves to decision lifecycle/approval audit gaps. #102/#106 list held outcome/review states from the decision store (with connection-open errors failing closed) but do not reconcile those rows against the audit chain. Marker/outcome reconciliation requires an explicit extension or separate approved design. No queue, worker or automatic repair is claimed here.
 
 ## 10. Retention and erasure
 

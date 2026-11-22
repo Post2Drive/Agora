@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector (#100) and read-only held-outcome listing (#102) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `8376f4106d767383069e05c5fadc6583645aa297`, after PRs #94–#102 merged.
+The following inventory was checked against main at `112030a219e2d6f7278a46a95be2468634bf563a`, after PRs #94–#106 merged.
 
 ### 2.1 Audit primitives
 
@@ -88,7 +88,7 @@ Pass the anchored writer through the existing `audit` parameter for `propose`, `
 - Preserve each existing event type, event ID, resource IDs, reason code and policy version.
 - Make the production service/harness require an anchored writer for protected lifecycle transitions; tests may inject a fake appender to prove failure paths.
 - Preserve the current failure semantics: the decision transition may already be committed when chain/anchor append fails. Surface that partial state explicitly; do not attempt to roll back or rewrite the decision record.
-- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector, but it does not verify the sidecar anchor, persist a queue or repair gaps. Its immutable source-transition metadata validation and partial-open connection cleanup remain outstanding; #102's held-outcome list is separate and does not reconcile outcomes with the audit chain.
+- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. It still does not verify the sidecar anchor, persist a queue or repair gaps; #102/#106's held-outcome list is separate; #106 only normalizes connection-open errors and does not reconcile outcomes with the audit chain.
 
 **Acceptance:** every protected lifecycle transition produces an anchored event; missing writer is denied in protected mode; anchor failure raises and identifies the committed transition/event for reconciliation; proposer/reviewer/approver separation and exact-version checks remain unchanged.
 
@@ -99,7 +99,7 @@ Pass the same anchored writer through `record_outcome_as()` and `review_outcome_
 - Keep the observed-only provenance, approved decision-version, exact source hash, measure allow-list, append-only correction and reviewer-separation checks unchanged.
 - Preserve the current order: the outcome/review row is committed before the shared audit append. If anchoring fails, return a typed partial-failure signal; the row remains stored and must not be described as fully audited.
 - Keep observed values, units, notes and reviewer rationale out of audit events.
-- Do not imply that decision/audit reconciliation #100 covers outcome rows; its detector scope is decision lifecycle/approval events only. #102 lists held outcome/review states read-only, but does not create dependency markers or reconcile outcome rows against the audit chain.
+- Do not imply that decision/audit reconciliation #100 covers outcome rows; its detector scope is decision lifecycle/approval events only. #102/#106 list held outcome/review states read-only, with #106 failing closed on connection-open errors; they do not create dependency markers or reconcile outcome rows against the audit chain.
 
 **Acceptance:** recorded/reviewed/disputed/correction events are anchored; audit/anchor failure is visible; the stored row remains immutable; no simulated value is promoted to observed evidence.
 
@@ -184,9 +184,9 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 ## 8. Current blockers and ownership
 
-- **PR #63/#71/#74/#75/#88/#89/#94/#96/#97/#99/#100/#102:** local-sidecar primitive, writer factory, policy/data-boundary wiring, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval, anchored policy-denial enforcement, read-only reconciliation detector and read-only held-outcome list are merged. #100 still needs source-metadata/connection-cleanup hardening; neither #100 nor #102 adds anchor validation, queue/repair, or outcome/audit reconciliation.
+- **PR #63/#71/#74/#75/#88/#89/#94/#96/#97/#99/#100/#102/#104/#106:** local-sidecar primitive, writer factory, policy/data-boundary wiring, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval, anchored policy-denial enforcement, read-only reconciliation detector plus #104 source-integrity/connection hardening, and read-only held-outcome list are merged. Neither #100/#104 nor #102 adds anchor validation, queue/repair, or outcome/audit reconciliation.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
-- **Reconciliation:** #100 implements a read-only detector for decision lifecycle/approval transitions. It verifies the hash chain and lists matched/missing/conflict/source-invalid/orphan classifications, but source metadata cross-checks and partial-open connection cleanup remain incomplete. No anchor check, queue, repair or outcome/review coverage exists. #102's held-outcome list is separate.
+- **Reconciliation:** #100/#104 implement a read-only detector for decision lifecycle/approval transitions. It verifies the hash chain and classifies matched/missing/conflict/source-invalid/orphan cases; #104 adds immutable source metadata checks, exact audit operation/resource-ID checks and partial-open connection cleanup. No anchor check, queue, repair or outcome/review coverage exists. #102's held-outcome list is separate.
 - **Principal migration:** #96 removes public `require_anchored=False` kwargs, #97 removes the legacy approval env switch, and #99 closes direct policy-helper bypasses. Role-string PDP/permission compatibility APIs remain; the synthetic fixture adapter is not production authentication.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
@@ -199,7 +199,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
-## 10. Current mainline status after PR #102
+## 10. Current mainline status after PR #106
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
@@ -211,9 +211,9 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never calls the simulation engine. #94 removes the module-level `.sim.engine` import from `agora.cli`; engine imports are lazy inside simulation-dependent handlers. It does not make lower-level APIs universally non-bypassable.
 
-**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553`, #97 run `44958568446`, #99 run `44960946006`, #100 run `44963254416` and #102 run `44965953082` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553`, #97 run `44958568446`, #99 run `44960946006`, #100 run `44963254416`, #102 run `44965953082` and #104 run `44968039923`, and #106 run `44970435296` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-**Remaining acceptance gates:** #100 source-transition metadata validation and partial-open connection cleanup are the next claimed reconciliation slice; add anchor verification, stable correlation and a reviewed queue/repair or approved manual recovery procedure. #102 supplies a read-only held-outcome list only; dependency markers/propagation remain unimplemented. Add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add audit timeline, plain-language verification, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** extend reconciliation with sidecar-anchor verification, stable correlation and a reviewed queue/repair or approved manual recovery procedure; cover outcome/review rows separately. #102 supplies a read-only held-outcome list and #106 normalizes connection-open failures to blocked exit 2; dependency markers/propagation remain unimplemented. Add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add audit timeline, plain-language verification, backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
