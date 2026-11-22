@@ -229,3 +229,40 @@ def test_intermediate_ancestor_lstat_mutation_proof(tmp_path, monkeypatch):
     # Control: without the injected error the same path is accepted.
     monkeypatch.setattr(os, "lstat", real)
     assert pilot._linked_component(work) is False
+
+
+def _fresh_project(tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    csv = project / "u.csv"
+    csv.write_text("a\n")
+    return project, csv
+
+
+def test_run_record_publish_is_atomic_no_partial_file_on_crash(tmp_path, monkeypatch):
+    import os as _os
+    from agora import pilot
+    project, csv = _fresh_project(tmp_path)
+
+    def boom(fd):
+        raise OSError("disk fault")
+    monkeypatch.setattr(pilot.os, "fsync", boom)
+    with pytest.raises(OSError):
+        pilot._write_run_record(project, status="completed", started=NOW, steps=[], ctx={},
+                                csv_path=csv, report=None)
+    assert not (project / pilot.RUN_RECORD_NAME).exists()
+    assert sorted(p.name for p in project.iterdir()) == ["u.csv"]  # temp cleaned up
+
+
+def test_run_record_publish_success_leaves_only_final_file_and_never_overwrites(tmp_path):
+    from agora import pilot
+    project, csv = _fresh_project(tmp_path)
+    out = pilot._write_run_record(project, status="completed", started=NOW, steps=[], ctx={},
+                                  csv_path=csv, report=None)
+    before = out.read_bytes()
+    assert sorted(p.name for p in project.iterdir()) == ["run_record.json", "u.csv"]
+    with pytest.raises(FileExistsError):
+        pilot._write_run_record(project, status="denied", started=NOW, steps=[], ctx={},
+                                csv_path=csv, report=None)
+    assert out.read_bytes() == before
+    assert sorted(p.name for p in project.iterdir()) == ["run_record.json", "u.csv"]
