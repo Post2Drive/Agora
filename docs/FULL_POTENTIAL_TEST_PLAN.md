@@ -2,7 +2,7 @@
 
 **Status:** Plan only. This is the requested end-to-end test outline; no full-potential test has been run. M2 remains in progress and M3 is proposal-only. The plan does not declare either milestone reached.
 
-**Baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026). The implementation facts below were checked against current main after #135 merged. The M2 documentation consolidated in #133 is on main; #132 fixture/workdir hardening, #134 direct backup/restore root symlink/reparse-point refusal and #135 workdir-ancestor/fixture-catalogue hardening are merged. PR #136 backup ancestor/pre-read/lstat-error checks are merged (exact-head CI `45006493190`, 4/4 passed); a `..`-through-symlink normalization regression, backup snapshot-lock/head equality and clean-install proof remain open.
+**Baseline:** main `f759177379a13161fec150ff551af43d4117e898` (22 November 2026). The implementation facts below were checked against current main after #135 merged. The M2 documentation consolidated in #133 is on main; #132 fixture/workdir hardening, #134 direct backup/restore root symlink/reparse-point refusal and #135 workdir-ancestor/fixture-catalogue hardening are merged. PR #136 backup ancestor/pre-read/lstat-error checks are merged (exact-head CI `45006493190`, 4/4 passed); B13 symlink-plus-`..` normalization, writer-side lock/deterministic concurrent-writer proof and clean-install proof remain open; #138 implements exact sequence/head comparison and manifest binding but no writer-side lock.
 
 ## 1. Objective and limits
 
