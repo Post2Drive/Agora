@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. No M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document. M2 is still in progress in Claude's 12:58 IST brief. This proposal does not declare M2 or M3 reached.
 
-**Draft baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only.
+**Draft baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026), including #132's checked-in fixture manifest pin, direct fixture symlink/version and direct workdir-root symlink hardening. M2 remains in progress; workdir-ancestor symlink coverage and clean-install proof remain open.
 
 ## 1. Purpose and boundary
 
@@ -22,7 +22,7 @@ M3 is not a production identity, connector, external action, prediction-approval
 
 ## 2. Live-main facts used by this proposal
 
-The following are code/document observations at main `70e561bf7309911ac86bed9f19be957ade73b338`, not claims that M3 behavior exists:
+The following are code/document observations at main `15a92c56fdac14bb6266eec4acbd15b528d4b035`, including merged #132 fixture/workdir hardening; they are not claims that M3 behavior exists:
 
 - `agora/cli.py` keeps the simulation import lazy through `_simulation()`. The `run` command constructs `Simulation`, calls `prepare()`, then `run()`. The `pilot` and data-command dispatch paths are separate and must remain engine-import-free.
 - `agora/sim/engine.py` currently loads `scenario.yaml`, opens the run `Store`, and calculates `scenario_hash` from scenario configuration. On a first run, `prepare()` calls `population.build(self.sc)`; on resume it compares the stored scenario hash before loading `World`. It does not currently require a governed tabular input envelope.
