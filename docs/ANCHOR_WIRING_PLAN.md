@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `dc29592fde81c64619b15bf8aa33822bb920bc5f`. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2. #123/#125/#130 provide only a partial run record; #132 hardens fixture authenticity/direct paths and #135 closes workdir-ancestor/fixture-catalogue symlink gaps. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `dc29592fde81c64619b15bf8aa33822bb920bc5f`. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2. #142 adds the pilot `input_provenance` envelope, but strict legacy/new, timestamp/version, manifest/report checks and failure-atomic publication remain open. #132/#135/#139 harden fixture and workdir paths. No M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
@@ -226,7 +226,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-**Remaining acceptance gates:** complete the full RUN_PROVENANCE_SPEC `input_provenance` envelope, strict nested/hash/schema validation and failure-atomic publication; harden #138 with one validated manifest snapshot and deterministic concurrent-writer proof; close marker/audit outbox recovery; make the operator runbook executable by tests and record the separately approved synthetic rehearsal. Held-outcome listing and read-only reconcile CLI already exist on main; verify their runbook integration. Unanchored-tail recovery remains blocked.
+**Remaining acceptance gates:** harden #142's merged envelope with legacy/new discrimination, strict RFC3339/integer version and nested manifest validation, report/export completeness and failure-atomic publication; harden #138 with one validated manifest snapshot and deterministic concurrent-writer proof; close marker/audit outbox recovery; make the operator runbook executable by tests and record the separately approved synthetic rehearsal. Held-outcome listing and read-only reconcile CLI already exist on main; verify their runbook integration. Unanchored-tail recovery remains blocked.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
