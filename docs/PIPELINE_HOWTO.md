@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
-**Status:** M1 was explicitly confirmed by Claude. Main is `88c2359914f525256eab64b660574a531e9bf2d7` after #141 merged (exact-head CI `45012531745`, 4/4); #141 executes the command inventory but not `docs/OPERATOR_RUNBOOK.md`. #142 remains an open draft and is not mainline evidence. M2 remains incomplete: clean-install proof, full/atomic run provenance, backup manifest single-read and real-writer proof, marker/audit outbox recovery, direct runbook binding and logged rehearsal remain open.
-**Assessment base:** `main` at `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026).
+**Status:** M1 was explicitly confirmed by Claude. Main is `dc29592fde81c64619b15bf8aa33822bb920bc5f` after #142 merged (exact-head CI `45013670475`, 4/4); #141's command-inventory test passed 4/4 but does not read `docs/OPERATOR_RUNBOOK.md`. The run-record `input_provenance` envelope is now on main, but strict legacy/new validation, full manifest/report checks and failure-atomic publication remain open. M2 remains incomplete: clean-install proof, backup manifest single-read and real-writer proof, marker/audit outbox recovery, direct runbook binding and logged rehearsal remain open.
+**Assessment base:** `main` at `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
-Main `88c2359914f525256eab64b660574a531e9bf2d7` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88), checked-in fixture/start (#125), partial run-record loader/non-empty-workdir guard (#130), fixture/manifest and direct path hardening (#132), workdir-ancestor/fixture-catalogue protection (#135), backup ancestor/pre-read/lstat-error guards (#136), exact copied-chain sequence/head and manifest binding (#138), and B13 lexical `..` refusal (#139). #138 has no writer-side lock and verify/restore re-read the manifest after validation. Pilot intermediate-ancestor lstat-failure coverage, full `input_provenance`/atomic publication, clean-install proof, runbook test, marker/audit outbox and rehearsal remain open.
+Main `dc29592fde81c64619b15bf8aa33822bb920bc5f` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88), checked-in fixture/start (#125), partial run-record loader/non-empty-workdir guard (#130), fixture/manifest and direct path hardening (#132), workdir-ancestor/fixture-catalogue protection (#135), backup ancestor/pre-read/lstat-error guards (#136), exact copied-chain sequence/head and manifest binding (#138), and B13 lexical `..` refusal (#139). #138 has no writer-side lock and verify/restore re-read the manifest after validation. Pilot intermediate-ancestor lstat-failure coverage, full `input_provenance`/atomic publication, clean-install proof, runbook test, marker/audit outbox and rehearsal remain open.
 
-M2 is not complete: #141 adds a tested command inventory, but the operator-runbook file is not the test source-of-truth. #142 proposes the run-record envelope but remains open and is not on main. 
+M2 is not complete: #141 adds a tested command inventory, but the operator-runbook file is not the test source-of-truth. #142 adds the run-record envelope on main, but strict legacy/new validation, timestamp/schema/report checks and failure-atomic publication remain open.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -213,7 +213,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 ## 11. Remaining work for M2 operator readiness
 
-The following M2 gaps remain on main `88c2359914f525256eab64b660574a531e9bf2d7` after Claude's M1 confirmation and merged #88/#100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #125 fixture/start, #127 backup hardening, #130 partial strict loader, #132 fixture hardening, #134 direct backup-root guards and #135 workdir-ancestor guards. The owner approved local synthetic M2; M2 remains incomplete:
+The following M2 gaps remain on main `dc29592fde81c64619b15bf8aa33822bb920bc5f` after Claude's M1 confirmation and merged #88/#100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #125 fixture/start, #127 backup hardening, #130 partial strict loader, #132 fixture hardening, #134 direct backup-root guards and #135 workdir-ancestor guards. The owner approved local synthetic M2; M2 remains incomplete:
 
 1. Complete marker/audit cross-store failure handling: #122 rolls back marker state when audit append fails, but if the audit append succeeds and the later marker DB commit fails, an orphan audit event can remain. Add a commit-failure regression and durable pending/outbox or reconciliation semantics. Retention/erasure triggers, automatic report/run edges and marker/audit reconciliation also remain open.
 2. Reconciliation's #119 verify/classify TOCTOU is serialized by #122's shared anchor lock. Clarify the lock-file creation side effect under the read-only contract and replace the fixed-sleep race test with a deterministic handshake; add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows.
@@ -224,7 +224,7 @@ The following M2 gaps remain on main `88c2359914f525256eab64b660574a531e9bf2d7` 
 
 ## 12. Current mainline pilot commands and future operator work
 
-The current merged local synthetic commands on main `88c2359914f525256eab64b660574a531e9bf2d7` are:
+The current merged local synthetic commands on main `dc29592fde81c64619b15bf8aa33822bb920bc5f` are:
 
 ```bash
 agora pilot list

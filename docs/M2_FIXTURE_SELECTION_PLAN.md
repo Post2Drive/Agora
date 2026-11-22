@@ -1,7 +1,7 @@
 # M2 Synthetic Fixture Selection — Planning Specification
 
 **Status:** The checked-in fixture and `agora pilot list/start` are merged in #125 (exact-head CI `44993280261`, 4/4). #132 independently pins the manifest digest and rejects direct fixture directory/manifest/payload symlinks and empty versions; #135 adds schema/binding symlink coverage, linked-directory catalogue filtering and workdir-ancestor refusal; #139 rejects lexical `..` in pilot/backup path walkers (exact-head CI `45011493565`, 4/4). Clean-install/start proof remains open.
-**Prerequisite:** M1 was explicitly confirmed by Claude in the 09:05 IST log entry; the owner approved local synthetic M2 after #122 merged. Main is `88c2359914f525256eab64b660574a531e9bf2d7`; #123/#125's run record remains partial.
+**Prerequisite:** M1 was explicitly confirmed by Claude in the 09:05 IST log entry; the owner approved local synthetic M2 after #122 merged. Main is `dc29592fde81c64619b15bf8aa33822bb920bc5f`; #123/#125's run record remains partial.
 **Boundary:** Invented, checked-in, deterministic fixtures only.
 
 ## 1. Fixture catalogue

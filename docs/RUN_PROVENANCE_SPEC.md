@@ -1,6 +1,6 @@
 # Run Provenance for Scenario Inputs — Rung 4
 
-**Status:** design only. This document does not edit `agora/sim/**`, change the
+**Status:** Normative contract; #142 implements the pilot `input_provenance` envelope and basic read-time hash/import/role checks on main (exact-head CI `45013670475`, 4/4). The implementation remains partial: legacy/new record discrimination, strict RFC3339 and integer version typing, manifest schema/time cross-checks, complete report/export fields and failure-atomic publication remain open. This document still does not edit `agora/sim/**`, run the simulation engine, launch simulations or enable validated prediction.
 existing run engine, launch simulations, or enable validated prediction.
 
 ## 1. Purpose and boundary

@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing, lifecycle/outcome append wiring, Principal-bound policy, role-string importer allowlist/private approval authorizer, missing-decision-event repair, outcome markers, read-only audit timeline/verification, sidecar-verified reconciliation and local synthetic backup/verify/restore are merged. #138 adds exact source/copy chain sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; verify/restore still re-read the manifest after validation. #139 B13 is merged at `88c2359914f525256eab64b660574a531e9bf2d7` (head `2d3a0e7fa4b2d5821dc8126971a6499b23d012e2`, CI `45011493565`, 4/4): backup/pilot path walkers refuse any `..` component and use one `lstat()` result with `stat.S_ISLNK`. One remaining coverage gap: the intermediate-ancestor lstat-failure test exercises backup, not the pilot workdir walker. M2 remains incomplete.
-**Assessment base:** `main` at `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026).
+**Status:** Stage A/D writer plumbing, lifecycle/outcome append wiring, Principal-bound policy, role-string importer allowlist/private approval authorizer, missing-decision-event repair, outcome markers, read-only audit timeline/verification, sidecar-verified reconciliation and local synthetic backup/verify/restore are merged. #138 adds exact source/copy chain sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; verify/restore still re-read the manifest after validation. #139 B13 is merged at `dc29592fde81c64619b15bf8aa33822bb920bc5f` (head `2d3a0e7fa4b2d5821dc8126971a6499b23d012e2`, CI `45011493565`, 4/4): backup/pilot path walkers refuse any `..` component and use one `lstat()` result with `stat.S_ISLNK`. One remaining coverage gap: the intermediate-ancestor lstat-failure test exercises backup, not the pilot workdir walker. M2 remains incomplete.
+**Assessment base:** `main` at `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `88c2359914f525256eab64b660574a531e9bf2d7`. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2. #123/#125/#130 provide only a partial run record; #132 hardens fixture authenticity/direct paths and #135 closes workdir-ancestor/fixture-catalogue symlink gaps. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `dc29592fde81c64619b15bf8aa33822bb920bc5f`. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2. #123/#125/#130 provide only a partial run record; #132 hardens fixture authenticity/direct paths and #135 closes workdir-ancestor/fixture-catalogue symlink gaps. No M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 

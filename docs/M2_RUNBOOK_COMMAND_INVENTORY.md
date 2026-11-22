@@ -1,8 +1,8 @@
 # M2 Runbook Command Inventory — Test Contract
 
-**Status:** M2 command inventory; #141 now executes these rows in source-checkout subprocesses (exact-head CI `45012531745`, 4/4). The inventory is not the operator-runbook file and does not prove clean installation. Required-assertion/status-token parsing, exact exit-code parsing, B12's explicit test mapping and B10's real-writer proof remain gaps.
+**Status:** M2 command inventory; #141 executes these rows in source-checkout subprocesses (exact-head CI `45012531745`, 4/4). #142 is merged at head `7ccc256a1036fb89fbf94fc06e0dc2c4afa0e58e` (exact-head CI `45013670475`, 4/4) and adds partial run-record provenance; it does not close the inventory/runbook gaps. The inventory is not the operator-runbook file and does not prove clean installation. Required-assertion/status-token parsing, exact exit-code parsing, B12's explicit test mapping and B10's real-writer proof remain gaps.
 
-**Baseline:** main `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026). #141 is merged at head `ee3a080e96ef813b53c87e0dc7fc04c1605a0736`, exact-head CI `45012531745` passed 4/4. Its test reads this inventory but not `docs/OPERATOR_RUNBOOK.md`; #142 is an open run-record provenance draft and is not mainline evidence. #138 still lacks writer-side locking and single-read manifest validation; #139 closes B13. Claude's active code slice is #142; do not duplicate it.
+**Baseline:** main `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026). #141 is merged at head `ee3a080e96ef813b53c87e0dc7fc04c1605a0736`, exact-head CI `45012531745` passed 4/4. Its test reads this inventory but not `docs/OPERATOR_RUNBOOK.md`; #142 is merged at exact head `7ccc256a1036fb89fbf94fc06e0dc2c4afa0e58e`, CI `45013670475` passed 4/4. #138 still lacks writer-side locking and single-read manifest validation; #139 closes B13. Next Claude slice is clean-checkout install/start; do not duplicate it.
 
 ## 1. Test harness rules
 

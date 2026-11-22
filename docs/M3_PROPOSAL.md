@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. M2 remains incomplete per the latest Claude log; no M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document.
 
-**Draft baseline:** main `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026). #138 exact backup source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4); no writer-side lock and manifest re-read gap remain. #139 B13 path normalization is merged (CI `45011493565`, 4/4). M2 remains incomplete; full input_provenance/failure-atomic run records, clean-install and operator evidence remain open.
+**Draft baseline:** main `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026). #138 exact backup source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4); no writer-side lock and manifest re-read gap remain. #139 B13 path normalization is merged (CI `45011493565`, 4/4). M2 remains incomplete; full input_provenance/failure-atomic run records, clean-install and operator evidence remain open.
 
 ## 1. Purpose and boundary
 
@@ -22,7 +22,7 @@ M3 is not a production identity, connector, external action, prediction-approval
 
 ## 2. Live-main facts used by this proposal
 
-The following are code/document observations at main `88c2359914f525256eab64b660574a531e9bf2d7`, including merged #135 workdir-ancestor/fixture-catalogue hardening and merged #136 backup path hardening; they are not claims that M3 behavior exists:
+The following are code/document observations at main `dc29592fde81c64619b15bf8aa33822bb920bc5f`, including merged #135 workdir-ancestor/fixture-catalogue hardening and merged #136 backup path hardening; they are not claims that M3 behavior exists:
 
 - `agora/cli.py` keeps the simulation import lazy through `_simulation()`. The `run` command constructs `Simulation`, calls `prepare()`, then `run()`. The `pilot` and data-command dispatch paths are separate and must remain engine-import-free.
 - `agora/sim/engine.py` currently loads `scenario.yaml`, opens the run `Store`, and calculates `scenario_hash` from scenario configuration. On a first run, `prepare()` calls `population.build(self.sc)`; on resume it compares the stored scenario hash before loading `World`. It does not currently require a governed tabular input envelope.

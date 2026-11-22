@@ -2,7 +2,7 @@
 
 **Status:** Planning template only; no rehearsal has been run. Local synthetic M2 implementation is owner-approved. This document does not authorise real data, simulation, study changes, connectors, credentials or external write-back.
 
-**Drafting baseline:** main `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026). #141's command-inventory test is merged (exact-head CI `45012531745`, 4/4), but it does not test this runbook or constitute a rehearsal. #142 remains an open draft and is not mainline evidence.
+**Drafting baseline:** main `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026). #141's command-inventory test is merged (exact-head CI `45012531745`, 4/4), but it does not test this runbook or constitute a rehearsal. #142 is merged (CI `45013670475`, 4/4) but strict provenance validation and failure-atomic publication remain incomplete; this is not rehearsal evidence.
 
 ## 1. Objective
 

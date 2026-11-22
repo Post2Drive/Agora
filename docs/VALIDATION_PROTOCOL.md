@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Baseline:** main `88c2359914f525256eab64b660574a531e9bf2d7` (22 November 2026). #139 B13 path normalization is merged (CI `45011493565`, 4/4). #138 implements exact sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; single-read manifest validation, deterministic concurrent-writer proof and clean-install proof remain open.
+**Baseline:** main `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026). #139 B13 path normalization is merged (CI `45011493565`, 4/4). #138 implements exact sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; single-read manifest validation, deterministic concurrent-writer proof and clean-install proof remain open.
 
 ## 1. Purpose, scope and non-claims
 
