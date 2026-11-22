@@ -236,3 +236,38 @@ def test_lifecycle_anchored_writer_succeeds_and_is_audited(tmp_path):
         assert w.verify()["valid"] is True
     assert _status(store) == "proposed"
     store.close()
+
+
+# --- role-string authority lockdown (M1 principal call-site migration) ---------
+
+_ROLE_STRING_ALLOWED = {
+    "agora/principal.py",             # decide_principal: role comes from the Principal
+    "agora/decisions/permissions.py",  # legacy approval gate (test-only approve())
+    "agora/decisions/outcomes.py",     # private _authorize used by wrapper-derived roles
+}
+
+
+def _role_string_importers():
+    import pathlib
+    import re
+    root = pathlib.Path(approval.__file__).resolve().parents[1]
+    found = set()
+    pat = re.compile(r"from\s+(?:agora|\.+)\.?policy\s+import\s+([^\n]+)|import\s+agora\.policy")
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for m in pat.finditer(text):
+            names = m.group(1) or "decide"
+            if re.search(r"\b(decide|authorize)\b", names) or m.group(1) is None:
+                found.add(path.relative_to(root.parent).as_posix())
+    return found
+
+
+def test_role_string_pdp_is_imported_only_by_allowlisted_modules():
+    assert _role_string_importers() <= _ROLE_STRING_ALLOWED
+
+
+def test_no_public_role_string_approval_authorizer_exported():
+    from agora.decisions import permissions
+    assert not hasattr(permissions, "authorize_decision_approval")
+    assert "authorize_decision_approval" not in permissions.__all__
+    assert hasattr(permissions, "authorize_decision_approval_principal")

@@ -18,7 +18,7 @@ class DecisionPermissionError(PermissionError):
         super().__init__(f"decision approval denied: {decision.get('reason', 'policy_denied')}")
 
 
-def authorize_decision_approval(
+def _legacy_authorize_decision_approval(
     subject: Mapping[str, Any],
     role: str,
     resource: Mapping[str, Any],
@@ -51,6 +51,6 @@ def authorize_decision_approval_principal(
 
 
 __all__ = [
-    "DecisionPermissionError", "authorize_decision_approval",
+    "DecisionPermissionError",
     "authorize_decision_approval_principal",
 ]
