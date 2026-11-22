@@ -51,7 +51,7 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#101:** documentation-only refresh after #100; merged at main parent `f84d9804`, exact-head docs CI run `44965464662` passed 4/4.
 - **#102/#106:** #102 adds `agora outcomes held --decisions <db>`; #106 maps connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. Exact-head runs `44965953082` and `44970435296` passed all four matrix jobs; no marker propagation or source-dependency check.
 
-**At the assessed main snapshot, no PRs were open.** PRs #94–#104 are merged; the current documentation refresh is based on main `112030a219e2d6f7278a46a95be2468634bf563a`.
+**At the assessed main snapshot, ChatGPT's docs-only PR #105 is the only open PR.** Implementation PRs #94–#104 and #106 are merged; the current documentation refresh is based on main `112030a219e2d6f7278a46a95be2468634bf563a`.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
