@@ -2,24 +2,24 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `112030a219e2d6f7278a46a95be2468634bf563a`
+**Main base:** `914e28e24c5f49b45173e595d21e02308a827c0f`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
+Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #107). Implementation PRs #94–#104, #106 and #107 are merged; documentation PR #105 is also merged. No open PRs were found at this assessment snapshot.
 
-The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100 adds only a read-only decision-lifecycle reconciliation detector; #102 adds `agora outcomes held --decisions <db>` for disputed, unreviewed or invalid review histories and orphan review rows. The held list is not a dependency marker or propagation system; #106 also maps connection-open SQLite failures to `STORE_UNREADABLE` / exit 2. Scenario-input remains disconnected from the engine.
+The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100/#104 provide a read-only decision-lifecycle reconciliation detector with immutable source-transition checks and safe partial-open cleanup; #102/#106 provide a separate read-only held-outcome list with fail-closed connection-open handling. #107 adds `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` and `agora audit verify --audit <db> --anchor <file> --chain-id <id>`. Timeline verifies the hash chain before listing one decision's transitions and related audit events; it does not compare the anchor. Verify compares the chain with the local sidecar and reports the `local_sidecar` trust limitation. These commands do not repair stores or create outcome dependency markers. Scenario-input remains disconnected from the engine.
 
 The anchor remains a local JSONL sidecar with `local_sidecar` trust; coordinated rollback of both local stores is not detected, and the Linux lock-removal mutation gap remains. #96 removes public Principal-wrapper anchor opt-outs, #97 removes the legacy approval environment switch, and #99 closes the direct `enforce_policy()` bypass and rejects missing/plain denial writers when anchoring is required. Decision lifecycle methods still accept optional audit parameters in their low-level APIs, and private outcome helpers retain optional audit internals; the local-sidecar trust limitation is unchanged.
 
-#100 implements the read-only decision lifecycle/approval detector; #104 adds immutable source-transition validation, exact audit operation/resource-ID checks and safe partial-open connection cleanup. The detector still does not verify the sidecar anchor, reconcile outcome/review rows, persist a queue or repair gaps. #102 adds a read-only held-outcome list, and #106 makes connection-open SQLite failures fail closed as `STORE_UNREADABLE` / exit 2. There is still no marker store, source-dependency propagation or automatic downstream flagging. The manual recovery procedure is not approved or rehearsed.
+#100/#104 implement and harden the read-only decision lifecycle/approval detector with immutable source-transition validation, exact audit operation/resource-ID checks and safe partial-open connection cleanup. The detector itself still does not verify the sidecar anchor, reconcile outcome/review rows, persist a queue or repair gaps. #102/#106 provide a separate read-only held-outcome list with fail-closed connection-open handling. #107 adds the read-only audit timeline and chain-vs-anchor verification CLI; timeline checks the hash chain, while the separate verify command checks the local sidecar and states its `local_sidecar` trust limit. There is still no marker store, source-dependency propagation or automatic downstream flagging. The manual recovery procedure is not approved or rehearsed.
 
 This assessment does not authorise simulation, calibration, backtest, forecast, study mutation, real data, credentials, network access, production use or external write-back.
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `112030a219e2d6f7278a46a95be2468634bf563a`.
+Assessment base: `914e28e24c5f49b45173e595d21e02308a827c0f`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -74,6 +74,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Principal-based approval and outcome wrappers | **Available — partial synthetic migration** | #96 removes public `require_anchored` opt-out kwargs; #97 removes the legacy approval env switch and leaves only the test-only module flag. Private internals remain implementation details. |
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
 | Anchored audit chain | **Available — local-sidecar API; lifecycle writer requirement remains partial** | #99 requires an anchored writer for protected policy-denial events. Low-level decision lifecycle methods still accept optional audit arguments; the anchor remains `local_sidecar`, and coordinated rollback plus the Linux lock-removal mutation gap remain limitations. |
+| Read-only audit timeline and chain/anchor verification | **Available — CLI component (#107)** | `agora audit timeline` verifies the hash chain and lists one decision's stored transitions/related audit events; `agora audit verify` compares the chain with its local sidecar in plain language. It does not make the sidecar independent or detect coordinated rollback of both local files. |
 | Observed outcome recording/review | **Available — Principal public routes; private internals remain** | #92 retires public role-string exports and #96 removes public anchor opt-outs. #102 adds a separate read-only held-outcome list; #106 normalizes connection-open SQLite failures to `STORE_UNREADABLE` / exit 2. Neither creates dependency markers or changes outcomes. Private helpers still have optional audit internals. |
 | Outcome dependency review markers | **Not implemented** | #60 remains a design specification; #102/#106 list disputed/unreviewed/invalid outcomes and orphan review rows, with connection-open failures blocked as `STORE_UNREADABLE`. No marker store, dependency graph, propagation or marker lifecycle exists. |
 | Decision/audit reconciliation | **Partial — hardened read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval rows; #104 validates source transition/status/actor/method/timestamp against the immutable payload, validates audit operation and exact resource IDs, and closes connections safely on partial open (run `44968039923`, 4/4). It still has no sidecar-anchor verification, queue, repair or outcome/review reconciliation. #102's held list is separate. |
@@ -120,8 +121,9 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #101 | M1/M2 documentation refresh after #100 | Merged; exact-head CI run `44965464662` passed 4/4 |
 | #102 | Read-only `agora outcomes held` listing | Merged; exact-head CI run `44965953082` passed 4/4 |
 | #106 | Held-list connection-open failure hardening | Merged; exact-head CI run `44970435296` passed 4/4 |
+| #107 | Read-only audit timeline and chain-vs-anchor verification CLI | Merged; exact-head CI run `44972864246` passed 4/4 |
 
-Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
+Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #107). Implementation PRs #94–#104, #106 and #107 are merged; documentation PR #105 is also merged. No open PRs were found at this assessment snapshot.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -149,7 +151,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `112030a219e2d6f7278a46a95be2468634bf563a` after #106 merged. Exact-head CI for #99, #100, #102, #104 and #106 passed all four matrix jobs; ChatGPT's docs-only PR #105 is the only open PR.
+This assessment is refreshed against main `914e28e24c5f49b45173e595d21e02308a827c0f` after #107 merged. Exact-head CI for #99, #100, #102, #104, #106 and #107 passed all four matrix jobs. PR #105 is merged; no open PRs were found at the assessment snapshot.
 
 ## 7. Permanent safety boundaries
 

@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101, #102 and #106.
+**Assessment base:** main at `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101, #102 and #106 and #107.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -159,7 +159,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026)
+## Current migration status — main `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. The role-string PDP compatibility surface and principal-aware callback migration remain open.
@@ -177,6 +177,6 @@ Verified on main:
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
-**Current blockers:** role-string PDP/permission compatibility APIs and the principal-aware policy-callable migration remain; #100/#104 provide only a read-only decision lifecycle detector, now hardened against source-metadata and partial-open connection gaps, but with no anchor check or queue/repair workflow. #102/#106 only list held outcomes and fail closed on connection-open errors; dependency markers (#60), audit timeline/verification, backup/restore and tamper drill, run-record persistence, checked-in fixture set, tested operator runbook and logged dress rehearsal remain M2 work. No M1/M2 confirmation exists.
+**Current blockers:** role-string PDP/permission compatibility APIs and the principal-aware policy-callable migration remain; #100/#104 provide only a read-only decision lifecycle detector, now hardened against source-metadata and partial-open connection gaps, but with no anchor check or queue/repair workflow. #102/#106 only list held outcomes and fail closed on connection-open errors. #107 now provides read-only decision timeline and chain-vs-local-anchor verification commands; it does not implement backup/restore or tamper recovery. Dependency markers (#60), backup/restore and tamper drill, run-record persistence, checked-in fixture set, tested operator runbook and logged dress rehearsal remain M2 work. No M1/M2 confirmation exists.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.
