@@ -7,7 +7,7 @@
 
 ## 1. Executive assessment
 
-Main is `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` after merged PRs #97, #99, #100, #101, #102, #103 and #104. #99 removes the direct policy-helper opt-out and requires an anchored writer for protected denial events (exact-head run 44960946006, 4/4). #100 adds read-only decision lifecycle/audit reconciliation (run 44963254416, 4/4); #104 hardens it by checking transition/status/actor/method/timestamp against the immutable decision payload, requiring the expected audit operation and exact resource IDs, and closing acquired read-only connections on partial open (exact-head run 44968039923, 4/4). #102 adds a separate read-only held-outcome listing (run 44965953082, 4/4). Neither command verifies the sidecar anchor or provides a reviewed queue/repair workflow. The pilot still embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
+Main is `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` (merge of #104). PRs #94–#104 are merged; no PR was open at the start of this documentation refresh.
 
 The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100 adds only a read-only decision-lifecycle reconciliation detector; #102 adds `agora outcomes held --decisions <db>` for disputed, unreviewed or invalid review histories and orphan review rows. The held list is not a dependency marker or propagation system. Scenario-input remains disconnected from the engine.
 
@@ -120,7 +120,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #101 | M1/M2 documentation refresh after #100 | Merged; exact-head CI run `44965464662` passed 4/4 |
 | #102 | Read-only `agora outcomes held` listing | Merged; exact-head CI run `44965953082` passed 4/4 |
 
-Main is `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` after merged PRs #97, #99, #100, #101, #102, #103 and #104. #99 removes the direct policy-helper opt-out and requires an anchored writer for protected denial events (exact-head run 44960946006, 4/4). #100 adds read-only decision lifecycle/audit reconciliation (run 44963254416, 4/4); #104 hardens it by checking transition/status/actor/method/timestamp against the immutable decision payload, requiring the expected audit operation and exact resource IDs, and closing acquired read-only connections on partial open (exact-head run 44968039923, 4/4). #102 adds a separate read-only held-outcome listing (run 44965953082, 4/4). Neither command verifies the sidecar anchor or provides a reviewed queue/repair workflow. The pilot still embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
+Main is `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` (merge of #104). PRs #94–#104 are merged; no PR was open at the start of this documentation refresh.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
