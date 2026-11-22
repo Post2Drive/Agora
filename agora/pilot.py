@@ -29,6 +29,7 @@ from agora.decisions.outcomes import DecisionOutcomeStore, record_outcome_as, re
 from agora.decisions.store import DecisionRecordStore
 from agora.ontology import parse_domain_pack
 from agora.ontology.binding import load_binding, materialize_instances
+from agora.pilot_fixture import DEFAULT_FIXTURE, Fixture, FixtureError, list_fixtures, load_fixture
 from agora.principal import SyntheticFixtureAdapter, principal_policy
 from agora.tabular import ingest_csv
 
@@ -132,7 +133,8 @@ def _repo_sha() -> str:
 
 
 def _write_run_record(project: Path, *, status: str, started: datetime, steps: list["StepResult"],
-                      ctx: Mapping[str, Any], csv_path: Path, report: Path | None) -> Path:
+                      ctx: Mapping[str, Any], csv_path: Path, report: Path | None,
+                      fixture: Fixture | None = None) -> Path:
     """Persist ONE immutable record per attempt (exclusive create; never overwritten).
 
     Holds ids, hashes and per-stage outcomes only: no raw rows. engine_invoked and
@@ -146,6 +148,9 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
         "started_at": _stamp(started), "completed_at": _stamp(datetime.now(timezone.utc)),
         "status": status,
         "fixture_hashes": {csv_path.name: "sha256:" + hashlib.sha256(csv_path.read_bytes()).hexdigest()},
+        "fixture": ({"fixture_id": fixture.fixture_id, "fixture_version": fixture.version,
+                     "manifest_hash": fixture.manifest_hash, "file_hashes": dict(fixture.file_hashes)}
+                    if fixture else None),
         "imported": {"import_id": ctx.get("import_id"), "rows": ctx.get("rows")},
         "bound": {"instances": ctx.get("instances")},
         "decided": {"decision_id": ctx.get("decision_id"), "version": ctx.get("version")},
@@ -207,9 +212,10 @@ def _write_report(project: Path, ctx: Mapping[str, Any]) -> Path:
 
 def run_pilot(workdir: str | Path, *, now: datetime | None = None,
               identities: Mapping[str, Mapping[str, Any]] | None = None,
-              provision_audit: bool = True) -> PilotResult:
+              provision_audit: bool = True, fixture_id: str = DEFAULT_FIXTURE) -> PilotResult:
     """Run the whole synthetic governed pipeline once in a NEW project folder."""
     base = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+    fixture = load_fixture(fixture_id)  # verified before any store/dir is created; raises FixtureError
     project = Path(workdir) / PROJECT_ID
     if project.exists():
         raise FileExistsError(f"{project} already exists; use a new empty work directory")
@@ -231,7 +237,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
     chain_path = project / "audit" / "chain.sqlite3"
     anchor_path = project / "audit_anchor" / "anchor.jsonl"
     csv_path = project / "synthetic_units.csv"
-    csv_path.write_text(SYNTHETIC_CSV, encoding="utf-8")
+    csv_path.write_bytes(fixture.csv_bytes)
     try:
         def provision():
             if provision_audit:
@@ -255,14 +261,14 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
             op = principal_policy(adapter.issue("operator"), required_role="operator", now=base)
 
             def do_import():
-                r = ingest_csv(project, csv_path, _schema(), data_role="scenario_input",
+                r = ingest_csv(project, csv_path, fixture.schema, data_role="scenario_input",
                                policy=op, audit=audit)
                 ctx["import_id"], ctx["rows"] = r["import_id"], r.get("accepted_rows", r.get("row_count", 3))
                 return {"import_id": r["import_id"]}
             run("import", do_import)
 
             def do_bind():
-                inst = materialize_instances(_binding(), _pack(), project, ctx["import_id"],
+                inst = materialize_instances(load_binding(fixture.binding), _pack(), project, ctx["import_id"],
                                              policy=op, audit=audit)
                 ctx["instances"] = len(inst)
                 return {"instances": len(inst)}
@@ -334,7 +340,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
         steps.extend(StepResult(s, "skipped", "not run: an earlier gate stopped the pilot")
                      for s in STAGES if s not in done)
         _write_run_record(project, status="denied" if last.status == "denied" else "failed",
-                          started=started, steps=steps, ctx=ctx, csv_path=csv_path, report=None)
+                          started=started, steps=steps, ctx=ctx, csv_path=csv_path, report=None, fixture=fixture)
         return PilotResult("stopped", str(project), steps,
                            f"STOPPED at '{last.step}' ({last.status}): {last.detail}. "
                            "No later stage was run; nothing reached the simulation engine.")
@@ -342,7 +348,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
         if ctx.get("decisions") is not None:
             ctx["decisions"].close()
     _write_run_record(project, status="completed", started=started, steps=steps, ctx=ctx,
-                      csv_path=csv_path, report=project / "report" / "pilot_report.md")
+                      csv_path=csv_path, report=project / "report" / "pilot_report.md", fixture=fixture)
     return PilotResult("completed", str(project), steps, report_path=str(project / "report" / "pilot_report.md"))
 
 
@@ -357,12 +363,35 @@ def format_result(result: PilotResult) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """``agora pilot [--workdir D]`` (legacy, default fixture), ``agora pilot list``,
+    ``agora pilot start --fixture ID --workdir D`` (non-interactive: unknown/missing id lists valid ids)."""
     import argparse
-    ap = argparse.ArgumentParser(prog="agora pilot", description="Run the guided synthetic governed pilot.")
+    argv = list(argv or [])
+    if argv[:1] == ["list"]:
+        print("\n".join(list_fixtures()))
+        return 0
+    start = argv[:1] == ["start"]
+    ap = argparse.ArgumentParser(prog="agora pilot start" if start else "agora pilot",
+                                 description="Run the guided synthetic governed pilot.")
     ap.add_argument("--workdir", required=True, help="new empty directory for this run")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args(argv)
-    result = run_pilot(args.workdir)
+    if start:
+        ap.add_argument("--fixture", default=None, help="fixture id (see `agora pilot list`)")
+    args = ap.parse_args(argv[1:] if start else argv)
+    fixture_id = DEFAULT_FIXTURE
+    if start:
+        if not args.fixture:
+            print("FX_FIXTURE_REQUIRED: pass --fixture. Valid ids: " + ", ".join(list_fixtures()))
+            return 2
+        fixture_id = args.fixture
+    try:
+        result = run_pilot(args.workdir, fixture_id=fixture_id)
+    except FixtureError as exc:
+        print(f"{exc.code}: fixture refused before any store was opened. Valid ids: " + ", ".join(list_fixtures()))
+        return 2
+    except FileExistsError as exc:
+        print(f"WORKDIR_NOT_EMPTY: {exc}")
+        return 2
     print(json.dumps(result.to_dict(), indent=2, default=str) if args.json else format_result(result))
     return 0 if result.status == "completed" else 2
 
