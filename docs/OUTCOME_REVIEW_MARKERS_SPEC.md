@@ -1,8 +1,8 @@
 # Outcome Dependency Review Markers Specification
 
 **Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented. PRs #102/#106 add a read-only held-outcome list and fail-closed connection-open error handling only.
-**Assessment base:** main at `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026)  
-**Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing / connection-open hardening (#102/#106); assessment base main `914e28e24c5f49b45173e595d21e02308a827c0f`
+**Assessment base:** main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026)  
+**Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing / connection-open hardening (#102/#106); assessment base main `9031dba2e318f43b64a0b9155e3f44ee65155cdf`
 **Related specification:** decision/audit reconciliation (#57), with the read-only detector in #100 and immutable source-metadata/connection hardening in #104
 
 ## 1. Purpose
