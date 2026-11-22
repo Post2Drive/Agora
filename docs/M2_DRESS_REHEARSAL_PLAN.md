@@ -26,7 +26,7 @@ Use only the checked-in fixture and temporary directories created for this rehea
 
 Any refusal, unexpected import, network attempt, path escape, hash mismatch, anchor failure or partial write is a stop condition. Preserve evidence; do not retry by deleting or rewriting the source.
 
-## 4. Execution script — use exact merged runbook commands
+## 4. Recorded execution sequence — historical evidence, not rerun permission
 
 Run each command separately. Capture exit status, stdout, stderr, start/end timestamps and hashes. Do not paste raw data into the evidence log.
 
@@ -36,7 +36,7 @@ Run each command separately. Capture exit status, stdout, stderr, start/end time
 4. **Backup:** create a new backup destination; run backup and backup verify. Record manifest/file hashes, chain ID, anchor sequence/head and synthetic-only proof. Do not include event payloads.
 5. **Restore:** restore into a second new empty directory. Re-hash every restored file against the manifest and verify chain/anchor. Confirm original project and backup hashes remain unchanged.
 6. **Tamper — disposable copies only:** in a separate backup copy, change one byte in a non-audit file; verify/restore must block and publish no target. In another copy, alter an audit event or anchor; verification must report not intact/blocked. In a separate disposable project, add an in-tree symlink and test project/backup/target root symlinks; backup/verify/restore must refuse before reading or writing outside the temporary root. Never tamper with the source project or original backup.
-7. **Close:** re-verify source, original backup and successful restore hashes. Confirm no network, connector, engine or `agora.sim` import. Store redacted evidence and outputs in the agreed project log. Wait for Claude's exact M2 confirmation; do not declare M2 reached.
+7. **Close:** re-verify source, original backup and successful restore hashes. Confirm no network, connector, engine or `agora.sim` import. Store redacted evidence and outputs in the agreed project log. Claude's exact 23:43 IST M2 confirmation is recorded; this historical evidence does not authorise another rehearsal or external action.
 
 ## 5. Evidence record
 
