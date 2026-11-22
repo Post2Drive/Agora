@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106), read-only audit timeline/chain-vs-anchor verification commands (#107), and pre-mutation decision-lifecycle anchor guards (#109) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106), read-only audit timeline/chain-vs-anchor verification commands (#107), pre-mutation decision-lifecycle anchor guards (#109), and role-string PDP import allowlisting (#111) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `da008656f96a7fee774dbf89781ffbdbbe1adac6` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf`, after PRs #94–#109 merged.
+The following inventory was checked against main at `da008656f96a7fee774dbf89781ffbdbbe1adac6`, after PRs #94–#111 merged.
 
 ### 2.1 Audit primitives
 
@@ -187,7 +187,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - **PR #63/#71/#74/#75/#88/#89/#94/#96/#97/#99/#100/#102/#104/#106:** local-sidecar primitive, writer factory, policy/data-boundary wiring, lifecycle/outcome append boundaries, structural `AuditAppender`, guided pilot, default-on defaults, CLI import isolation, public opt-out removal, test-only legacy approval, anchored policy-denial enforcement, read-only reconciliation detector plus #104 source-integrity/connection hardening, and read-only held-outcome list are merged. Neither #100/#104 nor #102 adds anchor validation, queue/repair, or outcome/audit reconciliation.
 - **Storage-spec follow-up:** confirm explicit permissions, atomicity/durability and cross-process serialization against #52 before treating the local implementation as complete.
 - **Reconciliation:** #100/#104 implement a read-only detector for decision lifecycle/approval transitions. It verifies the hash chain and classifies matched/missing/conflict/source-invalid/orphan cases; #104 adds immutable source metadata checks, exact audit operation/resource-ID checks and partial-open connection cleanup. No anchor check, queue, repair or outcome/review coverage exists. #102's held-outcome list is separate.
-- **Principal migration:** #96 removes public `require_anchored=False` kwargs, #97 removes the legacy approval env switch, and #99 closes direct policy-helper bypasses. Role-string PDP/permission compatibility APIs remain; the synthetic fixture adapter is not production authentication.
+- **Principal migration:** #96 removes public `require_anchored=False` kwargs, #97 removes the legacy approval env switch, and #99 closes direct policy-helper bypasses. #111 restricts role-string PDP imports to allowlisted internal modules and removes the public role-string approval authorizer; typed PrincipalPolicy enforcement remains open. The synthetic fixture adapter is not production authentication.
 - **Owner gate:** green CI is not review or merge approval. No PR is marked ready, requested for review, approved or merged by this document.
 
 ## 9. Safety boundaries
