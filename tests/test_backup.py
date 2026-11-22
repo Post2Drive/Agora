@@ -113,3 +113,116 @@ def test_cli_drill_reports_in_plain_words(project, tmp_path, capsys):
     _rewrite_event(tmp_path / "bk" / "data")
     assert cli_main(["restore", "--backup", str(tmp_path / "bk"), "--target", str(tmp_path / "r2")]) == 2
     assert "BLOCKED BACKUP_FILE_MODIFIED" in capsys.readouterr().err
+
+
+# --- hardening (symlinks, synthetic gate, manifest schema, post-copy verification) -------------
+
+def _symlink_or_skip(link, target):
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not available on this platform")
+
+
+def test_symlink_in_source_is_refused_and_nothing_written(project, tmp_path):
+    secret = tmp_path / "outside.txt"
+    secret.write_text("not part of the project", encoding="utf-8")
+    _symlink_or_skip(project / "report" / "link.txt", secret)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "bk").exists()
+
+
+def test_symlink_in_backup_blocks_verify_and_restore(project, tmp_path):
+    backup(project, tmp_path / "bk")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    _symlink_or_skip(tmp_path / "bk" / "data" / "link.txt", outside)
+    with pytest.raises(BackupBlocked) as e:
+        restore(tmp_path / "bk", tmp_path / "restored")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "restored").exists()
+
+
+def test_non_synthetic_or_unmarked_project_is_refused(project, tmp_path):
+    rec = project / "run_record.json"
+    data = json.loads(rec.read_text(encoding="utf-8"))
+    data["data_class"] = "real"
+    rec.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "SOURCE_NOT_SYNTHETIC"
+    rec.unlink()
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk2")
+    assert e.value.code == "SOURCE_NOT_SYNTHETIC"
+    assert not (tmp_path / "bk").exists() and not (tmp_path / "bk2").exists()
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda m: m.update(files=["a", "b"]),
+    lambda m: m.update(files={"../escape.txt": "0" * 64}),
+    lambda m: m.update(files={"/abs.txt": "0" * 64}),
+    lambda m: m.update(files={"ok.txt": 7}),
+    lambda m: m.update(files={"ok.txt": "zz"}),
+    lambda m: m.update(synthetic_only=False),
+    lambda m: m.update(manifest_version=2),
+    lambda m: m.update(chain_id=5),
+    lambda m: m.pop("files"),
+])
+def test_malformed_manifest_is_blocked_with_a_stable_code(project, tmp_path, mutate):
+    backup(project, tmp_path / "bk")
+    mf = tmp_path / "bk" / MANIFEST
+    manifest = json.loads(mf.read_text(encoding="utf-8"))
+    mutate(manifest)
+    mf.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(tmp_path / "bk")
+    assert e.value.code == "BACKUP_MANIFEST_INVALID"
+
+
+def test_non_object_manifest_is_blocked(project, tmp_path):
+    backup(project, tmp_path / "bk")
+    (tmp_path / "bk" / MANIFEST).write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(tmp_path / "bk")
+    assert e.value.code == "BACKUP_MANIFEST_INVALID"
+
+
+def test_chain_changing_during_copy_is_detected_and_cleaned(project, tmp_path, monkeypatch):
+    import agora.backup as mod
+    real = mod._copy_one
+
+    def racing(src, dst):
+        real(src, dst)
+        if dst.name == "chain.sqlite3":  # a writer appends/changes the chain after the snapshot verdict
+            db = sqlite3.connect(dst)
+            for (n,) in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'").fetchall():
+                db.execute(f"DROP TRIGGER {n}")
+            db.execute("DELETE FROM audit_events WHERE seq = (SELECT max(seq) FROM audit_events)")
+            db.commit()
+            db.close()
+    monkeypatch.setattr(mod, "_copy_one", racing)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "SNAPSHOT_CHANGED"
+    assert not (tmp_path / "bk").exists()
+
+
+def test_restore_rehashes_every_copied_file(project, tmp_path, monkeypatch):
+    import agora.backup as mod
+    backup(project, tmp_path / "bk")
+    real = mod.shutil.copy2
+
+    def corrupting(src, dst, *a, **k):
+        out = real(src, dst, *a, **k)
+        if str(dst).endswith("pilot_report.md"):
+            with open(dst, "ab") as fh:
+                fh.write(b"tampered in transit")
+        return out
+    monkeypatch.setattr(mod.shutil, "copy2", corrupting)
+    with pytest.raises(BackupBlocked) as e:
+        restore(tmp_path / "bk", tmp_path / "restored")
+    assert e.value.code == "RESTORED_NOT_INTACT"
+    assert not (tmp_path / "restored").exists()

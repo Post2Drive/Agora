@@ -29,6 +29,12 @@ _WORDS = {
     "SOURCE_NOT_FOUND": "Nothing was backed up: the project folder or its audit files were not found.",
     "SOURCE_NOT_INTACT": "Nothing was backed up: the audit chain is NOT INTACT against its anchor "
                          "(tampered, truncated or unanchored). Investigate before backing up.",
+    "SOURCE_NOT_SYNTHETIC": "Nothing was backed up: the folder is not a verified synthetic pilot project "
+                            "(its run record is missing or not marked synthetic).",
+    "UNSAFE_PATH": "Refused: a symbolic link or unsafe path was found. Only plain files inside the folder are handled.",
+    "SNAPSHOT_CHANGED": "Nothing was kept: the audit chain changed or failed verification while it was being copied. "
+                        "Try again when no run is active.",
+    "BACKUP_MANIFEST_INVALID": "Nothing was restored: the backup manifest is malformed or not marked synthetic.",
     "DEST_NOT_EMPTY": "Refused: the destination already exists and is not empty. Use a new folder.",
     "BACKUP_MANIFEST_MISSING": "Nothing was restored: the backup has no readable manifest.",
     "BACKUP_FILE_MISSING": "Nothing was restored: a file listed in the manifest is missing from the backup.",
@@ -59,7 +65,45 @@ def _sha(path: Path) -> str:
 
 
 def _files(root: Path) -> list[str]:
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    """Plain files only. Any symbolic link (file or directory) is refused, never followed."""
+    out: list[str] = []
+    for p in root.rglob("*"):
+        if p.is_symlink():
+            raise BackupBlocked("UNSAFE_PATH")
+        if p.is_file():
+            out.append(p.relative_to(root).as_posix())
+    return sorted(out)
+
+
+def _safe_rel(rel: Any) -> bool:
+    if not isinstance(rel, str) or not rel or "\\" in rel or rel.startswith("/") or ":" in rel:
+        return False
+    return all(part not in ("", ".", "..") for part in rel.split("/"))
+
+
+def _is_synthetic_project(project: Path) -> bool:
+    try:
+        rec = json.loads((project / "run_record.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(rec, dict) and rec.get("data_class") == "synthetic"
+
+
+def _read_manifest(root: Path) -> tuple[dict[str, str], str]:
+    try:
+        manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise BackupBlocked("BACKUP_MANIFEST_MISSING") from None
+    if not isinstance(manifest, dict):
+        raise BackupBlocked("BACKUP_MANIFEST_INVALID")
+    files, chain_id = manifest.get("files"), manifest.get("chain_id")
+    if (manifest.get("manifest_version") != 1 or manifest.get("synthetic_only") is not True
+            or not isinstance(chain_id, str) or not chain_id
+            or not isinstance(files, dict) or not files
+            or any(not _safe_rel(k) or not isinstance(v, str) or len(v) != 64
+                   or any(c not in "0123456789abcdef" for c in v) for k, v in files.items())):
+        raise BackupBlocked("BACKUP_MANIFEST_INVALID")
+    return files, chain_id
 
 
 def _check_dest(dest: Path) -> None:
@@ -98,6 +142,9 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
     project, dest = Path(project), Path(dest)
     if not (project / CHAIN_REL).is_file() or not (project / ANCHOR_REL).is_file():
         raise BackupBlocked("SOURCE_NOT_FOUND")
+    if not _is_synthetic_project(project):
+        raise BackupBlocked("SOURCE_NOT_SYNTHETIC")
+    _files(project)  # refuses symlinks before anything is read or written
     verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))
@@ -108,6 +155,9 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
         rels = _files(project)
         _copy_tree(project, dest / "data", rels)
         copied = _files(dest / "data")
+        after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
+        if not after.get("valid") or after.get("status") != verdict["status"]:
+            raise BackupBlocked("SNAPSHOT_CHANGED", after.get("status"))
         manifest = {"manifest_version": 1, "synthetic_only": True, "chain_id": chain_id,
                     "audit_status": verdict["status"], "files": {r: _sha(dest / "data" / r) for r in copied}}
         (dest / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
@@ -119,12 +169,7 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
 
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     root = Path(backup_dir)
-    try:
-        manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
-        listed: dict[str, str] = manifest["files"]
-        chain_id = manifest["chain_id"]
-    except (OSError, ValueError, KeyError, TypeError):
-        raise BackupBlocked("BACKUP_MANIFEST_MISSING") from None
+    listed, chain_id = _read_manifest(root)
     data = root / "data"
     actual = _files(data) if data.is_dir() else []
     for rel in listed:
@@ -153,6 +198,10 @@ def restore(backup_dir: str | Path, target: str | Path) -> dict[str, Any]:
         for rel in _files(data):
             (target / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(data / rel, target / rel)  # byte copy keeps checksums identical
+        _files(target)
+        for rel, digest in _read_manifest(backup_dir)[0].items():
+            if not (target / rel).is_file() or _sha(target / rel) != digest:
+                raise BackupBlocked("RESTORED_NOT_INTACT", "file_hash_mismatch")
         verdict = verify_anchored_readonly(target / CHAIN_REL, target / ANCHOR_REL, info["chain_id"])
         if not verdict.get("valid"):
             raise BackupBlocked("RESTORED_NOT_INTACT", verdict.get("status"))
