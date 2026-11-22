@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Draft baseline:** main `c01098d8f815b1e76b12296f41e887d5f6dd87d0` (22 November 2026). #135's workdir-ancestor symlink refusal and linked-fixture catalogue filtering are merged; PR #136's backup ancestor/pre-read/lstat-error checks remain open and its exact-head CI is 1/4 complete. M2 remains in progress and M3 is proposal-only. This protocol is not frozen/committed and no validation runs have occurred. Validation runs remain blocked until M2 is confirmed by Claude, M3 is built and confirmed, and this protocol is reviewed and committed before any run.
+**Draft baseline:** main `c01098d8f815b1e76b12296f41e887d5f6dd87d0` (22 November 2026). #135's workdir-ancestor symlink refusal and linked-fixture catalogue filtering are merged; PR #136's backup ancestor/pre-read/lstat-error checks remain open and its exact-head CI is 4/4 passed. M2 remains in progress and M3 is proposal-only. This protocol is not frozen/committed and no validation runs have occurred. Validation runs remain blocked until M2 is confirmed by Claude, M3 is built and confirmed, and this protocol is reviewed and committed before any run.
 
 ## 1. Purpose, scope and non-claims
 
