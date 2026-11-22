@@ -1,8 +1,8 @@
 # M2 Runbook Command Inventory — Test Contract
 
-**Status:** M2 command inventory; #141 executes these rows in source-checkout subprocesses (exact-head CI `45012531745`, 4/4). #142 is merged at head `7ccc256a1036fb89fbf94fc06e0dc2c4afa0e58e` (exact-head CI `45013670475`, 4/4) and adds partial run-record provenance; it does not close the inventory/runbook gaps. The inventory is not the operator-runbook file and does not prove clean installation. Required-assertion/status-token parsing, exact exit-code parsing, B12's explicit test mapping and B10's real-writer proof remain gaps.
+**Status:** M2 command inventory; #141 executes these rows in source-checkout subprocesses but does not parse `docs/OPERATOR_RUNBOOK.md`, exact-parse numeric exits or validate required assertion/status tokens. #144/#145 clean-install and run-record/false-flag/console-script proofs passed exact-head CI `45021238785` 4/4. #147's marker-open outbox is a separate partial recovery component, not an operator-runbook proof; its real-chain crash-window replay remains open. B12's explicit test mapping and B10's real-writer proof remain gaps.
 
-**Baseline:** main `400666bd` (22 November 2026; includes #144 clean-install proof). #141 is merged at head `ee3a080e96ef813b53c87e0dc7fc04c1605a0736`, exact-head CI `45012531745` passed 4/4. Its test reads this inventory but not `docs/OPERATOR_RUNBOOK.md`; #142 is merged at exact head `7ccc256a1036fb89fbf94fc06e0dc2c4afa0e58e`, CI `45013670475` passed 4/4. #138 still lacks writer-side locking and single-read manifest validation; #139 closes B13. Clean-checkout install/start is merged (#144); the dress rehearsal is next.
+**Baseline:** main `5a579eb2` (22 November 2026; includes merged #147). #141 remains inventory-only; direct operator-runbook binding, exact exit/status parsing, B12 mapping and B10 real-writer proof remain open.
 
 ## 1. Test harness rules
 
