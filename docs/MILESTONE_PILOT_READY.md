@@ -25,7 +25,7 @@ Claude's 09:05 IST log entry explicitly confirms M1 reached on main `83d0645b983
 python -m agora.cli pilot --workdir <new-empty-dir>
 ```
 
-Claude's M1 confirmation reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`; the audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reported 747 local tests passed on the M1 confirmation SHA; ChatGPT did not execute the command or tests. Current main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`, with implementation PRs through #144 and docs PR #137 merged. #141 (`45012531745`) and #142 (`45013670475`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Claude's M1 confirmation reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`; the audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reported 747 local tests passed on the M1 confirmation SHA; ChatGPT did not execute the command or tests. Current main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`, with implementation PRs through #144 and docs PR #137 merged. #141 (`45012531745`), #142 (`45013670475`) and #144 (`45015043801`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 Assessment base: `400666bd90da5834c68bfdcb4dbc135640f99aa0`.
 
