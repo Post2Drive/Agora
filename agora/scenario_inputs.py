@@ -106,6 +106,20 @@ def _check_policy(instances: list[dict[str, Any]], policy: Mapping[str, Any] | N
     return sanitized, redactions
 
 
+_PAYLOAD_KEYS = ("import_id", "snapshot_manifest_hash", "schema_fingerprint", "binding_fingerprint",
+                 "ontology_pack_fingerprint", "transformation_policy_fingerprint", "scenario_parameters")
+
+
+def manifest_hash(manifest: Mapping[str, Any]) -> str:
+    """Canonical hash of a whole input manifest (not a substitute for scenario_hash)."""
+    return _sha256(dict(manifest))
+
+
+def recompute_scenario_hash(manifest: Mapping[str, Any]) -> str:
+    """Recompute scenario_hash from the manifest's own payload fields; KeyError if one is missing."""
+    return _sha256({"domain": "agora-scenario-input-v1", "payload": {k: manifest[k] for k in _PAYLOAD_KEYS}})
+
+
 def build_scenario_input(
     binding: DataBinding | Mapping[str, Any],
     pack: OntologyPack,
@@ -215,4 +229,4 @@ def build_scenario_input(
     }
 
 
-__all__ = ["ScenarioInputError", "build_scenario_input"]
+__all__ = ["ScenarioInputError", "build_scenario_input", "manifest_hash", "recompute_scenario_hash"]

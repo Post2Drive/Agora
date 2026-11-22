@@ -31,6 +31,7 @@ from agora.decisions.store import DecisionRecordStore
 from agora.ontology import parse_domain_pack
 from agora.ontology.binding import load_binding, materialize_instances
 from agora.pilot_fixture import DEFAULT_FIXTURE, Fixture, FixtureError, list_fixtures, load_fixture
+from agora.scenario_inputs import build_scenario_input, manifest_hash, recompute_scenario_hash
 from agora.principal import SyntheticFixtureAdapter, principal_policy
 from agora.tabular import ingest_csv
 
@@ -121,6 +122,7 @@ class _Stop(Exception):
 
 RUN_RECORD_NAME = "run_record.json"
 RUN_RECORD_VERSION = 1
+PROVENANCE_VERSION = 1
 
 
 def _repo_sha() -> str:
@@ -153,6 +155,7 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
                      "manifest_hash": fixture.manifest_hash, "file_hashes": dict(fixture.file_hashes)}
                     if fixture else None),
         "imported": {"import_id": ctx.get("import_id"), "rows": ctx.get("rows")},
+        "input_provenance": ctx.get("provenance"),
         "bound": {"instances": ctx.get("instances")},
         "decided": {"decision_id": ctx.get("decision_id"), "version": ctx.get("version")},
         "outcome_refs": [ctx["outcome_id"]] if ctx.get("outcome_id") else [],
@@ -170,6 +173,7 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
 
 
 _SHA = re.compile(r"^sha256:[0-9a-f]{64}$")
+_FP = re.compile(r"^(sha256:)?[0-9a-f]{64}$")  # ontology pack fingerprints are bare hex
 _REQUIRED = {
     "record_version": int, "run_id": str, "run_kind": str, "repository_sha": str, "mode": str,
     "data_class": str, "engine_invoked": bool, "validated_prediction_enabled": bool,
@@ -208,7 +212,61 @@ def load_run_record(project: str | Path) -> dict[str, Any]:
     for st in rec["stage_results"]:
         if not isinstance(st, dict) or not {"step", "result"} <= set(st):
             raise ValueError("run record stage result malformed")
+    _check_provenance(rec)
     return rec
+
+
+def _check_provenance(rec: dict[str, Any]) -> None:
+    """Fail closed on any inconsistent input_provenance envelope (RUN_PROVENANCE_SPEC section 3).
+
+    Missing key = legacy_missing (read-only label); null = run stopped before binding."""
+    if "input_provenance" not in rec:
+        rec["provenance_status"] = "legacy_missing"
+        return
+    ip = rec["input_provenance"]
+    if ip is None:
+        if rec["status"] == "completed":
+            raise ValueError("completed run record has no input provenance")
+        rec["provenance_status"] = "not_reached"
+        return
+    keys = {"provenance_version", "scenario_hash", "import_id", "input_manifest", "manifest_hash",
+            "binding_fingerprint", "ontology_pack_fingerprint", "transformation_policy_fingerprint",
+            "data_role", "created_at"}
+    if not isinstance(ip, dict) or set(ip) != keys:
+        raise ValueError("input_provenance malformed or has unexpected fields")
+    if ip["provenance_version"] != PROVENANCE_VERSION or isinstance(ip["provenance_version"], bool):
+        raise ValueError("unsupported provenance version")
+    man = ip["input_manifest"]
+    if not isinstance(man, dict):
+        raise ValueError("input_provenance manifest is not an object")
+    if not isinstance(ip["import_id"], str) or not ip["import_id"] or ip["import_id"] == "latest":
+        raise ValueError("input_provenance import_id must be exact")
+    if ip["import_id"] != man.get("import_id") or ip["import_id"] != rec["imported"].get("import_id"):
+        raise ValueError("input_provenance import_id mismatch")
+    for k in ("scenario_hash", "manifest_hash", "binding_fingerprint", "ontology_pack_fingerprint"):
+        if not isinstance(ip[k], str) or not _FP.match(ip[k]):
+            raise ValueError(f"input_provenance {k} malformed")
+    tp = ip["transformation_policy_fingerprint"]
+    if tp is not None and (not isinstance(tp, str) or not _FP.match(tp)):
+        raise ValueError("input_provenance transformation_policy_fingerprint malformed")
+    if ip["data_role"] not in ("context", "scenario_input") or ip["data_role"] != man.get("data_role"):
+        raise ValueError("input_provenance data_role mismatch")
+    try:
+        datetime.fromisoformat(str(ip["created_at"]))
+    except ValueError as exc:
+        raise ValueError("input_provenance created_at is not RFC3339") from exc
+    if manifest_hash(man) != ip["manifest_hash"]:
+        raise ValueError("input_provenance manifest_hash mismatch (manifest altered)")
+    try:
+        recomputed = recompute_scenario_hash(man)
+    except KeyError as exc:
+        raise ValueError("input_provenance manifest lacks scenario payload field") from exc
+    if recomputed != ip["scenario_hash"] or man.get("scenario_hash") != ip["scenario_hash"]:
+        raise ValueError("input_provenance scenario_hash mismatch")
+    for k in ("binding_fingerprint", "ontology_pack_fingerprint", "transformation_policy_fingerprint"):
+        if man.get(k) != ip[k]:
+            raise ValueError(f"input_provenance {k} differs from manifest")
+    rec["provenance_status"] = "verified"
 
 
 def _decision_record(import_id: str, moment: datetime) -> dict[str, Any]:
@@ -234,6 +292,7 @@ def _write_report(project: Path, ctx: Mapping[str, Any]) -> Path:
         "No simulation engine was run (engine_invoked=false). VALIDATED_PREDICTION_ENABLED=False.",
         "",
         f"- Import: `{ctx['import_id']}` ({ctx['rows']} synthetic rows)",
+        f"- Scenario hash: `{ctx['provenance']['scenario_hash']}` (manifest `{ctx['provenance']['manifest_hash']}`, mode: exploratory)",
         f"- Instances bound: {ctx['instances']}",
         f"- Decision: `{ctx['decision_id']}` v{ctx['version']} approved by `{APPROVER_ID}`",
         f"- Observed outcome (synthetic): `{ctx['outcome_id']}`, reviewed by `{REVIEWER_ID}`",
@@ -329,6 +388,17 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
                 inst = materialize_instances(load_binding(fixture.binding), _pack(), project, ctx["import_id"],
                                              policy=op, audit=audit)
                 ctx["instances"] = len(inst)
+                built = build_scenario_input(load_binding(fixture.binding), _pack(), project, ctx["import_id"],
+                                             policy=op, audit=audit)
+                ctx["provenance"] = {
+                    "provenance_version": PROVENANCE_VERSION,
+                    "scenario_hash": built["scenario_hash"], "import_id": ctx["import_id"],
+                    "input_manifest": built["manifest"], "manifest_hash": manifest_hash(built["manifest"]),
+                    "binding_fingerprint": built["manifest"]["binding_fingerprint"],
+                    "ontology_pack_fingerprint": built["manifest"]["ontology_pack_fingerprint"],
+                    "transformation_policy_fingerprint": built["manifest"]["transformation_policy_fingerprint"],
+                    "data_role": built["manifest"]["data_role"], "created_at": built["manifest"]["created_at"],
+                }
                 return {"instances": len(inst)}
             run("bind", do_bind)
 
