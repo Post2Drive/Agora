@@ -32,7 +32,9 @@ The merged #127 patch changes the prior #120 behavior as follows:
 - Backup requires `run_record.json` with `data_class == "synthetic"`; otherwise it blocks with `SOURCE_NOT_SYNTHETIC`.
 - Symlinks in the source/backup tree and unsafe manifest-relative paths are refused with `UNSAFE_PATH`.
 - The manifest validator requires version 1, `synthetic_only is True`, a nonblank chain ID and a safe relative-path-to-lowercase-SHA256 mapping; malformed manifests block with `BACKUP_MANIFEST_INVALID`.
-- After copying the source files, backup re-verifies the copied chain/anchor against the source verdict; a changed or invalid pair blocks with `SNAPSHOT_CHANGED` and removes the incomplete destination.
+- After copying the source files, backup re-verifies the copied chain/anchor; a changed or invalid pair blocks with `SNAPSHOT_CHANGED` and removes the incomplete destination.
+- The root paths themselves are not explicitly checked with `lstat` before use: project/backup/restore-target root symlinks can redirect the initial run-record/manifest reads or destination writes. Reject a symlinked root before any read/write, including a symlinked parent where the safety contract requires it.
+- `backup()` does not hold one shared `AnchorStore.lock()` across initial verification and the audit DB/anchor pair snapshot, and the post-copy check compares verifier status rather than a captured sequence/head. Add a shared-lock or equivalent snapshot protocol and prove exact chain ID, sequence and head equality.
 - Restore re-hashes every copied file against the manifest before success; a mismatch blocks with `RESTORED_NOT_INTACT`.
 
 #127 adds tests and mutation proofs for the synthetic gate, symlink refusal, manifest validation, snapshot re-verification and restore re-hashing. Exact-head CI run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The operator command test and tamper rehearsal are still outstanding. Do not infer from the merged hardening that an operator rehearsal has occurred.
@@ -62,7 +64,8 @@ Planned synthetic-only cases:
 - Inject an anchored writer between source verification and backup pair copy: the backup must block or hold the shared anchor lock until a consistent pair is captured.
 - Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
 - Point backup at an unmarked/non-synthetic project: expect `SOURCE_NOT_SYNTHETIC` and no destination.
-- Place a symlink in the source or backup tree, or use an unsafe relative manifest path: expect `UNSAFE_PATH` and no outside-target read/copy.
+- Place a symlink inside the source or backup tree, or use an unsafe relative manifest path: expect `UNSAFE_PATH` and no outside-target read/copy.
+- Make the project root, backup root or restore target root a symlink to an outside directory: expect `UNSAFE_PATH` before marker/manifest reads or destination writes; prove the outside sentinel is untouched.
 - Tamper `manifest_version`, set `synthetic_only` false, replace `files` with a list, or corrupt `chain_id`/digest values: expect `BACKUP_MANIFEST_INVALID`, never an uncaught exception.
 - Change the copied chain/anchor during backup: expect `SNAPSHOT_CHANGED` and no retained partial backup.
 - Mutate a non-audit file after backup verification but before/during restore copy: expect `RESTORED_NOT_INTACT` and no published target.
