@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,14 +54,25 @@ def list_fixtures(root: Path | None = None) -> list[str]:
     base = root or FIXTURE_ROOT
     if not base.is_dir():
         return []
-    return sorted(p.name for p in base.iterdir() if p.is_dir() and _ID.match(p.name))
+    def _plain_dir(p: Path) -> bool:
+        try:
+            st = os.lstat(p)
+        except OSError:
+            return False
+        return (p.is_dir() and not p.is_symlink()
+                and not (getattr(st, "st_file_attributes", 0) & 0x400))
+    return sorted(p.name for p in base.iterdir() if _ID.match(p.name) and _plain_dir(p))
 
 
 def load_fixture(fixture_id: str, root: Path | None = None) -> Fixture:
     base = root or FIXTURE_ROOT
-    if not isinstance(fixture_id, str) or not _ID.match(fixture_id) or fixture_id not in list_fixtures(base):
+    if not isinstance(fixture_id, str) or not _ID.match(fixture_id):
         raise FixtureError("FX_UNKNOWN_FIXTURE", f"valid ids: {', '.join(list_fixtures(base)) or 'none'}")
     d = base / fixture_id
+    if os.path.lexists(d) and (d.is_symlink() or (getattr(os.lstat(d), "st_file_attributes", 0) & 0x400)):
+        raise FixtureError("FX_UNSAFE_PATH", d.name)
+    if fixture_id not in list_fixtures(base):
+        raise FixtureError("FX_UNKNOWN_FIXTURE", f"valid ids: {', '.join(list_fixtures(base)) or 'none'}")
     for p in (d, d / "manifest.json", *(d / n for n in REQUIRED_FILES)):
         if p.is_symlink():
             raise FixtureError("FX_UNSAFE_PATH", p.name)
