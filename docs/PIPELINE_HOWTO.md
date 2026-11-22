@@ -1,12 +1,12 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
-**Status:** M1 was explicitly confirmed by Claude. Main is `dc29592fde81c64619b15bf8aa33822bb920bc5f` after #142 merged (exact-head CI `45013670475`, 4/4); #141's command-inventory test passed 4/4 but does not read `docs/OPERATOR_RUNBOOK.md`. The run-record `input_provenance` envelope is now on main, but strict legacy/new validation, full manifest/report checks and failure-atomic publication remain open. M2 remains incomplete: clean-install proof, backup manifest single-read and real-writer proof, marker/audit outbox recovery, direct runbook binding and logged rehearsal remain open.
-**Assessment base:** `main` at `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026).
+**Status:** M1 was explicitly confirmed by Claude. Main is `400666bd90da5834c68bfdcb4dbc135640f99aa0` after #142 merged (exact-head CI `45013670475`, 4/4); #141's command-inventory test passed 4/4 but does not read `docs/OPERATOR_RUNBOOK.md`. The run-record `input_provenance` envelope is now on main, but strict legacy/new validation, full manifest/report checks and failure-atomic publication remain open. M2 remains incomplete: #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4); backup manifest single-read and real-writer proof, marker/audit outbox recovery, direct runbook binding and logged rehearsal remain open.
+**Assessment base:** `main` at `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
-Main `dc29592fde81c64619b15bf8aa33822bb920bc5f` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88), checked-in fixture/start (#125), baseline loader/workdir guard (#130), fixture/manifest and path hardening (#132/#135/#139), backup guards (#136), and copied-chain/manifest binding (#138). #142 now calls `build_scenario_input()` during pilot bind and persists `input_provenance`; strict legacy/new, timestamp/version, manifest/report checks and failure-atomic publication remain open. #138 still lacks writer-side lock and single-read manifest validation. Pilot intermediate-ancestor lstat-failure coverage, clean-install proof, direct runbook binding, marker/audit outbox and rehearsal remain open.
+Main `400666bd90da5834c68bfdcb4dbc135640f99aa0` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88), checked-in fixture/start (#125), baseline loader/workdir guard (#130), fixture/manifest and path hardening (#132/#135/#139), backup guards (#136), and copied-chain/manifest binding (#138). #142 now calls `build_scenario_input()` during pilot bind and persists `input_provenance`; strict legacy/new, timestamp/version, manifest/report checks and failure-atomic publication remain open. #138 still lacks writer-side lock and single-read manifest validation. Pilot intermediate-ancestor lstat-failure coverage, #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4); direct runbook binding, marker/audit outbox and rehearsal remain open.
 
 M2 is not complete: #141 adds a tested command inventory, but the operator-runbook file is not the test source-of-truth. #142 adds the run-record envelope on main, but strict legacy/new validation, timestamp/schema/report checks and failure-atomic publication remain open.
 
@@ -30,7 +30,7 @@ This guide documents the available components and their boundaries. It does not 
 | Decision/audit reconciliation | **DONE — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar and #122 holds the same anchor lock across verify/classify; #115 repairs missing decision events through an approver-authorised API only. The lock helper may create a sidecar `.lock` file, and the concurrency test uses a timing sleep; no outcome/review reconciliation or unanchored-tail recovery is included. |
 | M2 run record | **PARTIAL — #142 merged** | #142 stores `input_provenance` and verifies canonical manifest/scenario hashes, exact import ID and role. It still accepts missing provenance as legacy for any record, permits non-strict timestamps/version typing, does not validate all manifest fields or report metadata, and publishes with a non-atomic direct write. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
-| One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 fixture-selected `agora pilot list/start`. #132 pins the manifest/direct fixture paths; #135 refuses workdir ancestors and filters linked fixture directories; #139 refuses lexical `..` before path normalization. Pilot intermediate-ancestor lstat-failure coverage and clean-install proof remain open. Full run-record provenance/atomic publication remains open. |
+| One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 fixture-selected `agora pilot list/start`. #132 pins the manifest/direct fixture paths; #135 refuses workdir ancestors and filters linked fixture directories; #139 refuses lexical `..` before path normalization. Pilot intermediate-ancestor lstat-failure coverage and #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4). Full run-record provenance/atomic publication remains open. |
 
 ## 2.1 Guided synthetic pilot command on main (#88/#125; CLI import isolation #94)
 
@@ -45,7 +45,7 @@ agora pilot --workdir ./tmp-agora-pilot
 
 Use a new empty local work directory. Main includes `agora/pilot_fixtures/synthetic-units-v1` with CSV/schema/binding/manifest and `agora pilot list` / `agora pilot start --fixture <id> --workdir <dir>`. #132 independently pins the checked-in manifest digest, rejects direct fixture directory/manifest/payload symlinks, rejects empty fixture versions and refuses a directly symlinked workdir root with `WORKDIR_UNSAFE_PATH`. #135 rejects workdir symlink/reparse-point ancestors and filters linked fixture directories. Clean-checkout install is unproven.
 
-The fixture/start command is a merged M2 component, not an M2-complete operator workflow. #125 adds fixture ID/version/manifest/file hashes; #130 adds baseline strict required-field/type/hash checks; #132/#135/#139 harden fixture and workdir paths. #142 integrates `build_scenario_input()` into pilot bind and persists the provenance envelope; strict legacy/new, timestamp/version, manifest/report validation and failure-atomic publication remain open. Pilot intermediate-ancestor lstat-failure coverage and clean-install proof remain open. #138 adds copied-chain sequence/head comparison and manifest-head validation; writer-side lock and single-read manifest validation remain open.
+The fixture/start command is a merged M2 component, not an M2-complete operator workflow. #125 adds fixture ID/version/manifest/file hashes; #130 adds baseline strict required-field/type/hash checks; #132/#135/#139 harden fixture and workdir paths. #142 integrates `build_scenario_input()` into pilot bind and persists the provenance envelope; strict legacy/new, timestamp/version, manifest/report validation and failure-atomic publication remain open. Pilot intermediate-ancestor lstat-failure coverage and #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4). #138 adds copied-chain sequence/head comparison and manifest-head validation; writer-side lock and single-read manifest validation remain open.
 
 
 ## 2.2 Backup/restore component on main (#120/#127)
@@ -213,7 +213,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 ## 11. Remaining work for M2 operator readiness
 
-The following M2 gaps remain on main `dc29592fde81c64619b15bf8aa33822bb920bc5f` after Claude's M1 confirmation and merged #88/#100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #125 fixture/start, #127 backup hardening, #130 partial strict loader, #132 fixture hardening, #134 direct backup-root guards and #135 workdir-ancestor guards. The owner approved local synthetic M2; M2 remains incomplete:
+The following M2 gaps remain on main `400666bd90da5834c68bfdcb4dbc135640f99aa0` after Claude's M1 confirmation and merged #88/#100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #125 fixture/start, #127 backup hardening, #130 partial strict loader, #132 fixture hardening, #134 direct backup-root guards and #135 workdir-ancestor guards. The owner approved local synthetic M2; M2 remains incomplete:
 
 1. Complete marker/audit cross-store failure handling: #122 rolls back marker state when audit append fails, but if the audit append succeeds and the later marker DB commit fails, an orphan audit event can remain. Add a commit-failure regression and durable pending/outbox or reconciliation semantics. Retention/erasure triggers, automatic report/run edges and marker/audit reconciliation also remain open.
 2. Reconciliation's #119 verify/classify TOCTOU is serialized by #122's shared anchor lock. Clarify the lock-file creation side effect under the read-only contract and replace the fixed-sleep race test with a deterministic handshake; add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows.
@@ -224,7 +224,7 @@ The following M2 gaps remain on main `dc29592fde81c64619b15bf8aa33822bb920bc5f` 
 
 ## 12. Current mainline pilot commands and future operator work
 
-The current merged local synthetic commands on main `dc29592fde81c64619b15bf8aa33822bb920bc5f` are:
+The current merged local synthetic commands on main `400666bd90da5834c68bfdcb4dbc135640f99aa0` are:
 
 ```bash
 agora pilot list
