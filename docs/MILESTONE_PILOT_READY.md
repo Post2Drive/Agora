@@ -144,7 +144,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #116 | First append-only outcome dependency-marker slice | Merged; exact-head CI run `44980453453` passed 4/4 |
 | #119 | Read-only sidecar-anchor verification before reconcile classification | Merged; exact-head CI run `44981680171` passed 4/4 |
 | #120 | Local synthetic backup/verify/restore CLI and tamper-detection tests | Merged; exact-head CI run `44986367729` passed 4/4 |
-| #121 | Documentation refresh after #120 | Open draft; exact-head CI run `44989146212` in progress (4 matrix jobs) |
+| #121 | Documentation refresh after #120 | Open draft; exact-head CI is tracked on the current docs-only head |
 | #122 | Post-M1 marker audit ordering, supersession scope and reconcile lock | Open draft; exact-head CI run `44989188092` in progress (4 matrix jobs) |
 
 Assessment base is main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. M1 remains Claude-confirmed by the exact 09:05 IST entry; #116, #119 and #120 are merged. #120 is an M2 component only, not M2 completion.
