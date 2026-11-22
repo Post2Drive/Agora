@@ -168,6 +168,17 @@ def test_non_synthetic_or_unmarked_project_is_refused(project, tmp_path):
     lambda m: m.update(files={"ok.txt": "zz"}),
     lambda m: m.update(synthetic_only=False),
     lambda m: m.update(manifest_version=2),
+    lambda m: m.update(manifest_version=True),
+    lambda m: m.update(manifest_version=1.0),
+    lambda m: m.update(chain_sequence=True),
+    lambda m: m.update(chain_sequence=-1),
+    lambda m: m.update(chain_sequence=1.5),
+    lambda m: m.update(chain_sequence="1"),
+    lambda m: m.update(chain_head_hash="ABCDEF" + "0" * 58),
+    lambda m: m.update(chain_head_hash="0" * 63),
+    lambda m: m.update(chain_head_hash=None),
+    lambda m: m.pop("chain_sequence"),
+    lambda m: m.pop("chain_head_hash"),
     lambda m: m.update(chain_id=5),
     lambda m: m.pop("files"),
 ])
@@ -396,7 +407,8 @@ def test_verify_rejects_manifest_head_mismatch_or_missing(project, tmp_path, edi
     mp.write_text(json.dumps(m), encoding="utf-8")
     with pytest.raises(BackupBlocked) as e:
         verify_backup(tmp_path / "bk")
-    assert e.value.code == "BACKUP_NOT_INTACT"
+    expected = "BACKUP_MANIFEST_INVALID" if edit.startswith("strip") else "BACKUP_NOT_INTACT"
+    assert e.value.code == expected
     with pytest.raises(BackupBlocked):
         restore(tmp_path / "bk", tmp_path / "r")
     assert not (tmp_path / "r").exists()
