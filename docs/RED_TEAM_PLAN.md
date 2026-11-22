@@ -2,7 +2,7 @@
 
 **Status:** Plan only. No attack has been executed as part of this document. This is the synthetic governance-integrity track; it is separate from predictive validation. M2 remains in progress and M3 is proposal-only.
 
-**Baseline:** main `dc29592fde81c64619b15bf8aa33822bb920bc5f` (22 November 2026). #138 exact source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4), but no writer-side lock; manifest re-read gap remains. #139 B13 path normalization is merged (CI `45011493565`, 4/4). RT13 still needs a deterministic concurrent-writer test; strict run-provenance validation/atomic publication and clean-install remain open.
+**Baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #138 exact source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4), but no writer-side lock; manifest re-read gap remains. #139 B13 path normalization is merged (CI `45011493565`, 4/4). RT13 still needs a deterministic concurrent-writer test; strict run-provenance validation/atomic publication and #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 
 ## 1. Objective and rules
 
@@ -42,7 +42,7 @@ These are not attack results; they are review targets to be tested by Claude aga
 
 - #127 defines stable backup codes including `SOURCE_NOT_SYNTHETIC`, `UNSAFE_PATH`, `SNAPSHOT_CHANGED`, `BACKUP_MANIFEST_INVALID`, `BACKUP_FILE_MODIFIED`, `BACKUP_EXTRA_FILE`, `BACKUP_NOT_INTACT` and `RESTORED_NOT_INTACT`. #135 implements workdir-ancestor refusal; #136 adds backup ancestor/pre-read/fail-closed lstat checks; #138 adds copied-chain sequence/head and manifest-head detection; #139 closes B13 lexical `..` refusal. Remaining gaps: manifest read-once validation, deterministic real-writer proof and pilot intermediate-ancestor lstat-failure coverage.
 - #127/#134 post-copy backup verification still compares anchored-verifier validity/status only; it does not hold one anchor lock across source verification and pair copy or require exact chain ID, sequence and head equality.
-- #130 validates required run-record fields and non-empty workdirs; #132 adds fixture manifest pinning and direct fixture/workdir-root symlink refusal; #135 adds workdir-ancestor refusal and linked-fixture catalogue filtering. Remaining strictness questions include empty/unknown run-record identifiers, nested fixture hash shape, manifest cross-checks, complete input provenance and failure-atomic publication. Clean-install proof remains open.
+- #130 validates required run-record fields and non-empty workdirs; #132 adds fixture manifest pinning and direct fixture/workdir-root symlink refusal; #135 adds workdir-ancestor refusal and linked-fixture catalogue filtering. Remaining strictness questions include empty/unknown run-record identifiers, nested fixture hash shape, manifest cross-checks, complete input provenance and failure-atomic publication. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 - The marker/audit cross-store commit-failure case remains a separate implementation concern. This plan does not assume it has been fixed.
 - A local sidecar anchor cannot detect coordinated rollback of both audit database and anchor by an actor able to rewrite both. Record this as a trust limitation; do not label coordinated rollback as detected unless an independent checkpoint is actually used.
 
