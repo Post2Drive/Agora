@@ -75,11 +75,9 @@ def test_rt05_run_record_edit_in_backup_is_caught_by_manifest(project, tmp_path)
     _refused(bk, tmp_path / "restored", "BACKUP_FILE_MODIFIED")
 
 
-def test_rt05_limitation_well_formed_run_record_edit_with_regenerated_manifest_is_not_detected(project, tmp_path):
-    """PINNED TRUST LIMITATION (not a pass): the run record is covered only by the backup manifest.
-    An attacker with file access who edits a well-formed field AND regenerates the manifest is not
-    detected, because the run record is not hash-linked into the anchored audit chain. Documented
-    so no one treats the manifest as tamper-proof for non-audit files."""
+def test_rt05_well_formed_run_record_edit_with_regenerated_manifest_is_detected_by_seal(project, tmp_path):
+    """Formerly a pinned limitation: the run record is now hash-linked into the anchored audit chain
+    (run_record_sealed event), so a well-formed edit plus a regenerated manifest is refused."""
     bk = tmp_path / "bk"
     backup(project, bk)
     p = bk / "data" / "run_record.json"
@@ -88,7 +86,9 @@ def test_rt05_limitation_well_formed_run_record_edit_with_regenerated_manifest_i
     rec["fixture_hashes"][first] = H64
     p.write_text(json.dumps(rec), encoding="utf-8")
     _regen_manifest(bk)
-    assert verify_backup(bk)["audit_status"] == "anchored_verified"  # undetected: limitation pinned
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+    with pytest.raises(BackupBlocked):
+        verify_backup(bk)
 
 
 # ---- RT08 backup file tampering ---------------------------------------------------------------

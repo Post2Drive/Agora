@@ -29,7 +29,7 @@ def _load_with(project, tmp_path, mutate):
     rec = _rec(project)
     mutate(rec)
     (d / "run_record.json").write_text(json.dumps(rec), encoding="utf-8")
-    return load_run_record(d)
+    return load_run_record(d, verify_seal=False)
 
 
 def test_envelope_is_complete_and_verified(done):

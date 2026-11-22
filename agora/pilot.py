@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from agora.audit_anchor import AnchorStore, bootstrap_anchor, open_anchored_audit
+from agora.audit_anchor import AnchorStore, bootstrap_anchor, open_anchored_audit, verify_anchored_readonly
 from agora.audit_chain import AuditChainStore
 from agora.decisions.approval import approve_as, propose
 from agora.decisions.outcomes import DecisionOutcomeStore, record_outcome_as, review_outcome_as
@@ -185,6 +185,50 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
     return out
 
 
+SEAL_EVENT = "run_record_sealed"
+
+
+def _seal_id(run_id: str) -> str:
+    return f"run-record-seal-{run_id}"
+
+
+def seal_run_record(project: str | Path, record_path: str | Path | None = None) -> dict[str, Any]:
+    """Hash-link a completed run record into the anchored audit chain (one event, sha256 of the
+    exact record bytes). Fails closed: raises if the chain is not cleanly anchored."""
+    project = Path(project)
+    path = Path(record_path) if record_path else project / RUN_RECORD_NAME
+    raw = path.read_bytes()
+    run_id = json.loads(raw.decode("utf-8"))["run_id"]
+    with open_anchored_audit(project / "audit" / "chain.sqlite3", project / "audit_anchor" / "anchor.jsonl",
+                             CHAIN_ID) as audit:
+        return audit.append({"event_id": _seal_id(run_id), "event_type": SEAL_EVENT,
+                             "record_hash": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                             "recorded_at": _stamp(datetime.now(timezone.utc))})
+
+
+def verify_run_record_seal(project: str | Path) -> None:
+    """Raise ValueError unless the run record's exact bytes match its audit-chain seal event and the
+    chain is cleanly anchored. Read-only."""
+    import sqlite3
+    project = Path(project)
+    raw = (project / RUN_RECORD_NAME).read_bytes()
+    rec = json.loads(raw.decode("utf-8"))
+    chain, anchor = project / "audit" / "chain.sqlite3", project / "audit_anchor" / "anchor.jsonl"
+    v = verify_anchored_readonly(chain, anchor, CHAIN_ID)
+    if not v.get("valid"):
+        raise ValueError(f"run record seal unverifiable: audit {v.get('status')}")
+    db = sqlite3.connect(f"file:{chain.resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        row = db.execute("SELECT event_json FROM audit_events WHERE event_id=?", (_seal_id(str(rec.get("run_id"))),)).fetchone()
+    finally:
+        db.close()
+    if row is None:
+        raise ValueError("run record is not sealed in the audit chain")
+    ev = json.loads(row[0])
+    if (ev.get("event_type") != SEAL_EVENT or ev.get("record_hash") != "sha256:" + hashlib.sha256(raw).hexdigest()):
+        raise ValueError("run record does not match its audit-chain seal")
+
+
 _SHA = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FP = re.compile(r"^(sha256:)?[0-9a-f]{64}$")  # ontology pack fingerprints are bare hex
 _REQUIRED = {
@@ -196,7 +240,7 @@ _REQUIRED = {
 }
 
 
-def load_run_record(project: str | Path) -> dict[str, Any]:
+def load_run_record(project: str | Path, *, verify_seal: bool = True) -> dict[str, Any]:
     """Read a run record; fail closed on unknown version, missing/mistyped fields,
     non-synthetic data, malformed hashes or an engine/prediction claim."""
     rec = json.loads((Path(project) / RUN_RECORD_NAME).read_text(encoding="utf-8"))
@@ -226,6 +270,8 @@ def load_run_record(project: str | Path) -> dict[str, Any]:
         if not isinstance(st, dict) or not {"step", "result"} <= set(st):
             raise ValueError("run record stage result malformed")
     _check_provenance(rec)
+    if verify_seal and rec["status"] == "completed":  # verify_seal=False: structural inspection of a detached copy only
+        verify_run_record_seal(project)
     return rec
 
 
@@ -488,8 +534,9 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
     finally:
         if ctx.get("decisions") is not None:
             ctx["decisions"].close()
-    _write_run_record(project, status="completed", started=started, steps=steps, ctx=ctx,
-                      csv_path=csv_path, report=project / "report" / "pilot_report.md", fixture=fixture)
+    rec_path = _write_run_record(project, status="completed", started=started, steps=steps, ctx=ctx,
+                                 csv_path=csv_path, report=project / "report" / "pilot_report.md", fixture=fixture)
+    seal_run_record(project, rec_path)
     return PilotResult("completed", str(project), steps, report_path=str(project / "report" / "pilot_report.md"))
 
 
@@ -540,4 +587,4 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if result.status == "completed" else 2
 
 
-__all__ = ["load_run_record", "PilotResult", "StepResult", "run_pilot", "format_result", "main"]
+__all__ = ["load_run_record", "seal_run_record", "verify_run_record_seal", "PilotResult", "StepResult", "run_pilot", "format_result", "main"]

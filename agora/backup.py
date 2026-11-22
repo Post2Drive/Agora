@@ -250,6 +250,20 @@ def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
     return {"files": len(copied), "audit_status": verdict["status"], "backup": str(dest)}
 
 
+def _check_run_record_seal(data: Path) -> None:
+    """A completed run record must match its audit-chain seal (closes the manifest-regeneration gap)."""
+    rec = data / "run_record.json"
+    if not rec.is_file():
+        return
+    from .pilot import verify_run_record_seal
+    try:
+        if json.loads(rec.read_text(encoding="utf-8")).get("status") != "completed":
+            return
+        verify_run_record_seal(data)
+    except (OSError, ValueError, AttributeError):
+        raise BackupBlocked("BACKUP_NOT_INTACT", "run_record_seal") from None
+
+
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     return _verify_snapshot(backup_dir)[0]
 
@@ -275,6 +289,7 @@ def _verify_snapshot(backup_dir: str | Path) -> tuple[dict[str, Any], dict[str, 
         raise BackupBlocked("BACKUP_NOT_INTACT", verdict.get("status"))
     if (seq, head_hash) != _head(verdict):
         raise BackupBlocked("BACKUP_NOT_INTACT", "manifest_head_mismatch")
+    _check_run_record_seal(data)
     return {"files": len(listed), "audit_status": verdict["status"], "chain_id": chain_id}, listed
 
 
