@@ -146,6 +146,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #120 | Local synthetic backup/verify/restore CLI and tamper-detection tests | Merged; exact-head CI run `44986367729` passed 4/4 |
 | #121 | Documentation refresh after #120/#122 | Merged at head `769de633b6d13c14d60a353da989b716443f0d12`; exact-head Actions run `44990546024` passed 4/4 |
 | #122 | Post-M1 marker audit ordering, supersession scope and reconcile lock | Merged at head `73c2d5db61db775602a18ad1d170bc010b39ebbf`; exact-head Actions run `44989188092` passed 4/4 |
+| #123 | M2 pilot run-record first slice | Open draft at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`; exact-head Actions run `44990673166` passed 4/4; provenance field coverage and load-time schema/hash validation remain incomplete |
 
 Assessment base is main `776669cac7c30722726ed87813f677d6d6d89aec` after #121 merged; #122 is merged. M1 remains Claude-confirmed. #120 is an M2 backup/restore component only, not a completed operator drill; #123 remains an unmerged run-record draft and M2 is not reached.
 
