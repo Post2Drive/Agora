@@ -17,7 +17,7 @@ The marker system must preserve the original outcome and all historical decision
 
 Main includes the append-only outcome and review stores from PR #53, the read-only held-outcome list (#102/#106), and the first append-only dependency-marker implementation (#116). #116 adds marker, edge and event tables protected against UPDATE/DELETE; explicit-edge transitive, cycle-safe propagation; idempotent marker creation; Principal-gated edge registration and marker lifecycle; and blocking-marker lookup. Disputed, corrected and source-hash-mismatch triggers are supported. Resolution binds to a marker fingerprint, event-history head, bounded disposition and exact source evidence reference.
 
-The implementation remains partial: retention/erasure triggers, automatic report/run edge registration, a CLI, and marker/audit reconciliation are not present. Edges are explicitly registered; absent edges produce root-level markers rather than heuristic propagation. The held-outcome CLI (#102/#106) remains separate and read-only. Decision lifecycle reconciliation (#100/#104/#119) and missing-event repair (#115) do not reconcile outcome/review or marker audit rows. This specification describes the broader target and must not imply that the remaining features exist.
+The implementation remains partial: retention/erasure triggers, automatic report/run edge registration, a CLI, and marker/audit reconciliation are not present. Edges are explicitly registered; absent edges produce root-level markers rather than heuristic propagation. The held-outcome CLI (#102/#106) remains separate and read-only. Decision lifecycle reconciliation (#100/#104/#119) and missing-event repair (#115) do not reconcile outcome/review or marker audit rows. Code review of #116 on main `30385885` found two lifecycle defects: `advance_marker_as()` commits its event before `_audit()`, so an audit append failure can leave a persisted `resolved(valid)` or `superseded` state that `blocking_markers()` no longer returns; and supersession checks only that a different marker exists, without binding it to the same decision/version/affected object or persisting a bounded reason. These must be fixed before operator reliance. This specification describes the broader target and must not imply that the remaining features exist.
 
 ## 3. Trigger events
 
@@ -105,7 +105,7 @@ Permitted transitions:
 | open | acknowledged | Reviewer identity and acknowledgement event |
 | acknowledged | under_review | Reviewer identity and review-start event |
 | under_review | resolved | Disposition code, exact evidence reference and reviewer sign-off |
-| open or acknowledged | superseded | Exact replacement marker ID and reason |
+| open or acknowledged | superseded | Exact replacement marker ID for the same decision ID/version and affected type/ref, plus a bounded persisted reason code |
 | resolved | open | Not allowed by rewriting history; create a new marker for a new trigger |
 
 A resolution must state whether the affected object is still valid, needs reissue, remains blocked, or is superseded. “Reviewed” is not equivalent to “valid.” A corrected outcome is a new outcome record; it does not erase or mutate the disputed outcome.
@@ -131,7 +131,7 @@ Opening a marker must not automatically approve a replacement decision, publish 
 - A person who proposed or approved the linked decision must not gain marker-resolution authority merely from that role.
 - Marker resolution must bind to the exact marker fingerprint, affected object reference and current event-history head.
 - Missing, expired, untrusted or out-of-scope principal denies.
-- Until principal migration is complete (only the synthetic approve_as() slice from merged #58 exists), caller-supplied role strings are not trusted identity and this design is not production-ready.
+- #111 restricts role-string PDP/permission imports to the internal allowlist and makes the legacy role-string approval authorizer private; #113 requires `BoundPolicy` for protected shared policy enforcement. This closes the M1 synthetic Principal-bound policy gate, but `SyntheticFixtureAdapter` remains synthetic-only; no OIDC or production identity provider is claimed. Caller-supplied role strings are not trusted authority.
 
 ## 9. Audit and reconciliation
 
@@ -139,7 +139,7 @@ Emit allow-listed audit events for marker creation, acknowledgement, review star
 
 Never include observed_value, unit, notes, raw source content, personal data, credentials or free-text rationale in the shared audit chain.
 
-Marker storage and the audit chain may be separate SQLite stores. Do not claim a cross-store atomic transaction. If marker persistence succeeds but its audit append fails, or vice versa, surface a durable pending/reconciliation state and fail closed for protected reliance. Use a stable idempotency key so retry cannot create duplicate markers.
+Marker storage and the audit chain may be separate SQLite stores. Do not claim a cross-store atomic transaction. Required invariant: if marker persistence succeeds but its audit append fails, or vice versa, the durable state must remain visibly pending and blocking until reconciliation proves both sides; use a stable idempotency key so retry cannot create duplicate markers. **Current #116 gap:** `advance_marker_as()` commits the lifecycle event before calling `_audit()`. If the audit append fails, a `resolved` marker with disposition `valid` or a `superseded` marker remains persisted, while `blocking_markers()` excludes those states. Change to audit-before-commit or a durable pending/outbox state that remains blocking; never clear a hold on an unaudited transition. **Current supersession gap:** the replacement is only checked for existence/different ID. Require matching `decision_id`, `decision_version`, `affected_type` and `affected_ref`, plus a bounded reason persisted in the event.
 
 The reconciliation specification and #100/#104/#119 detector scope themselves to decision lifecycle/approval audit gaps; #115 repairs only missing decision lifecycle events through an API. #102/#106 list held outcome/review states from the decision store but do not reconcile those rows against the audit chain. Marker/outcome reconciliation requires an explicit extension or separate approved design. No marker queue, worker or automatic repair is claimed here.
 
@@ -169,6 +169,8 @@ A marker is not a reason to retain raw personal data indefinitely. Backup expiry
 16. Retention/erasure removes or tombstones only what the approved policy permits.
 17. No simulated preference/action can become an observed outcome through marker propagation.
 18. No marker action enables VALIDATED_PREDICTION_ENABLED or external write-back.
+19. If the anchored audit append fails during acknowledge, resolve-valid or supersede, the prior blocking state remains effective and no unaudited non-blocking state is persisted.
+20. Supersession rejects replacement markers for another decision/version/affected object and requires a bounded persisted reason code.
 
 ## 12. Scratch mutation proofs (never committed)
 
@@ -180,9 +182,11 @@ A marker is not a reason to retain raw personal data indefinitely. Backup expiry
 - Treat reviewed as automatic resolution; the unresolved-dispute test must fail.
 - Add observed values or rationale text to audit payloads; the allow-list/redaction test must fail.
 - Swallow marker/audit partial failure; the reconciliation-state test must fail.
+- Commit `resolved(valid)` or `superseded` before the required audit append; the audit-failure test must fail.
+- Remove same-decision/version/affected-object validation or omit the bounded supersession reason; the scope/reason test must fail.
 
 ## 13. Implementation and rollout gates
 
-The first implementation slice is merged in #116 and was included in Claude's explicit M1 confirmation. Remaining specification work requires a separately owner-approved M2 task: retention/erasure triggers, automatic report/run edge registration, CLI, marker/audit reconciliation and operator evidence. Use synthetic fixtures and temporary local stores only; no network access or external services.
+The first implementation slice is merged in #116 and was included in Claude's explicit M1 confirmation. Before operator reliance, fix the two merged-code review findings above. Remaining specification work requires a separately owner-approved M2 task: retention/erasure triggers, automatic report/run edge registration, CLI, marker/audit reconciliation and operator evidence. Use synthetic fixtures and temporary local stores only; no network access or external services.
 
 No simulation, calibration, backtest, forecast, study mutation, real data, credentials, network connector, external write-back or change to agora/sim/** is authorised by this document. Keep VALIDATED_PREDICTION_ENABLED=False.
