@@ -173,9 +173,10 @@ class BoundPolicy:
 
 
 def is_principal_bound(policy: Any) -> bool:
-    """True only for a BoundPolicy instance (the forgeable surface is the
+    """True only for an exact BoundPolicy instance (the forgeable surface is the
     Principal it carries, which decide_principal re-checks on every call)."""
-    return isinstance(policy, BoundPolicy)
+    # Exact type: a subclass could override __call__ and bypass decide_principal.
+    return type(policy) is BoundPolicy
 
 
 def principal_policy(
