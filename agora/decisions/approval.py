@@ -149,6 +149,8 @@ def propose(
     audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Move a draft to proposed; only its named proposer may submit it."""
+    if _protection.ANCHOR_REQUIRED:
+        _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     if current.status != "draft":
         raise ApprovalTransitionError("only a draft decision can be proposed")
@@ -332,6 +334,8 @@ def reject(
     audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Allow the assigned reviewer to reject a proposal."""
+    if _protection.ANCHOR_REQUIRED:
+        _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     if current.status != "proposed":
         raise ApprovalTransitionError("only a proposed decision can be rejected")
@@ -353,6 +357,8 @@ def expire(
     audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Close an unapproved proposal after its review date has elapsed."""
+    if _protection.ANCHOR_REQUIRED:
+        _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     if current.status != "proposed":
         raise ApprovalTransitionError("only a proposed decision can expire")
@@ -381,6 +387,8 @@ def supersede(
     audit: AuditAppender | None = None,
 ) -> DecisionRecord:
     """Mark a proposed/approved/rejected version superseded without rewriting it."""
+    if _protection.ANCHOR_REQUIRED:
+        _require_anchored(audit)  # fail closed before any state change
     current = _current(store, decision_id, expected_version)
     if current.status not in {"proposed", "approved", "rejected"}:
         raise ApprovalTransitionError("only a proposed, approved, or rejected decision can be superseded")

@@ -92,7 +92,11 @@ def test_scope_tenant_and_assurance_enforced():
 def _setup(tmp_path):
     store = DecisionRecordStore(tmp_path / "d.db")
     store.append(draft_record())
-    proposed = propose(store, "decision-approval-001", 1, actor="analyst", now="2026-11-21T10:00:00Z")
+    from agora import protection
+    with pytest.MonkeyPatch.context() as mp:  # fixture setup only; protected tests keep the gate
+        mp.setattr(protection, "ANCHOR_REQUIRED", False)
+        proposed = propose(store, "decision-approval-001", 1, actor="analyst",
+                           now="2026-11-21T10:00:00Z")
     args = dict(expected_fingerprint=proposed.fingerprint, expected_scope={"project_id": "pilot-1"},
                 expected_evidence_refs=proposed.evidence_refs, now="2026-11-21T11:00:00Z")
     return store, proposed, args

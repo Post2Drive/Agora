@@ -85,7 +85,7 @@ def test_reject_and_expire_are_anchored(tmp_path):
 def test_protected_approval_requires_anchored_writer_before_any_change(tmp_path):
     cp, _ = _provision(tmp_path)
     store = DecisionRecordStore(tmp_path / "d.db"); store.append(draft_record())
-    p = propose(store, "decision-approval-001", 1, actor="analyst", now="2026-11-21T10:00:00Z")
+    p = _relaxed_propose(store)
     plain = AuditChainStore(cp)
     for bad in (None, plain):
         with pytest.raises(AnchorRequiredError):
@@ -109,9 +109,18 @@ def test_anchor_failure_surfaces_with_committed_transition(tmp_path):
     store.close()
 
 
+def _relaxed_propose(store, **kw):
+    """Fixture setup only: build a proposed decision with the anchor gate relaxed."""
+    from agora import protection
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(protection, "ANCHOR_REQUIRED", False)
+        return propose(store, "decision-approval-001", 1, actor="analyst",
+                       now="2026-11-21T10:00:00Z", **kw)
+
+
 def _approved(tmp_path):
     ds = DecisionRecordStore(tmp_path / "dd.db"); ds.append(draft_record())
-    p = propose(ds, "decision-approval-001", 1, actor="analyst", now="2026-11-21T10:00:00Z")
+    p = _relaxed_propose(ds)
     a = approve(ds, p.decision_id, p.version, **approve_args(p))
     return ds, DecisionOutcomeStore(ds), a
 
