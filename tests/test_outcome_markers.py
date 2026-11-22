@@ -499,3 +499,71 @@ def test_append_failure_without_committed_event_still_fails_and_stays_pending(tm
     with pytest.raises(MarkerError, match="could not be appended"):
         replay_pending_audits(store, Down())
     assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
+
+
+# ---- stable transition event id + anchored-valid lookup (M2) ----
+def _transition_events(a):
+    return a.chain.db.execute(
+        "SELECT event_id FROM audit_events WHERE event_id LIKE 'decision_marker_acknowledged-%'").fetchall()
+
+
+def test_transition_crash_after_append_before_commit_retries_without_duplicate_event(tmp_path, monkeypatch):
+    store, approved, out, m = _lifecycle_ready(tmp_path)
+    a = _anchored(tmp_path)
+    class Db:
+        armed = False
+        def __init__(self, db): self._d = db
+        def __getattr__(self, n): return getattr(self._d, n)
+        def execute(self, sql, *a):
+            if sql.startswith("INSERT INTO outcome_marker_events"):
+                self.armed = True
+            return self._d.execute(sql, *a)
+        def commit(self):
+            if self.armed:
+                raise OSError("crash before commit")
+            return self._d.commit()
+    real_db = store.db
+    store.db = Db(real_db)
+    with pytest.raises(OSError):
+        _adv(store, m, "acknowledged", audit=a)
+    store.db = real_db
+    assert marker_view(store, m["marker_id"])["state"] == "open"  # transition rolled back; still blocking
+    assert len(_transition_events(a)) == 1
+    done = _adv(store, m, "acknowledged", audit=a)  # retry: same stable id, no second event
+    assert done["state"] == "acknowledged"
+    assert len(_transition_events(a)) == 1 and a.verify()["valid"]
+
+
+def test_transition_event_id_is_stable_per_marker_and_sequence(tmp_path):
+    store, approved, out, m = _lifecycle_ready(tmp_path)
+    a = _anchored(tmp_path)
+    seq = marker_view(store, m["marker_id"])["event_seq"] + 1
+    _adv(store, m, "acknowledged", audit=a)
+    ids = [r[0] for r in _transition_events(a)]
+    assert ids == [f"decision_marker_acknowledged-{m['marker_id']}-{seq}"]
+
+
+def test_transition_with_forged_event_under_same_id_fails_closed(tmp_path):
+    store, approved, out, m = _lifecycle_ready(tmp_path)
+    a = _anchored(tmp_path)
+    seq = marker_view(store, m["marker_id"])["event_seq"] + 1
+    a.append({"event_id": f"decision_marker_acknowledged-{m['marker_id']}-{seq}", "event_type": "forged",
+              "subject_id": "x", "operation": "decision_outcome", "decision": "allow", "reason": "forged"})
+    with pytest.raises(MarkerError, match="different event"):
+        _adv(store, m, "acknowledged", audit=a)
+    assert marker_view(store, m["marker_id"])["state"] == "open"
+
+
+def test_find_event_refuses_unanchored_tail_and_marker_stays_pending(tmp_path, monkeypatch):
+    from agora.audit_anchor import AnchorRequiredError
+    store, approved, out = _disputed(tmp_path)
+    a = _anchored(tmp_path)
+    monkeypatch.setattr(a.anchors, "advance", lambda *x, **k: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=a)  # chain append commits, anchor write fails
+    assert _chain_count(a) == 1
+    with pytest.raises(AnchorRequiredError):
+        a.find_event("anything")
+    with pytest.raises(MarkerError):
+        replay_pending_audits(store, a)  # must not treat the unanchored event as delivered
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
