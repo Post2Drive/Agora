@@ -7,7 +7,7 @@
 
 ## 1. Executive assessment
 
-Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #104). PRs #94–#104 are merged; no PR was open at the start of this documentation refresh.
+Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
 
 The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100 adds only a read-only decision-lifecycle reconciliation detector; #102 adds `agora outcomes held --decisions <db>` for disputed, unreviewed or invalid review histories and orphan review rows. The held list is not a dependency marker or propagation system; #106 also maps connection-open SQLite failures to `STORE_UNREADABLE` / exit 2. Scenario-input remains disconnected from the engine.
 
@@ -75,7 +75,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
 | Anchored audit chain | **Available — local-sidecar API; lifecycle writer requirement remains partial** | #99 requires an anchored writer for protected policy-denial events. Low-level decision lifecycle methods still accept optional audit arguments; the anchor remains `local_sidecar`, and coordinated rollback plus the Linux lock-removal mutation gap remain limitations. |
 | Observed outcome recording/review | **Available — Principal public routes; private internals remain** | #92 retires public role-string exports and #96 removes public anchor opt-outs. #102 adds a separate read-only held-outcome list; #106 normalizes connection-open SQLite failures to `STORE_UNREADABLE` / exit 2. Neither creates dependency markers or changes outcomes. Private helpers still have optional audit internals. |
-| Outcome dependency review markers | **Not implemented** | #60 remains a design specification; #102 only lists disputed/unreviewed/invalid outcomes and orphan review rows. No marker store, dependency graph, propagation or marker lifecycle exists. |
+| Outcome dependency review markers | **Not implemented** | #60 remains a design specification; #102/#106 list disputed/unreviewed/invalid outcomes and orphan review rows, with connection-open failures blocked as `STORE_UNREADABLE`. No marker store, dependency graph, propagation or marker lifecycle exists. |
 | Decision/audit reconciliation | **Partial — hardened read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval rows; #104 validates source transition/status/actor/method/timestamp against the immutable payload, validates audit operation and exact resource IDs, and closes connections safely on partial open (run `44968039923`, 4/4). It still has no sidecar-anchor verification, queue, repair or outcome/review reconciliation. #102's held list is separate. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results and first-denial stop; #94 keeps CLI pilot/data dispatch engine-import-free. It still does not persist the M2 run record or call `build_scenario_input()` / the engine. |
@@ -149,7 +149,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `112030a219e2d6f7278a46a95be2468634bf563a` after #104 merged. Exact-head CI for #99, #100, #102 and #104 passed all four matrix jobs; no PR was open at the start of this documentation refresh.
+This assessment is refreshed against main `112030a219e2d6f7278a46a95be2468634bf563a` after #106 merged. Exact-head CI for #99, #100, #102, #104 and #106 passed all four matrix jobs; ChatGPT's docs-only PR #105 is the only open PR.
 
 ## 7. Permanent safety boundaries
 
