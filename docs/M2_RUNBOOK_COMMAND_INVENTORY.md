@@ -2,7 +2,7 @@
 
 **Status:** Draft acceptance inventory for Claude's M2 item 8. This is a documentation contract, not evidence that commands have been executed. The automated test must run only in temporary directories using the checked-in synthetic fixture. It must never invoke the simulation engine, network, connectors, credentials, real data or `agora/sim/**`.
 
-**Baseline:** main `c123a426928e2df90bfdea27819b087610825472` (22 November 2026). #127 backup hardening, #130 partial strict run-record loader/non-empty-workdir guard, #132 fixture integrity/direct workdir-root symlink hardening and #134 direct backup/verify/restore root symlink/reparse-point refusal are merged. Exact-head CI for #132 (`44997320523`) and #134 (`44999538699`) passed 4/4. Clean-install proof and workdir-ancestor symlink coverage remain open.
+**Baseline:** main `c123a426928e2df90bfdea27819b087610825472` (22 November 2026). #127 backup hardening, #130 partial strict run-record loader/non-empty-workdir guard, #132 fixture integrity/direct workdir-root symlink hardening and #134 direct backup/verify/restore root symlink/reparse-point refusal are merged. Exact-head CI for #132 (`44997320523`) and #134 (`44999538699`) passed 4/4. #135 (main `0d39be7a`, CI `45001811790`, 4/4) refuses symlinked/reparse workdir ancestors and filters linked dirs from `list_fixtures`. Clean-install proof remains open.
 
 ## 1. Test harness rules
 
@@ -29,7 +29,7 @@
 | P07 | Symlinked fixture path | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_UNSAFE_PATH`; merged #132 rejects a symlinked fixture directory, manifest or payload file before reading it. Add explicit per-file coverage for `schema.json` and `binding.json`; current test covers `units.csv` and `manifest.json`. |
 | P08 | Empty fixture version | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_INVALID`; merged #132 rejects empty/whitespace-only fixture versions before any project/store creation. |
 | P09 | Manifest digest mismatch | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_HASH_MISMATCH`; merged #132 independently pins the checked-in manifest digest, so editing manifest and payload together does not pass. |
-| P10 | Symlinked workdir ancestor | `pilot start --fixture synthetic-units-v1 --workdir <symlink-parent>/new-workdir` | 2 | **Not implemented:** expect `WORKDIR_UNSAFE_PATH` before any directory creation; prove an outside sentinel/target remains untouched. #132 checks only the final `workdir` component, so a non-existent child beneath a symlinked parent can still be created outside the intended root. |
+| P10 | Symlinked workdir ancestor | `pilot start --fixture synthetic-units-v1 --workdir <symlink-parent>/new-workdir` | 2 | **Implemented in #135 (closed):** `WORKDIR_UNSAFE_PATH` before any directory creation; outside target untouched; lstat errors fail closed. |
 | D01 | CSV import | `data import-csv --project <project> --csv <synthetic-csv> --schema <schema> --role scenario_input` | 0 | Prints `imported:` plus opaque import ID; no row values printed. |
 | D02 | Snapshot list | `data snapshots --project <project>` | 0 | Includes the exact import ID and metadata fields; no raw row values. |
 | D03 | Import metadata | `data show --project <project> --import-id <import-id>` | 0 | Prints the selected manifest metadata only. |
@@ -63,7 +63,7 @@
 - `agora outcomes held` is read-only. Exit 1 means a hold exists; it is not a command failure.
 - `agora reconcile` is a read-only detector. Repair remains an API-only operation and is not part of this command inventory.
 - `agora audit timeline` verifies the hash chain before displaying events; `agora audit verify` checks the chain against the local sidecar anchor. The sidecar cannot detect coordinated rollback of both chain and anchor.
-- Backup/restore rows B01–B10 describe merged behavior and remaining snapshot requirements. #134 implements direct project/destination/backup/data/manifest/restore-target root symlink/reparse-point refusal (B08/B09); B11/B12 capture unimplemented ancestor/nested pre-read and lstat-error cases. #134 checks only final components; source-pair lock/exact chain ID/sequence/head equality remains open. #130 adds partial strict run-record checks but not the full run-provenance schema. #132 completes P06–P09 direct fixture/workdir-root hardening; P10 records the remaining workdir-ancestor symlink bypass.
+- Backup/restore rows B01–B10 describe merged behavior and remaining snapshot requirements. #134 implements direct project/destination/backup/data/manifest/restore-target root symlink/reparse-point refusal (B08/B09); B11/B12 capture unimplemented ancestor/nested pre-read and lstat-error cases. #134 checks only final components; source-pair lock/exact chain ID/sequence/head equality remains open. #130 adds partial strict run-record checks but not the full run-provenance schema. #132 completes P06–P09 direct fixture/workdir-root hardening; P10 (workdir-ancestor) is closed by #135.
 
 ## 4. Acceptance gate for item 8
 
