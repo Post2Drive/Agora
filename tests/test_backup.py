@@ -226,3 +226,70 @@ def test_restore_rehashes_every_copied_file(project, tmp_path, monkeypatch):
         restore(tmp_path / "bk", tmp_path / "restored")
     assert e.value.code == "RESTORED_NOT_INTACT"
     assert not (tmp_path / "restored").exists()
+
+
+# --- root-level symlink refusal (M2 item 3 follow-up) -----------------------------------------
+
+def test_symlinked_source_root_is_refused(project, tmp_path):
+    link = tmp_path / "proj_link"
+    _symlink_or_skip(link, project)
+    with pytest.raises(BackupBlocked) as e:
+        backup(link, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "bk").exists()
+
+
+def test_symlinked_backup_destination_is_refused_and_outside_untouched(project, tmp_path):
+    outside = tmp_path / "outside_dir"
+    outside.mkdir()
+    link = tmp_path / "bk_link"
+    _symlink_or_skip(link, outside)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, link)
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []
+
+
+def test_symlinked_backup_root_data_and_manifest_block_verify_and_restore(project, tmp_path):
+    backup(project, tmp_path / "bk")
+    root_link = tmp_path / "bk_root_link"
+    _symlink_or_skip(root_link, tmp_path / "bk")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(root_link)
+    assert e.value.code == "UNSAFE_PATH"
+    with pytest.raises(BackupBlocked) as e:
+        restore(root_link, tmp_path / "r1")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "r1").exists()
+
+    # symlinked data directory inside a real backup
+    real = tmp_path / "bk2"
+    backup(project, real)
+    moved = tmp_path / "data_elsewhere"
+    (real / "data").rename(moved)
+    _symlink_or_skip(real / "data", moved)
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(real)
+    assert e.value.code == "UNSAFE_PATH"
+
+    # symlinked manifest
+    real3 = tmp_path / "bk3"
+    backup(project, real3)
+    m_out = tmp_path / "manifest_elsewhere.json"
+    (real3 / MANIFEST).rename(m_out)
+    _symlink_or_skip(real3 / MANIFEST, m_out)
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(real3)
+    assert e.value.code == "UNSAFE_PATH"
+
+
+def test_symlinked_restore_target_is_refused_and_outside_untouched(project, tmp_path):
+    backup(project, tmp_path / "bk")
+    outside = tmp_path / "outside_dir"
+    outside.mkdir()
+    link = tmp_path / "t_link"
+    _symlink_or_skip(link, outside)
+    with pytest.raises(BackupBlocked) as e:
+        restore(tmp_path / "bk", link)
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -64,11 +65,27 @@ def _sha(path: Path) -> str:
     return h.hexdigest()
 
 
+def _is_link(p: Path) -> bool:
+    """Symlink or Windows reparse point (junction) on the final path component."""
+    if p.is_symlink():
+        return True
+    try:
+        return bool(getattr(os.lstat(p), "st_file_attributes", 0) & 0x400)
+    except OSError:
+        return False
+
+
+def _refuse_links(*paths: Path) -> None:
+    for p in paths:
+        if _is_link(p):
+            raise BackupBlocked("UNSAFE_PATH")
+
+
 def _files(root: Path) -> list[str]:
     """Plain files only. Any symbolic link (file or directory) is refused, never followed."""
     out: list[str] = []
     for p in root.rglob("*"):
-        if p.is_symlink():
+        if _is_link(p):
             raise BackupBlocked("UNSAFE_PATH")
         if p.is_file():
             out.append(p.relative_to(root).as_posix())
@@ -140,6 +157,7 @@ def _cleanup(dest: Path, existed: bool) -> None:
 
 def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHAIN_ID) -> dict[str, Any]:
     project, dest = Path(project), Path(dest)
+    _refuse_links(project, dest)
     if not (project / CHAIN_REL).is_file() or not (project / ANCHOR_REL).is_file():
         raise BackupBlocked("SOURCE_NOT_FOUND")
     if not _is_synthetic_project(project):
@@ -169,6 +187,7 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
 
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     root = Path(backup_dir)
+    _refuse_links(root, root / MANIFEST, root / "data")
     listed, chain_id = _read_manifest(root)
     data = root / "data"
     actual = _files(data) if data.is_dir() else []
@@ -189,6 +208,7 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
 
 def restore(backup_dir: str | Path, target: str | Path) -> dict[str, Any]:
     backup_dir, target = Path(backup_dir), Path(target)
+    _refuse_links(target)
     info = verify_backup(backup_dir)
     _check_dest(target)
     existed = target.exists()
