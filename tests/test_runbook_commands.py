@@ -34,6 +34,8 @@ COVERED_ELSEWHERE = {
     "P08": ("tests/test_pilot_fixture.py", "test_empty_fixture_version_refused"),
     "P09": ("tests/test_pilot_fixture.py", "test_manifest_and_payload_edited_together_fails_pin"),
     "B10": ("tests/test_backup.py", "test_chain_changing_during_copy_is_detected_and_cleaned"),
+    "B12": ("tests/test_runbook_commands.py",
+            "test_B12_lstat_failure_on_an_intermediate_ancestor_fails_closed"),
 }
 
 # ID -> exact argv template as written in the inventory (placeholders in <angle brackets>).
@@ -74,7 +76,7 @@ TEMPLATES = {
 EXPECTED_EXIT = {
     "P01": 0, "P02": 0, "P03": 2, "P04": 2, "P05": 2, "P06": 2, "P10": 2, "P11": 2,
     "D01": 2, "D02": 0, "D03": 0, "D04": 0, "D05": 2,
-    "A01": 0, "A02": 1, "A03": 0, "A04": 1, "R01": 0, "R02": 2, "H01": 0, "H02": 2,
+    "A01": 0, "A02": 1, "A03": 0, "A04": 1, "R01": 0, "R02": 2, "H01": {0, 1}, "H02": 2,
     "B01": 0, "B02": 0, "B03": 0, "B04": 2, "B05": 2, "B06": 2, "B07": 2, "B08": 2,
     "B09": 2, "B11": 2, "B13": 2,
 }
@@ -96,13 +98,51 @@ def _inventory_rows() -> dict[str, dict]:
 
 def test_inventory_is_covered_exactly_and_argv_templates_match():
     rows = _inventory_rows()
-    covered = set(TEMPLATES) | set(COVERED_ELSEWHERE) | {"B12"}
+    covered = set(TEMPLATES) | set(COVERED_ELSEWHERE)
     assert set(rows) == covered, f"inventory/test mismatch: {set(rows) ^ covered}"
     for rid, tpl in TEMPLATES.items():
         assert rows[rid]["argv"] == tpl, f"{rid}: inventory argv changed: {rows[rid]['argv']!r}"
+        got = {int(x) for x in re.findall(r"\d+", rows[rid]["exit"])}
+        assert re.fullmatch(r"\d+( or \d+)?", rows[rid]["exit"]), rows[rid]["exit"]
         want = EXPECTED_EXIT[rid]
-        assert str(want) in rows[rid]["exit"], f"{rid}: inventory exit changed: {rows[rid]['exit']!r}"
+        want = set(want) if isinstance(want, (set, frozenset)) else {want}
+        assert got == want, f"{rid}: inventory exit changed: {rows[rid]['exit']!r}"
     assert set(EXPECTED_EXIT) == set(TEMPLATES)
+
+
+RUNBOOK = ROOT / "docs" / "OPERATOR_RUNBOOK.md"
+
+
+def _argv_prefix(argv: str) -> tuple[str, ...]:
+    """Leading literal words of an argv (command path), stopping at the first option/placeholder."""
+    out = []
+    for w in argv.split():
+        if w.startswith("-") or w.startswith("<"):
+            break
+        out.append(w)
+    return tuple(out)
+
+
+def test_operator_runbook_commands_are_bound_to_the_inventory():
+    """Every `agora ...` command shown in a code fence of OPERATOR_RUNBOOK.md must be a command
+    path that the executed inventory covers, with only inventory-known option names."""
+    inv = _inventory_rows()
+    known_paths = {_argv_prefix(r["argv"].split("` or `")[0]) for r in inv.values()}
+    known_opts = {w for r in inv.values() for w in r["argv"].split() if w.startswith("--")}
+    text = RUNBOOK.read_text(encoding="utf-8")
+    fences = re.findall(r"```[a-z]*\n(.*?)```", text, flags=re.S)
+    seen = 0
+    for block in fences:
+        for line in block.splitlines():
+            line = line.strip()
+            if not line.startswith("agora "):
+                continue
+            seen += 1
+            argv = line[len("agora "):]
+            assert _argv_prefix(argv) in known_paths, f"runbook command not in inventory: {line!r}"
+            opts = {w for w in argv.split() if w.startswith("--")}
+            assert opts <= known_opts, f"runbook option not in inventory: {line!r}"
+    assert seen >= 5, "runbook shows too few executable commands to bind"
 
 
 @pytest.mark.parametrize("rid", sorted(COVERED_ELSEWHERE))
