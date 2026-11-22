@@ -104,7 +104,7 @@ An authorised reviewer should:
 
 **Separation of duties:** the actor who recorded an outcome cannot review or resolve a hold for that outcome. A proposer/approver of a linked decision does not gain marker-resolution authority merely from that role. The reviewer must be independently authorised for the exact scope.
 
-**Current identity limitation:** #58 provides only a synthetic `approve_as()` slice; other call sites and outcome recording/review still have caller-supplied role/subject inputs. Do not treat a caller-supplied role string as trusted reviewer identity or use this manual procedure for production decisions. The owner must separately establish the authorised reviewer and approve the scope.
+**Current identity limitation:** #92 retires the public role-string outcome record/review exports; public writes use `record_outcome_as()` / `review_outcome_as()` with Principal-derived actor identity, and #109 guards decision lifecycle transitions with a required anchored writer when `ANCHOR_REQUIRED=True`. The PDP and permission compatibility surface remains partly role-string based and the trusted-principal adapter remains synthetic-only. Do not treat a caller-supplied role string as trusted reviewer identity or use this manual procedure for production decisions. The owner must separately establish the authorised reviewer and approve the scope.
 
 “Reviewed” is not equivalent to “valid.” The #53 outcome review state and this manual dependency hold are separate controls. A reviewed outcome does not automatically resolve an earlier hold.
 

@@ -1,7 +1,7 @@
 # Operator Runbook — Governed Synthetic Pilot
 
 **Status:** Draft skeleton only; not an executable runbook, rehearsal record, approval or readiness declaration.  
-**Assessment base:** `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026).
+**Assessment base:** `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026).
 **Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
 ## 1. Scope and safety
@@ -12,12 +12,12 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `914e28e2` | Evidence / missing item |
+| M2 requirement | Mainline status at `9031dba2` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
 | Guided end-to-end run with per-step results and clear gate-denial stops | **AVAILABLE — partial M2 evidence** | #88 merges `agora pilot --workdir`; it reports nine stages, stops at the first denial/failure and marks later stages skipped. Exact-head CI run `44945307064` passed 4/4. It does not persist the M2 run record or use a checked-in fixture set. |
-| Anchor and policy checks enabled by default everywhere | **PARTIAL** | #96 removes public policy/anchor opt-outs; #97 removes the unanchored fallback; #99 removes the direct helper override and requires `require_anchored()` for protected denial writes. Low-level decision lifecycle methods still accept optional audit arguments; prove all production service/harness paths supply the anchored writer. `local_sidecar` trust remains limited. |
+| Anchor and policy checks enabled by default everywhere | **PARTIAL — public entry points guarded** | #96 removes public policy/anchor opt-outs; #97 removes the unanchored fallback; #99 removes the direct helper override and requires `require_anchored()` for protected denial writes. #109 adds pre-mutation guards to `propose()`, `reject()`, `expire()` and `supersede()` when `ANCHOR_REQUIRED=True`; optional annotations do not permit `None` or plain writers on protected paths. Principal-first PDP/permission migration and `local_sidecar` trust limitations remain. |
 | Legacy paths removed or test-only | **PARTIAL** | #92 retires public role-string outcome exports; #96 removes public wrapper opt-outs; #97 removes the legacy approval env switch and confines enablement to the test-only module flag. |
 | Readable audit timeline and plain-language chain/anchor verification | **COMPONENTS AVAILABLE (#107); runbook test pending** | `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` lists one decision's stored transitions and related audit events after hash-chain verification. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local sidecar and prints a plain-language verdict plus the `local_sidecar` trust note. Timeline does not itself compare the anchor; run verify separately. |
 | Backup/restore and tamper drill | **NOT YET** | Design guidance exists; no operator commands, tested procedure or logged drill is evidenced. |
@@ -32,7 +32,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 - **AVAILABLE — Python APIs:** ontology binding/materialization, scenario-input construction, decision records, principal-native `approve_as()`, outcome/review APIs and local anchored-audit primitives.
 - **PROTECTED — policy enforcement:** #96 removes public `require_policy` opt-out kwargs; #97 removes the unanchored `audit=None` fallback; #99 removes the direct helper override and requires an anchored writer for protected denial events.
 - **PARTIAL — principal approval:** #80/#84 provide `approve_as()` with server-derived policy inputs; #96 removes its public anchor opt-out kwarg. #97 removes the legacy approval env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains.
-- **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #96 removes public `require_anchored=False` kwargs, #92 retires public role-string outcome exports, #97 removes the unanchored denial fallback, and #99 validates the policy-denial writer. Trust remains `local_sidecar`; low-level lifecycle and private outcome helpers still have optional audit arguments.
+- **PARTIAL — anchored audit:** #71/#74/#75 wire append points; #96 removes public `require_anchored=False` kwargs, #92 retires public role-string outcome exports, #97 removes the unanchored denial fallback, #99 validates the policy-denial writer, and #109 guards the remaining decision lifecycle transitions before mutation. Trust remains `local_sidecar`; low-level lifecycle signatures retain optional annotations but protected calls refuse missing/plain writers, while private outcome helpers remain internal.
 - **AVAILABLE — guided synthetic command:** `agora pilot --workdir <new-empty-directory>` (#88) runs nine stages and stops on first denial without invoking the engine. #94 keeps CLI pilot/data dispatch engine-import-free; fresh-process coverage exercises `--help`, not a complete `--workdir` invocation.
 - **AVAILABLE — read-only audit commands (#107):** `agora audit timeline` lists one decision's transitions/related audit events after hash-chain verification; `agora audit verify` compares the chain with the local anchor and reports the local-sidecar trust limitation. They do not write, repair or bootstrap.
 - **PARTIAL — reconciliation and held outcomes:** #100/#104 implement a read-only decision lifecycle detector with immutable source metadata and audit-event validation plus partial-open cleanup; it does not verify the anchor, reconcile outcome/review rows, persist a queue or repair gaps. #102/#106 add read-only held-outcome listing with fail-closed connection-open handling; no dependency marker store or propagation exists.

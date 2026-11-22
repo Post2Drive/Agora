@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106), and read-only audit timeline/chain-vs-anchor verification commands (#107) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106), read-only audit timeline/chain-vs-anchor verification commands (#107), and pre-mutation decision-lifecycle anchor guards (#109) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `914e28e24c5f49b45173e595d21e02308a827c0f`, after PRs #94–#107 merged.
+The following inventory was checked against main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf`, after PRs #94–#109 merged.
 
 ### 2.1 Audit primitives
 
@@ -36,7 +36,7 @@ The following inventory was checked against main at `914e28e24c5f49b45173e595d21
 - `expire()`
 - `supersede()`
 
-The shared `_audit()` helper calls `audit.append(event)` after the decision transition has been stored. If the append fails, it raises `ApprovalTransitionError`; it does not roll back the already committed decision transition. If `audit=None`, the shared audit append is skipped. PR #75 introduces the structural `AuditAppender` protocol, so `AnchoredAuditChain` satisfies the declared writer contract. The parameter remains optional; this is not a protected-mode requirement.
+The shared `_audit()` helper calls `audit.append(event)` after the decision transition has been stored. If the append fails, it raises `ApprovalTransitionError`; it does not roll back the already committed decision transition. PR #75 introduces the structural `AuditAppender` protocol, so `AnchoredAuditChain` satisfies the declared writer contract. The Python parameter remains optional, but #109 adds an entry guard to `propose()`, `reject()`, `expire()` and `supersede()`: when production-default `ANCHOR_REQUIRED=True`, `require_anchored(audit)` runs before `_current()` and before any decision-store mutation, so `None` and plain writers are refused. `approve_as()` already has the corresponding guard; legacy `approve()` remains disabled except through the test-only `LEGACY_APPROVE_ENABLED` flag. The separate decision/audit stores remain non-atomic: if the audit append fails after the decision transition is stored, the transition remains committed and must not be described as fully audited.
 
 ### 2.3 Decision outcomes and reviews
 
@@ -46,7 +46,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires `require_anchored()` for protected policy-denial writes; `None`, a plain `AuditChainStore` and duck-typed non-anchored writers are refused when `ANCHOR_REQUIRED=True`. The test-only protection flags remain confined to test fixtures. Preserve this fail-closed behavior and policy-before-source-read ordering.
+`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires `require_anchored()` for protected policy-denial writes; `None`, a plain `AuditChainStore` and duck-typed non-anchored writers are refused when `ANCHOR_REQUIRED=True`. This proves policy presence and denial-audit anchoring, not policy provenance: `enforce_policy()` accepts any caller-supplied `(operation, resource)` callable, and `principal_policy()` currently returns an ordinary closure. A custom allow-returning callable can pass the presence check. Principal-bound policy validation remains an M1 gate. Preserve the fail-closed denial behavior and policy-before-source-read ordering.
 
 The shared `enforce_policy()` boundary is called by:
 
@@ -86,7 +86,7 @@ Pass the anchored writer through the existing `audit` parameter for `propose`, `
 
 - Replace the concrete `AuditChainStore | None` annotation with the structural appender type.
 - Preserve each existing event type, event ID, resource IDs, reason code and policy version.
-- Make the production service/harness require an anchored writer for protected lifecycle transitions; tests may inject a fake appender to prove failure paths.
+- Enforce the anchored-writer requirement at each protected lifecycle entry point before state reads or writes. #109 adds this guard to `propose()`, `reject()`, `expire()` and `supersede()`; retain tests for missing/plain writers and no state change. Tests may inject a fake appender only to prove bounded failure paths.
 - Preserve the current failure semantics: the decision transition may already be committed when chain/anchor append fails. Surface that partial state explicitly; do not attempt to roll back or rewrite the decision record.
 - Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. It still does not verify the sidecar anchor, persist a queue or repair gaps; #102/#106's held-outcome list is separate; #106 only normalizes connection-open errors and does not reconcile outcomes with the audit chain.
 
@@ -205,13 +205,13 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage D — policy-denial and data-boundary threading: DIRECT HELPER HARDENING IMPLEMENTED.** #96 removes `require_policy` kwargs from `ingest_csv()`, `materialize_instances()` and `build_scenario_input()`. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct policy override and validates supplied writers with `require_anchored()`. Keep the early-denial tests and anchored-writer requirement.
 
-**Stage B — decision lifecycle: PRINCIPAL ANCHOR REQUIRED BY PUBLIC API.** #96 removes the `require_anchored` kwarg from `approve_as()`. #97 removes the `AGORA_TEST_ONLY_LEGACY_APPROVE` env switch; legacy `approve()` is disabled by default and enabled only by the test-only `LEGACY_APPROVE_ENABLED` module flag. Low-level `propose`/`reject`/`expire`/`supersede` still accept optional audit arguments; the production service/harness must always supply the anchored writer.
+**Stage B — decision lifecycle: PROTECTED ENTRY-POINT GUARDS IMPLEMENTED.** #96 removes the `require_anchored` kwarg from `approve_as()`. #97 removes the `AGORA_TEST_ONLY_LEGACY_APPROVE` env switch; legacy `approve()` is disabled by default and enabled only by the test-only `LEGACY_APPROVE_ENABLED` module flag. #109 adds `require_anchored(audit)` at the start of `propose()`, `reject()`, `expire()` and `supersede()` when `ANCHOR_REQUIRED=True`, before decision state can be read or mutated. Their signatures still annotate audit as optional, but `None` and plain writers fail closed on the protected path.
 
 **Stage C — outcome recording/review: PUBLIC PRINCIPAL ROUTES ONLY.** #92 removes public role-string `record_outcome()` / `review_outcome()` exports; #96 removes public `require_anchored` opt-out kwargs from `record_outcome_as()` / `review_outcome_as()`. Private helpers and audit-optional internals remain implementation details, not public governed routes.
 
 **Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never calls the simulation engine. #94 removes the module-level `.sim.engine` import from `agora.cli`; engine imports are lazy inside simulation-dependent handlers. It does not make lower-level APIs universally non-bypassable.
 
-**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553`, #97 run `44958568446`, #99 run `44960946006`, #100 run `44963254416`, #102 run `44965953082` and #104 run `44968039923`, and #106 run `44970435296`, and #107 run `44972864246` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553`, #97 run `44958568446`, #99 run `44960946006`, #100 run `44963254416`, #102 run `44965953082`, #104 run `44968039923`, #106 run `44970435296`, #107 run `44972864246` and #109 run `44975437439` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
