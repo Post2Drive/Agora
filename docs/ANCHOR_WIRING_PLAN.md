@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Review still finds a cross-store marker commit-failure gap and #120 backup/restore consistency/scope gaps. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119/#122), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. #122 closes the original marker audit-order/supersession and reconcile verify/classify race findings. Residuals: marker DB commit failure after successful audit append can leave an orphan audit event; reconcile's lock helper may create a `.lock` metadata file and its concurrency test uses a fixed sleep. #120 backup/restore scope and consistency gaps remain. #125's checked-in fixture/start component is merged, but manifest pinning/symlink/workdir validation remain M2 hardening items. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `969a040a497668740d20e1ace83841046639b2d6` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `27269a0b939e966dc5eee72c915562e68a61ec67`, after #121 docs, #122 hardening and #123 run-record implementation merged. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2; #123 adds an initial run record but not the complete provenance envelope. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `969a040a497668740d20e1ace83841046639b2d6`, after #125's fixture/start merge. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2 after #122. #123/#125 provide only a partial run record; no M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
