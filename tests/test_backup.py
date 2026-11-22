@@ -353,3 +353,50 @@ def test_lstat_error_fails_closed(project, tmp_path, monkeypatch):
         backup(project, tmp_path / "bk")
     assert e.value.code == "UNSAFE_PATH"
     assert not (tmp_path / "bk").exists()
+
+
+def test_manifest_records_exact_chain_head(project, tmp_path):
+    backup(project, tmp_path / "bk")
+    m = json.loads((tmp_path / "bk" / MANIFEST).read_text(encoding="utf-8"))
+    from agora.audit_anchor import verify_anchored_readonly
+    v = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, "synthetic-pilot-chain")
+    assert m["chain_sequence"] == v["sequence"] and m["chain_head_hash"] == v["head_hash"]
+
+
+def test_same_status_different_head_during_copy_is_snapshot_changed(project, tmp_path, monkeypatch):
+    import agora.backup as mod
+    real, calls = mod.verify_anchored_readonly, []
+
+    def fake(*a, **k):
+        v = dict(real(*a, **k))
+        calls.append(1)
+        if len(calls) == 2:  # the copy verifies "valid, same status" but at a different head
+            v["sequence"] = v["sequence"] + 1
+        return v
+    monkeypatch.setattr(mod, "verify_anchored_readonly", fake)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "SNAPSHOT_CHANGED"
+    assert not (tmp_path / "bk").exists()
+
+
+@pytest.mark.parametrize("edit", ["seq", "hash", "strip_seq", "strip_hash"])
+def test_verify_rejects_manifest_head_mismatch_or_missing(project, tmp_path, edit):
+    backup(project, tmp_path / "bk")
+    mp = tmp_path / "bk" / MANIFEST
+    m = json.loads(mp.read_text(encoding="utf-8"))
+    if edit == "seq":
+        m["chain_sequence"] += 1
+    elif edit == "hash":
+        m["chain_head_hash"] = "0" * 64
+    elif edit == "strip_seq":
+        del m["chain_sequence"]
+    else:
+        del m["chain_head_hash"]
+    mp.write_text(json.dumps(m), encoding="utf-8")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(tmp_path / "bk")
+    assert e.value.code == "BACKUP_NOT_INTACT"
+    with pytest.raises(BackupBlocked):
+        restore(tmp_path / "bk", tmp_path / "r")
+    assert not (tmp_path / "r").exists()
