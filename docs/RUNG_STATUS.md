@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026), including merged implementation PRs through #135 and documentation PR #133. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2. #125, #127, #130, #132, #134 and #135 are on main. Remaining M2 exit evidence is incomplete.
+**Assessment base:** `main` at `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026), including merged implementation PRs through #136 and documentation PRs #129/#133. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2. #125, #127, #130, #132, #134, #135 and #136 are on main. Remaining M2 exit evidence is incomplete.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
