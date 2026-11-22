@@ -2,7 +2,7 @@
 
 **Status:** Draft acceptance inventory for Claude's M2 item 8. This is a documentation contract, not evidence that commands have been executed. The automated test must run only in temporary directories using the checked-in synthetic fixture. It must never invoke the simulation engine, network, connectors, credentials, real data or `agora/sim/**`.
 
-**Baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026). #127 backup hardening, #130 partial strict run-record loader/non-empty-workdir guard and #132 fixture integrity/direct workdir-root symlink hardening are merged. Exact-head CI for #132 (`44997320523`) passed 4/4. Clean-install proof and workdir-ancestor symlink coverage remain open.
+**Baseline:** main `c123a426928e2df90bfdea27819b087610825472` (22 November 2026). #127 backup hardening, #130 partial strict run-record loader/non-empty-workdir guard, #132 fixture integrity/direct workdir-root symlink hardening and #134 direct backup/verify/restore root symlink/reparse-point refusal are merged. Exact-head CI for #132 (`44997320523`) and #134 (`44999538699`) passed 4/4. Clean-install proof and workdir-ancestor symlink coverage remain open.
 
 ## 1. Test harness rules
 
@@ -50,9 +50,11 @@
 | B05 | In-tree symlink refusal | `backup --project <project-with-outside-symlink> --dest <new-backup-dir>` | 2 | `UNSAFE_PATH`; outside target not read/copied; no destination. |
 | B06 | Malformed manifest refusal | `backup verify --backup <malformed-backup>` | 2 | `BACKUP_MANIFEST_INVALID`; stable blocked result, no uncaught traceback. |
 | B07 | Restore tamper refusal | `restore --backup <tampered-backup> --target <new-target-dir>` | 2 | Stable `BACKUP_FILE_MODIFIED`, `BACKUP_NOT_INTACT` or `RESTORED_NOT_INTACT` result; partial target removed; backup unchanged. |
-| B08 | Project-root symlink refusal | `backup --project <symlink-to-outside-project> --dest <new-backup-dir>` | 2 | Proposed stable `UNSAFE_PATH` before reading `run_record.json`/audit files; outside source not read/copied. |
-| B09 | Backup/restore root symlink refusal | `backup verify --backup <symlink-to-outside-backup>` or `restore --backup <backup-dir> --target <symlink-to-outside-target>` | 2 | Proposed stable `UNSAFE_PATH` before manifest read or target write; outside sentinel untouched. |
+| B08 | Project-root symlink refusal | `backup --project <symlink-to-outside-project> --dest <new-backup-dir>` | 2 | `UNSAFE_PATH`; merged #134 rejects a directly symlinked/reparse-point project root before reading `run_record.json` or audit files. Parent-component symlinks and nested pre-read links still require separate B11 coverage. |
+| B09 | Backup/restore root symlink refusal | `backup verify --backup <symlink-to-outside-backup>` or `restore --backup <backup-dir> --target <symlink-to-outside-target>` | 2 | `UNSAFE_PATH`; merged #134 rejects direct backup-root/data/manifest and restore-target symlink/reparse-point paths before manifest read or target write. Parent-component symlinks remain open; outside sentinel untouched. |
 | B10 | Source snapshot changed during backup | `backup --project <synthetic-project-with-concurrent-anchored-writer> --dest <new-backup-dir>` | 2 | `SNAPSHOT_CHANGED`; destination removed/not retained; source pair unchanged except for the separately controlled writer append; captured chain ID/sequence/head must match the source verdict. Use a deterministic synchronization hook in the test harness, not a timing sleep. |
+| B11 | Backup parent/nested pre-read symlink | `backup --project <symlink-parent>/project-with-linked-run-record-or-chain --dest <new-backup-dir>` | 2 | **Not implemented:** expect `UNSAFE_PATH` before any outside `run_record.json`, chain or anchor read; cover symlinked parent components and nested metadata paths with outside sentinels. #134 checks final components only and `backup()` reads metadata before the recursive `_files()` scan. |
+| B12 | Backup path lstat failure | `backup --project <path-with-unreadable-ancestor> --dest <new-backup-dir>` | 2 | **Not implemented:** filesystem inspection errors other than an expected missing leaf must fail closed with a stable blocked result; no source read, destination or outside side effect. |
 
 ## 3. CLI contract notes
 
@@ -61,7 +63,7 @@
 - `agora outcomes held` is read-only. Exit 1 means a hold exists; it is not a command failure.
 - `agora reconcile` is a read-only detector. Repair remains an API-only operation and is not part of this command inventory.
 - `agora audit timeline` verifies the hash chain before displaying events; `agora audit verify` checks the chain against the local sidecar anchor. The sidecar cannot detect coordinated rollback of both chain and anchor.
-- Backup/restore rows B01–B09 are reconciled to #127's merged behavior. B08/B09 specify remaining project/backup/restore-target root-path symlink hardening; they are not implemented on main, and Claude's next code slice is the backup root-symlink/snapshot-lock work. #130 adds partial strict run-record checks but not the full run-provenance schema. #132 completes P06–P09 direct fixture/workdir-root hardening; P10 records the remaining workdir-ancestor symlink bypass.
+- Backup/restore rows B01–B10 describe merged behavior and remaining snapshot requirements. #134 implements direct project/destination/backup/data/manifest/restore-target root symlink/reparse-point refusal (B08/B09); B11/B12 capture unimplemented ancestor/nested pre-read and lstat-error cases. #134 checks only final components; source-pair lock/exact chain ID/sequence/head equality remains open. #130 adds partial strict run-record checks but not the full run-provenance schema. #132 completes P06–P09 direct fixture/workdir-root hardening; P10 records the remaining workdir-ancestor symlink bypass.
 
 ## 4. Acceptance gate for item 8
 
@@ -72,6 +74,6 @@ No commands were executed to prepare this specification.
 
 ## 4. Run-record contract checks (API-level, no engine)
 
-The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. Merged #130 implements part of this strict loader; #132 adds independently pinned fixture manifest and file hashes, but the run record still does not require the full `RUN_PROVENANCE_SPEC.md` envelope, validate the fixture block/map deeply, or publish failure-atomically.
+The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. Merged #130 implements part of this strict loader; #132 adds independently pinned fixture manifest and file hashes, and #134 adds direct backup/restore root-path refusal, but the run record still does not require the full `RUN_PROVENANCE_SPEC.md` envelope, validate the fixture block/map deeply, or publish failure-atomically.
 
 Acceptance additionally requires exact repository SHA (not `unknown`), fixture ID/version, independently pinned manifest digest, exact input-manifest/scenario/schema/binding/ontology/policy fingerprints, stable timestamps/status enums, and failure-atomic record publication. Mutation proofs must show the test fails when each required-field, hash-cross-check, manifest binding or atomic-publication guard is removed.
