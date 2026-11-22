@@ -15,7 +15,7 @@ Demonstrate that an operator can start a fresh local synthetic pilot from the pi
 - [ ] The automated test executes every applicable row in `M2_RUNBOOK_COMMAND_INVENTORY.md`.
 - [ ] Fixture ID `synthetic-units-v1`, independently pinned manifest digest and payload hashes are verified; symlinked fixture directory/manifest/payload paths and empty fixture versions are rejected.
 - [ ] Workdir root is non-symlink and truly empty; #130's non-empty guard, #132 direct-root refusal, #135 ancestor refusal and #139 lexical `..` refusal are merged. Clean-checkout installation/start is not yet proven.
-- [ ] Fixture symlink and truly-empty-workdir gates: #132/#135 cover fixture directory/manifest/payload/schema/binding symlinks, linked catalogue entries and workdir-root/ancestor links. Clean-checkout installation/start proof remains open.
+- [ ] Fixture symlink and truly-empty-workdir gates: #132/#135 cover fixture directory/manifest/payload/schema/binding symlinks, linked catalogue entries and workdir-root/ancestor links. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 - [ ] Run-record provenance validation and failure-atomic publication are complete; both engine/prediction flags are false.
 - [ ] #127/#134/#136/#138/#139 backup hardening is merged; path refusal, copied-chain sequence/head comparison and manifest-head verification are on main. #138 is detection-only without a shared writer lock, and verify/restore re-read the manifest after validation. Single-read manifest validation, deterministic writer proof, command-test coverage and the logged tamper drill still require evidence.
 - [ ] Reconciliation and held-outcome commands and their clean/blocked outcomes are tested.
