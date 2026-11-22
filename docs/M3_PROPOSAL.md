@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. M2 remains incomplete per the latest Claude log; no M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document.
 
-**Draft baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #138 exact backup source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4); no writer-side lock and manifest re-read gap remain. #139 B13 path normalization is merged (CI `45011493565`, 4/4). M2 remains incomplete; full input_provenance/failure-atomic run records, clean-install and operator evidence remain open.
+**Draft baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #138 exact backup source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4); no writer-side lock and manifest re-read gap remain. #139 B13 path normalization is merged (CI `45011493565`, 4/4). M2 remains incomplete; #144 clean-install/start proof is merged, while full input_provenance/failure-atomic run records and operator evidence remain open.
 
 ## 1. Purpose and boundary
 
