@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import sqlite3
 import sys
 from pathlib import Path
@@ -70,6 +71,8 @@ def _is_link(p: Path) -> bool:
 
     Fails closed: an lstat error other than "does not exist" counts as unsafe.
     """
+    if ".." in Path(p).parts:  # lexical '..' could erase a symlink component: refuse
+        return True
     cur = Path(os.path.abspath(p))
     for q in (cur, *cur.parents):
         try:
@@ -78,7 +81,7 @@ def _is_link(p: Path) -> bool:
             continue
         except OSError:
             return True
-        if q.is_symlink() or (getattr(st, "st_file_attributes", 0) & 0x400):
+        if stat.S_ISLNK(st.st_mode) or (getattr(st, "st_file_attributes", 0) & 0x400):
             return True
     return False
 

@@ -271,3 +271,21 @@ def test_symlinked_schema_and_binding_refused(tmp_path, monkeypatch, name):
     with pytest.raises(pf.FixtureError) as e:
         pf.load_fixture("synthetic-units-v1")
     assert e.value.code == "FX_UNSAFE_PATH"
+
+
+def test_workdir_symlink_dotdot_refused_nothing_written_outside(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    outside = tmp_path / "outside_dd"
+    outside.mkdir()
+    link = tmp_path / "lnk"
+    _mklink(link, sub)
+    from agora.pilot import UnsafeWorkdir
+    with pytest.raises(UnsafeWorkdir):
+        run_pilot(link / ".." / "outside_dd" / "new_run")
+    assert list(outside.iterdir()) == []
+    r = _cli("start", "--fixture", "synthetic-units-v1",
+             "--workdir", str(link / ".." / "outside_dd" / "x"),
+             cwd=Path(__file__).resolve().parents[1])
+    assert r.returncode == 2 and "WORKDIR_UNSAFE_PATH" in r.stdout
+    assert list(outside.iterdir()) == []
