@@ -1,18 +1,19 @@
 # Synthetic Operator-Pilot Fixture Specification
 
-**Status:** Draft specification; no checked-in fixture files are present on main. #123 is merged and writes an initial pilot run_record.json, but it hashes only the embedded CSV and does not yet persist schema/binding/manifest and ontology/policy provenance required here.
-**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
+**Status:** Main `969a040a497668740d20e1ace83841046639b2d6` includes the checked-in `agora/pilot_fixtures/synthetic-units-v1` fixture from #125 (head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`, exact-head CI `44993280261` passed 4/4). It verifies per-file hashes against a local manifest, but the manifest digest is not independently pinned and symlinked fixture paths are followed. The workdir guard also accepts unrelated pre-existing content if the `synthetic-pilot` child does not exist.
+**Assessment base:** `main` at `969a040a497668740d20e1ace83841046639b2d6` (22 November 2026).
 **Data class:** Invented synthetic records only
 
 ## 1. Purpose
 
 Define a small, deterministic, checked-in fixture set for the future operator-usable synthetic pilot. The fixture must exercise import, schema validation, ontology binding, scenario-input construction and governed decision boundaries without representing real people, customers, organisations, locations, demand or sales.
 
-The merged #88 pilot currently embeds `SYNTHETIC_CSV`, schema and binding definitions in `agora/pilot.py`; it does not use a checked-in fixture directory. The following paths remain proposed
+The merged #88 pilot originally embedded `SYNTHETIC_CSV`, schema and binding definitions in `agora/pilot.py`. PR #125 now adds the following checked-in fixture paths on main:
 
-- `fixtures/pilot.csv`
-- `fixtures/pilot-schema.yaml`
-- `fixtures/pilot-binding.yaml`
+- `agora/pilot_fixtures/synthetic-units-v1/units.csv`
+- `agora/pilot_fixtures/synthetic-units-v1/schema.json`
+- `agora/pilot_fixtures/synthetic-units-v1/binding.json`
+- `agora/pilot_fixtures/synthetic-units-v1/manifest.json`
 
 This document does not add data or authorise a simulation, engine call, external connector or write-back.
 
@@ -52,11 +53,11 @@ Do not add any row that resembles a real customer, hospital, apartment, person, 
 - A changed fixture must change its content hash and therefore the recorded run identity.
 - Never log raw row values or sensitive payloads in the audit chain; log stable IDs, hashes and allow-listed event metadata only.
 
-## 5. Required tests (future implementation)
+## 5. Remaining hardening tests
 
-1. Clean-checkout test confirms all three exact fixture paths exist and are parseable.
+1. Clean-checkout test confirms all four exact fixture artefacts (manifest, CSV, schema and binding) are packaged and parseable.
 2. Golden-schema test proves required fields, types, enumerations and bounds.
-3. Mutation tests remove a required column, duplicate an ID, add an unknown column, alter a pinned binding target, change the fixture bytes without updating the expected hash, and replace an exact ID with `latest`; each must fail closed.
+3. Mutation tests remove a required column, duplicate an ID, add an unknown column, alter a pinned binding target, change fixture bytes, change the manifest and payload together, alter the independently pinned manifest digest, introduce symlinked fixture paths, and replace an exact ID with `latest`; each must fail closed.
 4. Import test proves immutable snapshot/manifest IDs and that a changed fixture does not overwrite the prior snapshot.
 5. Policy-denial sentinel proves denied access does not read protected source/snapshot payloads beyond the explicitly documented metadata preflight.
 6. Provenance test verifies the fixture/schema/binding hashes and all required run-envelope fields.

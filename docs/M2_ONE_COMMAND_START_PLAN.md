@@ -1,7 +1,7 @@
 # M2 One-Command Start — Planning Specification
 
-**Status:** Planning only. The owner has approved local synthetic M2 implementation after the three primary post-M1 hardening fixes merged in #122. The installer/orchestration change is not implemented; Claude has claimed the checked-in fixture plus one-command start as the next slice. #123's initial run-record component is merged but partial.
-**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 at 10:50 IST after #122 closed the primary hardening sequence; implementation remains bounded by the M2 checklist and safety restrictions.
+**Status:** The basic fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 at head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`; exact-head CI `44993280261` passed 4/4. The clean-install/start acceptance remains partial because the subprocess test runs from the source tree, not an installed clean checkout.
+**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `969a040a497668740d20e1ace83841046639b2d6`; #123/#125's run record remains partial.
 **Boundary:** Offline/local synthetic fixtures and temporary local stores only.
 
 ## 1. Operator outcome
@@ -14,11 +14,11 @@ The current M1 entry point is:
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-This is a guided component, not the final M2 one-command contract: it currently uses in-module synthetic input, does not select the proposed checked-in fixture catalogue and does not persist the complete run-provenance envelope. Do not describe it as M2 complete.
+Main now includes `agora pilot list` and `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125). The start command verifies per-file hashes before creating stores, but does not prove package installation from a clean checkout. Its workdir guard checks for an existing project child, not every pre-existing file in the requested workdir.
 
-## 2. Proposed M2 command contract
+## 2. Merged command surface and remaining acceptance contract
 
-Candidate interface (not implemented):
+Merged interface on main (#125):
 
 ```bash
 agora pilot start --fixture <fixture-id> --workdir <new-empty-directory>
@@ -26,8 +26,8 @@ agora pilot start --fixture <fixture-id> --workdir <new-empty-directory>
 
 The command should:
 1. Validate runtime version and local package/dependency state.
-2. List available fixtures when `--fixture` is omitted only if interactive selection is explicitly requested; non-interactive use must fail with a stable code and list valid IDs.
-3. Verify fixture manifest, schema, binding and content hashes before opening governed stores.
+2. List available fixtures with `agora pilot list`; non-interactive start must require an exact fixture ID and return stable codes for missing/unknown IDs.
+3. Verify fixture manifest, schema, binding and content hashes before opening governed stores; independently pin the manifest digest, reject symlinks and reject manifest-plus-payload changes.
 4. Refuse a non-empty work directory unless an explicit, separately reviewed resume mode exists.
 5. Provision temporary local stores without overwriting existing files or silently bootstrapping an existing anchor.
 6. Execute only the governed synthetic pipeline stages; do not import or call `agora.sim.engine`.
@@ -46,7 +46,7 @@ The command should:
 ## 4. Acceptance evidence
 
 - Clean-checkout subprocess test executes the documented command.
-- Tests assert stage order, fixture hashes, immutable run record, denial stop and no engine import.
+- Tests assert stage order, fixture hashes, immutable run record, denial stop and no engine import; add a clean-install test, a pre-existing non-empty workdir sentinel test, manifest-plus-payload tamper mutation and symlink escape mutations.
 - Offline test proves no network request or external connector is attempted.
 - Windows and Ubuntu supported runtime matrix passes on the exact implementation head.
 - Runbook command inventory matches the tested command and output.

@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Review still finds a cross-store marker commit-failure gap and #120 backup/restore consistency/scope gaps. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119/#122), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. #122 closes the original marker audit-order/supersession and reconcile verify/classify race findings. Residuals: marker DB commit failure after successful audit append can leave an orphan audit event; reconcile's lock helper may create a `.lock` metadata file and its concurrency test uses a fixed sleep. #120 backup/restore scope and consistency gaps remain. #125's checked-in fixture/start component is merged, but manifest pinning/symlink/workdir validation remain M2 hardening items. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `969a040a497668740d20e1ace83841046639b2d6` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `27269a0b939e966dc5eee72c915562e68a61ec67`, after #121 docs, #122 hardening and #123 run-record implementation merged. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2; #123 adds an initial run record but not the complete provenance envelope. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `969a040a497668740d20e1ace83841046639b2d6`, after #125's fixture/start merge. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2 after #122. #123/#125 provide only a partial run record; no M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
@@ -210,7 +210,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
-## 10. Current mainline status after PR #123, #122 and docs refresh #121
+## 10. Current mainline status after PR #125, #124, #123 and #122
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
@@ -220,13 +220,13 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Stage C — outcome recording/review: PUBLIC PRINCIPAL ROUTES ONLY.** #92 removes public role-string `record_outcome()` / `review_outcome()` exports; #96 removes public `require_anchored` opt-out kwargs from `record_outcome_as()` / `review_outcome_as()`. Private helpers and audit-optional internals remain implementation details, not public governed routes.
 
-**Guided pilot integration (#88): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` provisions a local chain/anchor, runs import/bind/decision/approval/outcome/review, verifies the chain and writes a synthetic-labelled report. It explicitly supplies policy and anchored audit in its own stages and never calls the simulation engine. #94 removes the module-level `.sim.engine` import from `agora.cli`; engine imports are lazy inside simulation-dependent handlers. It does not make lower-level APIs universally non-bypassable.
+**Guided pilot integration (#88/#125): IMPLEMENTED AS A LOCAL SYNTHETIC COMMAND.** `agora pilot --workdir <new-empty-directory>` remains the legacy M1 path; #125 adds `agora pilot list` and `agora pilot start --fixture <id> --workdir <dir>` using the checked-in synthetic fixture. The fixture is checked against per-file hashes before stores are opened and never calls the simulation engine. Remaining review gaps: the manifest digest is not independently pinned, symlinked fixture paths are followed, and the workdir guard accepts unrelated pre-existing files when the `synthetic-pilot` child is absent. The fresh subprocess test does not prove package installation from a clean checkout.
 
-**Exact-head CI evidence:** #74 run `44928837108`, #75 run `44929428177`, #79 run `44931670540`, #80 run `44934473818`, #82 run `44937162200`, #84 run `44939812441`, #88 run `44945307064`, #89 run `44948055801`, #92 run `44950576945`, #94 run `44955653075`, #96 run `44956724553`, #97 run `44958568446`, #99 run `44960946006`, #100 run `44963254416`, #102 run `44965953082`, #104 run `44968039923`, #106 run `44970435296`, #107 run `44972864246` and #109 run `44975437439` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+**Exact-head CI evidence:** #74 run `44928837108`, #75 `44929428177`, #79 `44931670540`, #80 `44934473818`, #82 `44937162200`, #84 `44939812441`, #88 `44945307064`, #89 `44948055801`, #92 `44950576945`, #94 `44955653075`, #96 `44956724553`, #97 `44958568446`, #99 `44960946006`, #100 `44963254416`, #102 `44965953082`, #104 `44968039923`, #106 `44970435296`, #107 `44972864246`, #109 `44975437439`, #122 `44989188092`, #123 `44990673166`, #124 `44991628960` and #125 `44993280261` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-**Remaining acceptance gates:** close the marker/audit cross-store commit-failure case with a durable pending/outbox or reconciliation contract; harden #120 backup source-pair snapshot, synthetic allowlist/symlink rejection, manifest schema and restore post-copy hashes; complete the run-record provenance fields/validation, checked-in fixture/one-command start and tested runbook; retain the explicit block on unanchored-tail recovery.
+**Remaining acceptance gates:** close the marker/audit cross-store commit-failure case with durable pending/outbox or reconciliation semantics; harden #120 backup source-pair snapshot, synthetic allowlist/symlink rejection, manifest schema and restore post-copy hashes; complete run-record provenance/validation and failure-atomic publication; harden #125 manifest pinning, symlink/workdir validation and clean-install proof; then make the operator runbook executable by tests and record the separately approved synthetic rehearsal. Unanchored-tail recovery remains blocked.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
