@@ -66,13 +66,30 @@ def _sha(path: Path) -> str:
 
 
 def _is_link(p: Path) -> bool:
-    """Symlink or Windows reparse point (junction) on the final path component."""
-    if p.is_symlink():
-        return True
+    """Symlink or Windows reparse point on the path or ANY existing ancestor.
+
+    Fails closed: an lstat error other than "does not exist" counts as unsafe.
+    """
+    cur = Path(os.path.abspath(p))
+    for q in (cur, *cur.parents):
+        try:
+            st = os.lstat(q)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+        if q.is_symlink() or (getattr(st, "st_file_attributes", 0) & 0x400):
+            return True
+    return False
+
+
+def _is_entry_link(p: Path) -> bool:
+    """Final-component link check for entries already below a vetted root."""
     try:
-        return bool(getattr(os.lstat(p), "st_file_attributes", 0) & 0x400)
+        st = os.lstat(p)
     except OSError:
-        return False
+        return True
+    return p.is_symlink() or bool(getattr(st, "st_file_attributes", 0) & 0x400)
 
 
 def _refuse_links(*paths: Path) -> None:
@@ -85,7 +102,7 @@ def _files(root: Path) -> list[str]:
     """Plain files only. Any symbolic link (file or directory) is refused, never followed."""
     out: list[str] = []
     for p in root.rglob("*"):
-        if _is_link(p):
+        if _is_entry_link(p):
             raise BackupBlocked("UNSAFE_PATH")
         if p.is_file():
             out.append(p.relative_to(root).as_posix())
@@ -158,11 +175,13 @@ def _cleanup(dest: Path, existed: bool) -> None:
 def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHAIN_ID) -> dict[str, Any]:
     project, dest = Path(project), Path(dest)
     _refuse_links(project, dest)
+    if not project.is_dir():
+        raise BackupBlocked("SOURCE_NOT_FOUND")
+    _files(project)  # refuses nested symlinks BEFORE any source file is read
     if not (project / CHAIN_REL).is_file() or not (project / ANCHOR_REL).is_file():
         raise BackupBlocked("SOURCE_NOT_FOUND")
     if not _is_synthetic_project(project):
         raise BackupBlocked("SOURCE_NOT_SYNTHETIC")
-    _files(project)  # refuses symlinks before anything is read or written
     verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))

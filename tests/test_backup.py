@@ -293,3 +293,63 @@ def test_symlinked_restore_target_is_refused_and_outside_untouched(project, tmp_
         restore(tmp_path / "bk", link)
     assert e.value.code == "UNSAFE_PATH"
     assert list(outside.iterdir()) == []
+
+
+def test_symlinked_ancestor_of_source_dest_backup_and_target_is_refused(project, tmp_path):
+    parent_link = tmp_path / "parent_link"
+    _symlink_or_skip(parent_link, tmp_path)
+    # source reached through a linked ancestor
+    with pytest.raises(BackupBlocked) as e:
+        backup(parent_link / project.name, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    # destination below a linked ancestor: outside folder must stay untouched
+    outside = tmp_path / "outside_parent"
+    outside.mkdir()
+    dest_link = tmp_path / "dest_parent_link"
+    _symlink_or_skip(dest_link, outside)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, dest_link / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []
+    # backup and restore target below a linked ancestor
+    backup(project, tmp_path / "bk")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(parent_link / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    with pytest.raises(BackupBlocked) as e:
+        restore(tmp_path / "bk", dest_link / "restored")
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []
+
+
+def test_nested_symlinked_run_record_is_refused_before_it_is_read(project, tmp_path, monkeypatch):
+    outside = tmp_path / "outside_record.json"
+    outside.write_text(json.dumps({"data_class": "synthetic"}), encoding="utf-8")
+    rec = project / "run_record.json"
+    rec.unlink()
+    _symlink_or_skip(rec, outside)
+    import agora.backup as bk
+    read = []
+    monkeypatch.setattr(bk, "_is_synthetic_project", lambda p: read.append(p) or True)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert read == []  # refused before any source file was read
+    assert not (tmp_path / "bk").exists()
+
+
+def test_lstat_error_fails_closed(project, tmp_path, monkeypatch):
+    import os
+    import agora.backup as bk
+    real = os.lstat
+
+    def boom(p, *a, **k):
+        if str(p) == str(project):
+            raise PermissionError("denied")
+        return real(p, *a, **k)
+
+    monkeypatch.setattr(bk.os, "lstat", boom)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "bk").exists()
