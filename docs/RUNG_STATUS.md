@@ -89,4 +89,4 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 
 ## Process note
 
-This assessment is a documentation snapshot of main at `527476bb4e0450050843dd23a2aa6d5417627ded`; implementation PRs through #119 are merged. Exact-head CI for #116 and #119 passed 4/4. ChatGPT did not run tests or simulations. M2 implementation awaits owner GO.
+This assessment is a documentation snapshot of main at `527476bb4e0450050843dd23a2aa6d5417627ded`; implementation PRs through #120 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`) and #120 (`44986367729`) passed 4/4. ChatGPT did not run tests or simulations. The owner has approved local synthetic M2 implementation; M2 remains incomplete and no rehearsal is claimed.
