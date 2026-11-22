@@ -6,7 +6,7 @@
 
 ## 1. Read this before running anything
 
-Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, reconciliation/held-outcome listing, backup/restore/tamper drill or tested runbook exists.
+Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, held-outcome listing, backup/restore/tamper drill or tested runbook exists. #100 adds a separate read-only decision lifecycle/audit detector, but no queue/repair or outcome/review reconciliation.
 
 The repository also provides separate CLI commands and Python APIs. #92 retires public role-string outcome exports; #94 removes the module-level `.sim.engine` import from `agora.cli`; #96 removes public `require_policy` / `require_anchored` opt-out kwargs; #97 removes the legacy approval env switch and unanchored `audit=None` fallback; #99 removes the direct `require_policy` override and requires `require_anchored()` for protected denial writes. #100 adds read-only decision lifecycle reconciliation only. Scenario-input remains disconnected from the engine.
 
