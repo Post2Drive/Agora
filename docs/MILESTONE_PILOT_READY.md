@@ -152,14 +152,15 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #126 | Documentation refresh after #125 | Merged; docs-only |
 | #127 | M2 backup/restore hardening | Merged at `a4ac0cbdd3efd69da1ace090fa0a4dedc1a6d9a3`; exact-head CI `44994798420` passed 4/4 |
 | #128 | M2 runbook inventory and rehearsal plan | Closed as superseded; both docs consolidated into #129 |
-| #129 | Consolidated M1/M2 documentation, runbook, command inventory and rehearsal plan | Draft/open; exact-head CI pending after this refresh |
+| #129 | Consolidated M1/M2 documentation, runbook, command inventory and rehearsal plan | Merged at head `100899e0d93f3d7c7be32996c41853f4461a1ad0`; exact-head CI `44996252476` passed 4/4 |
 | #130 | Strict run-record loader and non-empty-workdir guard | Merged at `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`; exact-head CI `44995421141` passed 4/4. Loader is partial against RUN_PROVENANCE_SPEC; atomic publish and full provenance remain open |
 | #132 | Fixture/workdir symlink, pinned manifest digest and empty-version hardening | Merged at head `c1fad55c448d0a7e6c49b098824a25e857f7372d`; exact-head CI `44997320523` passed 4/4; #135 subsequently closes workdir-ancestor and linked-fixture catalogue gaps |
+| #133 | M3 proposal, validation protocol, red-team and full-potential plans | Documentation-only; merged at head `5248fbde073051078ce2811b06408700c7abd7f2`; exact-head CI `45004073994` passed 4/4 |
 | #134 | Direct backup/verify/restore root symlink and reparse-point refusal | Merged at head `47e9a7ec827ed5b5f097605d694263fe660fbb5a`; exact-head CI `44999538699` passed 4/4 |
 | #135 | Workdir-ancestor symlink refusal and fixture-catalogue link filtering | Merged at head `2db77c29451c0a9e38c90a148ea635ff143d5cac`; exact-head CI `45001811790` passed 4/4 |
 | #136 | Backup ancestor/pre-read/lstat-error refusal | Merged at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` passed 4/4; `..`-through-symlink regression remains open |
 
-Assessment base is main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` after #133 merged. M1 remains Claude-confirmed. #127 backup hardening, #130 partial strict-loader/workdir checks and #132 fixture integrity/direct-root checks are merged. Clean-install proof, workdir-ancestor symlink coverage, full run-record provenance/atomic publication, backup root/snapshot locking, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
+Assessment base is main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` after #133 and #136 merged. M1 remains Claude-confirmed. #135 closes workdir-ancestor symlink refusal and linked-fixture catalogue filtering; #136 closes backup ancestor/pre-read/lstat-error checks (CI `45006493190`, 4/4). The `..`-through-symlink normalization regression, clean-install proof, full run-record provenance/atomic publication, backup source-pair snapshot lock/head equality, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
 
 ## 5. M1 exit gates — Claude confirmation recorded
 
