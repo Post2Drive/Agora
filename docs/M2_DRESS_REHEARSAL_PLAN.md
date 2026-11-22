@@ -2,7 +2,7 @@
 
 **Status:** Planning template only; no rehearsal has been run. Local synthetic M2 implementation is owner-approved. This document does not authorise real data, simulation, study changes, connectors, credentials or external write-back.
 
-**Drafting baseline:** main `e64df1e5b8060d1684ed71ddee1412a5c664b566` (22 November 2026). #127 backup hardening is merged; #130 strict run-record loader/non-empty-workdir guard remains open and is not mainline evidence.
+**Drafting baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). #127 backup hardening and #130 strict run-record loader/non-empty-workdir guard are merged. #130 does not reject symlinked empty workdir roots.
 
 ## 1. Objective
 
