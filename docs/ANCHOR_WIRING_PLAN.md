@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), and read-only sidecar-anchor verification inside reconciliation (#119) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Post-merge review found that #116 commits marker lifecycle state before its audit append and does not scope-check supersession replacements; these are fail-closed hardening gaps. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119), and local synthetic backup/verify/restore CLI (#120) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Post-merge review found #116 marker lifecycle audit-ordering/supersession-scope gaps, #119 verify/read TOCTOU, and #120 backup/restore verify-to-copy concurrency gaps. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `30385885f16b3750a879ef7df25140fabe29c4ba`, after #116 and #119 merged. Claude's explicit 09:05 IST log entry confirms M1; M2 implementation remains pending owner GO.
+The following inventory was checked against main at `527476bb4e0450050843dd23a2aa6d5417627ded`, after #120 merged. Claude's explicit 09:05 IST log entry confirms M1. The current owner instruction approves local synthetic M2 implementation, but the 10:50 owner decision prioritised marker audit ordering, supersession scope/reason and reconcile locking; these are closed by merged #122; no M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
@@ -61,6 +61,13 @@ In production, `POLICY_REQUIRED=True`, so `policy=None` is denied; the no-op bra
 ### 2.5 Outcome-marker lifecycle audit boundary
 
 PR #116 adds append-only marker/edge/event storage, but review of `agora/decisions/markers.py::advance_marker_as()` found that the marker event is committed before `_audit()`. If the anchored audit append fails, a `resolved` marker with disposition `valid` or a `superseded` marker can remain persisted; `blocking_markers()` excludes both states. The same function accepts any different existing marker as a supersession replacement without checking decision ID/version or affected type/ref, and it does not persist a bounded supersession reason. Require audit-before-commit or a durable pending state that remains blocking, plus exact same-target replacement validation and a persisted reason. Add audit-failure and cross-target mutation tests before operator reliance.
+
+
+### 2.6 Backup/restore anchor-consistency boundary (#120)
+
+PR #120 adds local synthetic `agora backup`, `agora backup verify` and `agora restore` commands. Exact-head Actions run `44986367729` on `90153ce19489063fb601b59cf4704980f6489409` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The code verifies the source chain/anchor before copying, writes a manifest of copied-file hashes, verifies the manifest and chain/anchor before restore, refuses non-empty targets, and verifies the restored chain/anchor.
+
+Post-merge review found two verify-to-copy windows: `backup()` does not hold the same `AnchorStore.lock()` across source verification and the audit SQLite/anchor pair snapshot, so an anchored append can interleave and the command can report a backup whose pair is inconsistent; `restore()` verifies the backup before copying but only re-verifies the restored chain/anchor afterward, not every restored file against the manifest. Follow-up must lock source verify+pair snapshot, verify the copied pair before writing a success manifest, and re-hash every staged restored file against the manifest before publishing the target. The source walk also follows symlinks and hardcodes `synthetic_only=True` without validating a synthetic project marker/fixture allowlist; manifest schema flags/types are not validated. Require a verified synthetic-only source, reject symlinks/unapproved files, validate the manifest version/flag/files mapping and return stable blocked codes. Add deterministic scope/interleaving/mutation tests; no operator drill or rehearsal is claimed.
 
 ## 3. Target integration contract
 
@@ -203,7 +210,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
-## 10. Current mainline status after PR #107
+## 10. Current mainline status after PR #120
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
@@ -219,7 +226,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-**Remaining acceptance gates:** add stable correlation IDs and a reviewed queue/repair contract; cover outcome/review audit rows and marker/audit reconciliation separately; retain the explicit block on unanchored-tail recovery. #116 implements the first marker slice, but retention/erasure triggers and automatic report/run edge registration remain open. Review found a possible TOCTOU window in #119: anchor verification closes its read-only connection before reconciliation opens a second connection to classify, so a concurrent unanchored append could occur between the checks. Harden with a shared anchor lock and/or one consistent read snapshot, then add a mutation/concurrency regression test. Add backup/restore and tamper drills and executable runbook tests. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** add stable correlation IDs and a reviewed queue/repair contract; cover outcome/review audit rows and marker/audit reconciliation separately; retain the explicit block on unanchored-tail recovery. #116 implements the first marker slice, but retention/erasure triggers and automatic report/run edge registration remain open. Review found a possible TOCTOU window in #119: anchor verification closes its read-only connection before reconciliation opens a second connection to classify, so a concurrent unanchored append could occur between the checks. Harden with a shared anchor lock and/or one consistent read snapshot, then add a mutation/concurrency regression test. #120 adds the local backup/verify/restore CLI; harden its pair-snapshot and restore-copy concurrency before operator reliance, then add executable runbook tests and the owner-approved tamper drill. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.

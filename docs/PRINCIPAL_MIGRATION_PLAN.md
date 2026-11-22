@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026), including merged #111, #113, #115, #116 and #119. #111 restricts role-string PDP imports to the internal allowlist and makes the role-string approval authorizer private; #113 closes the protected shared-policy Principal-binding gap with `BoundPolicy`. Identity remains synthetic-only; no OIDC or production identity is claimed.
+**Assessment base:** main at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026), including merged #111, #113, #115, #116 and #119. #111 restricts role-string PDP imports to the internal allowlist and makes the role-string approval authorizer private; #113 closes the protected shared-policy Principal-binding gap with `BoundPolicy`. Identity remains synthetic-only; no OIDC or production identity is claimed.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -161,7 +161,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026)
+## Current migration status — main `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. Role-string PDP compatibility functions remain only as internal allowlisted compatibility surfaces after #111; protected callbacks require Principal-bound `BoundPolicy` after #113. The adapter remains synthetic-only.
@@ -180,4 +180,4 @@ Verified on main:
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
-**Current blockers:** the public role-string approval authorizer is private and role-string PDP imports are restricted to the internal allowlist by #111; `BoundPolicy` is required by protected `enforce_policy()` under #113. The remaining identity limitation is that `SyntheticFixtureAdapter` is synthetic-only; no OIDC, production identity provider, credential handling or real-data connector is implemented or authorised. Claude's exact 09:05 IST log entry confirms M1 reached; M2 implementation awaits a separate owner GO. Do not treat the remaining internal role-string compatibility functions as public authorization surfaces.
+**Current blockers:** the public role-string approval authorizer is private and role-string PDP imports are restricted to the internal allowlist by #111; `BoundPolicy` is required by protected `enforce_policy()` under #113. The remaining identity limitation is that `SyntheticFixtureAdapter` is synthetic-only; no OIDC, production identity provider, credential handling or real-data connector is implemented or authorised. Claude's exact 09:05 IST log entry confirms M1 reached. The current owner instruction approves local synthetic M2 implementation only, after the post-M1 hardening sequence (closed by merged #122); no production identity, OIDC, credentials, network access or other prohibited scope is authorised. Do not treat the remaining internal role-string compatibility functions as public authorization surfaces.
