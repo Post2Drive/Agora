@@ -102,3 +102,51 @@ def test_pilot_module_never_touches_the_simulation_engine():
     import pathlib
     src = pathlib.Path(__import__("agora.pilot", fromlist=["x"]).__file__).read_text(encoding="utf-8")
     assert "agora.sim" not in src and "from .sim" not in src
+
+
+# ---- run records (M2 item 7) -------------------------------------------------
+
+def test_completed_run_persists_record_with_imported_bound_decided_reported(tmp_path):
+    from agora.pilot import load_run_record
+    res = run_pilot(tmp_path, now=NOW)
+    rec = load_run_record(tmp_path / PROJECT_ID)
+    assert rec["status"] == "completed" and rec["run_kind"] == "operator_synthetic_pilot"
+    assert rec["engine_invoked"] is False and rec["validated_prediction_enabled"] is False
+    assert rec["mode"] == "exploratory" and rec["data_class"] == "synthetic"
+    assert rec["imported"]["import_id"] and rec["imported"]["rows"] == 3
+    assert rec["bound"]["instances"] == 3
+    assert rec["decided"]["decision_id"] == "decision-synthetic-001" and rec["decided"]["version"] >= 1
+    assert len(rec["outcome_refs"]) == 1
+    assert rec["audit_ref"]["status"] == "anchored_verified" and rec["audit_ref"]["head_hash"]
+    assert rec["report_ref"]["label"] == "SIMULATED / SYNTHETIC"
+    assert [x["step"] for x in rec["stage_results"]] == list(STAGES)
+    assert list(rec["fixture_hashes"].values())[0].startswith("sha256:")
+    assert "U001" not in json.dumps(rec)  # no raw rows
+    assert res.status == "completed"
+
+
+def test_denied_run_persists_denied_record_with_skipped_stages(tmp_path):
+    from agora.pilot import load_run_record
+    ids = default_identities(NOW)
+    ids["approver"]["roles"] = ["reviewer"]
+    run_pilot(tmp_path, now=NOW, identities=ids)
+    rec = load_run_record(tmp_path / PROJECT_ID)
+    assert rec["status"] == "denied" and rec["report_ref"] is None and rec["outcome_refs"] == []
+    results = {x["step"]: x["result"] for x in rec["stage_results"]}
+    assert results["approval"] == "denied" and results["outcome_record"] == "skipped"
+
+
+def test_run_record_is_never_overwritten_and_load_fails_closed(tmp_path):
+    import pytest as _p
+    from agora.pilot import _write_run_record, load_run_record
+    run_pilot(tmp_path, now=NOW)
+    project = tmp_path / PROJECT_ID
+    with _p.raises(FileExistsError):
+        _write_run_record(project, status="completed", started=NOW, steps=[], ctx={},
+                          csv_path=project / "synthetic_units.csv", report=None)
+    path = project / "run_record.json"
+    good = json.loads(path.read_text())
+    for patch in ({"engine_invoked": True}, {"validated_prediction_enabled": True}, {"record_version": 2}):
+        path.write_text(json.dumps({**good, **patch}))
+        with _p.raises(ValueError):
+            load_run_record(project)

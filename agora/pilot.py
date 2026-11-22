@@ -12,7 +12,11 @@ Nothing is passed to the simulation engine; ``engine_invoked`` is always False.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import subprocess
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -113,6 +117,62 @@ class _Stop(Exception):
     pass
 
 
+RUN_RECORD_NAME = "run_record.json"
+RUN_RECORD_VERSION = 1
+
+
+def _repo_sha() -> str:
+    try:
+        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
+                             capture_output=True, text=True, timeout=10)
+        sha = out.stdout.strip()
+        return sha if out.returncode == 0 and len(sha) == 40 else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _write_run_record(project: Path, *, status: str, started: datetime, steps: list["StepResult"],
+                      ctx: Mapping[str, Any], csv_path: Path, report: Path | None) -> Path:
+    """Persist ONE immutable record per attempt (exclusive create; never overwritten).
+
+    Holds ids, hashes and per-stage outcomes only: no raw rows. engine_invoked and
+    validated_prediction_enabled are structurally False.
+    """
+    record = {
+        "record_version": RUN_RECORD_VERSION, "run_id": uuid.uuid4().hex,
+        "run_kind": "operator_synthetic_pilot", "repository_sha": _repo_sha(),
+        "mode": "exploratory", "data_class": "synthetic",
+        "engine_invoked": False, "validated_prediction_enabled": False,
+        "started_at": _stamp(started), "completed_at": _stamp(datetime.now(timezone.utc)),
+        "status": status,
+        "fixture_hashes": {csv_path.name: "sha256:" + hashlib.sha256(csv_path.read_bytes()).hexdigest()},
+        "imported": {"import_id": ctx.get("import_id"), "rows": ctx.get("rows")},
+        "bound": {"instances": ctx.get("instances")},
+        "decided": {"decision_id": ctx.get("decision_id"), "version": ctx.get("version")},
+        "outcome_refs": [ctx["outcome_id"]] if ctx.get("outcome_id") else [],
+        "audit_ref": {"chain_id": CHAIN_ID, "status": ctx.get("audit_status"),
+                      "sequence": ctx.get("audit_sequence"), "head_hash": ctx.get("audit_head"),
+                      "trust_level": "local_sidecar"},
+        "report_ref": ({"path": report.name, "label": "SIMULATED / SYNTHETIC"} if report else None),
+        "stage_results": [{"step": x.step, "result": x.status, "reason": x.detail[:300]} for x in steps],
+    }
+    out = project / RUN_RECORD_NAME
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(record, fh, indent=2, sort_keys=True)
+    return out
+
+
+def load_run_record(project: str | Path) -> dict[str, Any]:
+    """Read a run record; fail closed on unknown version or an engine/prediction claim."""
+    rec = json.loads((Path(project) / RUN_RECORD_NAME).read_text(encoding="utf-8"))
+    if rec.get("record_version") != RUN_RECORD_VERSION:
+        raise ValueError(f"unsupported run record version: {rec.get('record_version')!r}")
+    if rec.get("engine_invoked") is not False or rec.get("validated_prediction_enabled") is not False:
+        raise ValueError("run record claims engine use or validated prediction")
+    return rec
+
+
 def _decision_record(import_id: str, moment: datetime) -> dict[str, Any]:
     return {
         "decision_id": "decision-synthetic-001", "version": 1, "project_scope": {"project_id": PROJECT_ID},
@@ -155,6 +215,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
         raise FileExistsError(f"{project} already exists; use a new empty work directory")
     project.mkdir(parents=True)
     adapter = SyntheticFixtureAdapter(identities or default_identities(base))
+    started = base
     steps: list[StepResult] = []
     ctx: dict[str, Any] = {}
 
@@ -259,6 +320,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
             def do_verify():
                 v = audit.verify()
                 ctx["audit_status"] = v["status"]
+                ctx["audit_sequence"], ctx["audit_head"] = v.get("sequence"), v.get("head_hash")
                 if not v["valid"]:
                     raise PermissionError(f"audit chain is not intact: {v['status']}")
                 return {"status": v["status"], "sequence": v.get("sequence")}
@@ -271,12 +333,16 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
         done = {s.step for s in steps}
         steps.extend(StepResult(s, "skipped", "not run: an earlier gate stopped the pilot")
                      for s in STAGES if s not in done)
+        _write_run_record(project, status="denied" if last.status == "denied" else "failed",
+                          started=started, steps=steps, ctx=ctx, csv_path=csv_path, report=None)
         return PilotResult("stopped", str(project), steps,
                            f"STOPPED at '{last.step}' ({last.status}): {last.detail}. "
                            "No later stage was run; nothing reached the simulation engine.")
     finally:
         if ctx.get("decisions") is not None:
             ctx["decisions"].close()
+    _write_run_record(project, status="completed", started=started, steps=steps, ctx=ctx,
+                      csv_path=csv_path, report=project / "report" / "pilot_report.md")
     return PilotResult("completed", str(project), steps, report_path=str(project / "report" / "pilot_report.md"))
 
 
@@ -301,4 +367,4 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if result.status == "completed" else 2
 
 
-__all__ = ["PilotResult", "StepResult", "run_pilot", "format_result", "main"]
+__all__ = ["load_run_record", "PilotResult", "StepResult", "run_pilot", "format_result", "main"]
