@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from contextlib import contextmanager
 import os
 import shutil
 import stat
@@ -34,6 +35,7 @@ _WORDS = {
     "SOURCE_NOT_SYNTHETIC": "Nothing was backed up: the folder is not a verified synthetic pilot project "
                             "(its run record is missing or not marked synthetic).",
     "UNSAFE_PATH": "Refused: a symbolic link or unsafe path was found. Only plain files inside the folder are handled.",
+    "SOURCE_LOCK_FAILED": "Nothing was backed up: the project's writer lock could not be taken. Try again when no run is active.",
     "SNAPSHOT_CHANGED": "Nothing was kept: the audit chain changed or failed verification while it was being copied. "
                         "Try again when no run is active.",
     "BACKUP_MANIFEST_INVALID": "Nothing was restored: the backup manifest is malformed or not marked synthetic.",
@@ -127,6 +129,11 @@ def _is_synthetic_project(project: Path) -> bool:
 
 
 def _read_manifest(root: Path) -> tuple[dict[str, str], str]:
+    return _read_manifest_full(root)[:2]
+
+
+def _read_manifest_full(root: Path) -> tuple[dict[str, str], str, Any, Any]:
+    """Read the manifest ONCE; returns (files, chain_id, chain_sequence, chain_head_hash)."""
     try:
         manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -140,7 +147,7 @@ def _read_manifest(root: Path) -> tuple[dict[str, str], str]:
             or any(not _safe_rel(k) or not isinstance(v, str) or len(v) != 64
                    or any(c not in "0123456789abcdef" for c in v) for k, v in files.items())):
         raise BackupBlocked("BACKUP_MANIFEST_INVALID")
-    return files, chain_id
+    return files, chain_id, manifest.get("chain_sequence"), manifest.get("chain_head_hash")
 
 
 def _head(verdict: dict[str, Any]) -> tuple[Any, Any]:
@@ -197,28 +204,57 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
     existed = dest.exists()
     dest.mkdir(parents=True, exist_ok=True)
     try:
-        rels = _files(project)
-        _copy_tree(project, dest / "data", rels)
-        copied = _files(dest / "data")
-        after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
-        if (not after.get("valid") or after.get("status") != verdict["status"]
-                or _head(after) != _head(verdict)):
-            raise BackupBlocked("SNAPSHOT_CHANGED", after.get("status"))
-        seq, head_hash = _head(after)
-        manifest = {"manifest_version": 1, "synthetic_only": True, "chain_id": chain_id,
-                    "audit_status": verdict["status"], "chain_sequence": seq, "chain_head_hash": head_hash,
-                    "files": {r: _sha(dest / "data" / r) for r in copied}}
-        (dest / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        with _source_writer_lock(project, chain_id):
+            return _backup_locked(project, dest, chain_id)
     except BaseException:
         _cleanup(dest, existed)
         raise
+
+
+@contextmanager
+def _source_writer_lock(project: Path, chain_id: str):
+    """Hold the audit-anchor lock (the one every anchored writer takes) for the whole snapshot."""
+    from .audit_anchor import AnchorError, AnchorStore
+    try:
+        lock = AnchorStore(project / ANCHOR_REL, chain_id).lock()
+        lock.__enter__()
+    except (AnchorError, OSError):
+        raise BackupBlocked("SOURCE_LOCK_FAILED") from None
+    try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
+    # Re-verified UNDER the writer lock: no anchored append can land between this check and the copy.
+    verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
+    if not verdict.get("valid"):
+        raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))
+    rels = [r for r in _files(project) if r != ANCHOR_REL + ".lock"]  # the lock file is not data
+    _copy_tree(project, dest / "data", rels)
+    copied = _files(dest / "data")
+    after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
+    if (not after.get("valid") or after.get("status") != verdict["status"]
+            or _head(after) != _head(verdict)):
+        raise BackupBlocked("SNAPSHOT_CHANGED", after.get("status"))
+    seq, head_hash = _head(after)
+    manifest = {"manifest_version": 1, "synthetic_only": True, "chain_id": chain_id,
+                "audit_status": verdict["status"], "chain_sequence": seq, "chain_head_hash": head_hash,
+                "files": {r: _sha(dest / "data" / r) for r in copied}}
+    (dest / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return {"files": len(copied), "audit_status": verdict["status"], "backup": str(dest)}
 
 
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
+    return _verify_snapshot(backup_dir)[0]
+
+
+def _verify_snapshot(backup_dir: str | Path) -> tuple[dict[str, Any], dict[str, str]]:
+    """Validate a backup against ONE read of its manifest; returns (info, listed-files)."""
     root = Path(backup_dir)
     _refuse_links(root, root / MANIFEST, root / "data")
-    listed, chain_id = _read_manifest(root)
+    listed, chain_id, seq, head_hash = _read_manifest_full(root)
     data = root / "data"
     actual = _files(data) if data.is_dir() else []
     for rel in listed:
@@ -233,20 +269,15 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     verdict = verify_anchored_readonly(data / CHAIN_REL, data / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("BACKUP_NOT_INTACT", verdict.get("status"))
-    try:
-        manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raise BackupBlocked("BACKUP_MANIFEST_MISSING") from None
-    seq, head_hash = manifest.get("chain_sequence"), manifest.get("chain_head_hash")
     if (seq, head_hash) != _head(verdict):
         raise BackupBlocked("BACKUP_NOT_INTACT", "manifest_head_mismatch")
-    return {"files": len(listed), "audit_status": verdict["status"], "chain_id": chain_id}
+    return {"files": len(listed), "audit_status": verdict["status"], "chain_id": chain_id}, listed
 
 
 def restore(backup_dir: str | Path, target: str | Path) -> dict[str, Any]:
     backup_dir, target = Path(backup_dir), Path(target)
     _refuse_links(target)
-    info = verify_backup(backup_dir)
+    info, listed = _verify_snapshot(backup_dir)
     _check_dest(target)
     existed = target.exists()
     target.mkdir(parents=True, exist_ok=True)
@@ -256,7 +287,7 @@ def restore(backup_dir: str | Path, target: str | Path) -> dict[str, Any]:
             (target / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(data / rel, target / rel)  # byte copy keeps checksums identical
         _files(target)
-        for rel, digest in _read_manifest(backup_dir)[0].items():
+        for rel, digest in listed.items():
             if not (target / rel).is_file() or _sha(target / rel) != digest:
                 raise BackupBlocked("RESTORED_NOT_INTACT", "file_hash_mismatch")
         verdict = verify_anchored_readonly(target / CHAIN_REL, target / ANCHOR_REL, info["chain_id"])
