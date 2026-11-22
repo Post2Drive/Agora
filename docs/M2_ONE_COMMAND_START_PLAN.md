@@ -1,6 +1,6 @@
 # M2 One-Command Start — Planning Specification
 
-**Status:** Planning only. The owner has approved local synthetic M2 implementation after the three primary post-M1 hardening fixes merged in #122. The installer/orchestration change is not implemented; Claude has claimed the checked-in fixture plus one-command start as the next slice.
+**Status:** Planning only. The owner has approved local synthetic M2 implementation after the three primary post-M1 hardening fixes merged in #122. The installer/orchestration change is not implemented; Claude has claimed the checked-in fixture plus one-command start as the next slice. #123's initial run-record component is merged but partial.
 **Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 at 10:50 IST after #122 closed the primary hardening sequence; implementation remains bounded by the M2 checklist and safety restrictions.
 **Boundary:** Offline/local synthetic fixtures and temporary local stores only.
 
