@@ -187,3 +187,45 @@ def test_nonempty_workdir_is_refused_and_left_untouched(tmp_path):
     f.write_text("x")
     with _p.raises(FileExistsError):
         run_pilot(f, now=NOW)
+
+
+def test_intermediate_ancestor_lstat_permission_error_fails_closed(tmp_path, monkeypatch):
+    """An lstat PermissionError on an intermediate ancestor must refuse the workdir (fail closed)."""
+    import os
+    from agora.pilot import UnsafeWorkdir
+    mid = tmp_path / "mid"
+    work = mid / "work"
+    work.mkdir(parents=True)
+    real = os.lstat
+
+    def fake(p, *a, **k):
+        if os.fspath(p) == os.fspath(mid):
+            raise PermissionError("denied")
+        return real(p, *a, **k)
+
+    monkeypatch.setattr(os, "lstat", fake)
+    with pytest.raises(UnsafeWorkdir):
+        run_pilot(work, now=NOW)
+    monkeypatch.undo()
+    assert not (work / PROJECT_ID).exists()
+
+
+def test_intermediate_ancestor_lstat_mutation_proof(tmp_path, monkeypatch):
+    """Mutation proof: if the OSError branch were 'continue' (fail open), the guard would not refuse."""
+    import os
+    import agora.pilot as pilot
+    mid = tmp_path / "mid"
+    work = mid / "work"
+    work.mkdir(parents=True)
+    real = os.lstat
+
+    def fake(p, *a, **k):
+        if os.fspath(p) == os.fspath(mid):
+            raise PermissionError("denied")
+        return real(p, *a, **k)
+
+    monkeypatch.setattr(os, "lstat", fake)
+    assert pilot._linked_component(work) is True
+    # Control: without the injected error the same path is accepted.
+    monkeypatch.setattr(os, "lstat", real)
+    assert pilot._linked_component(work) is False
