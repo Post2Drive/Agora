@@ -204,3 +204,57 @@ def test_event_of_wrong_transition_type_does_not_match(tmp_path):
     _rewrite_chain(audit, lambda evs: [{**e, "event_type": "decision_rejected"} for e in evs])
     report = _run(tmp_path)
     assert report["counts"]["missing"] == 1 and report["counts"]["orphan"] == 1
+
+
+def _mutate_event(tmp_path, column, value):
+    store, audit = _setup(tmp_path)
+    store.db.execute("DROP TRIGGER protect_decision_approval_event_update")
+    store.db.execute(f"UPDATE decision_approval_events SET {column}=?", (value,))
+    store.db.commit()
+    return _run(tmp_path)
+
+
+@pytest.mark.parametrize("column,value,code", [
+    ("transition", "rejected", "TRANSITION_STATUS_MISMATCH"),
+    ("actor", "intruder", "ACTOR_MISMATCH"),
+    ("method", "other-method", "METHOD_MISMATCH"),
+    ("occurred_at", "2020-01-01T00:00:00Z", "TIMESTAMP_MISMATCH"),
+])
+def test_source_metadata_mismatch_is_source_invalid(tmp_path, column, value, code):
+    report = _mutate_event(tmp_path, column, value)
+    assert report["intact"] is False
+    assert report["counts"]["source_invalid"] == 1
+    assert [f["code"] for f in report["findings"] if f["status"] == "source_invalid"] == [code]
+
+
+def test_wrong_audit_operation_is_conflict(tmp_path):
+    store, audit = _setup(tmp_path)
+    _rewrite_chain(audit, lambda evs: [{**e, "operation": "decision_approval"} for e in evs])
+    report = _run(tmp_path)
+    assert report["counts"]["conflict"] == 1 and report["findings"][0]["code"] == "AUDIT_EVENT_MISMATCH"
+
+
+def test_extra_resource_ids_is_conflict(tmp_path):
+    store, audit = _setup(tmp_path)
+    _rewrite_chain(audit, lambda evs: [{**e, "resource_ids": e["resource_ids"] + ["extra"]} for e in evs])
+    report = _run(tmp_path)
+    assert report["counts"]["conflict"] == 1 and report["findings"][0]["code"] == "AUDIT_EVENT_MISMATCH"
+
+
+def test_partial_open_closes_audit_connection(tmp_path, monkeypatch):
+    _setup(tmp_path)
+    opened = []
+    real = rc._ro
+
+    def tracking(path):
+        conn = real(path)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(rc, "_ro", tracking)
+    with pytest.raises(rc.ReconcileBlocked) as err:
+        rc.reconcile(tmp_path / "missing.db", tmp_path / "audit.sqlite3")
+    assert err.value.code == "STORE_NOT_FOUND"
+    assert len(opened) == 1
+    with pytest.raises(sqlite3.ProgrammingError):
+        opened[0].execute("SELECT 1")
