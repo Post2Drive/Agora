@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101, #102 and #106, #107 and #109.
+**Assessment base:** main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101, #102, #106, #107 and #109.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
