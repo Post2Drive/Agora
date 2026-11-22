@@ -173,7 +173,7 @@ Verified on main:
 - **#96:** removes `require_policy` / `require_anchored` opt-out kwargs from six protected public entry points; exact-head CI run `44956724553` passed 4/4.
 - **#97:** removes the legacy approval env switch and defaults direct policy enforcement from `POLICY_REQUIRED`; exact-head CI run `44958568446` passed 4/4.
 - **#99:** removes the direct `require_policy` override and requires an anchored writer for protected policy-denial events; exact-head CI run `44960946006` passed 4/4.
-- **#100:** adds a read-only decision lifecycle/audit detector; exact-head CI run `44963254416` passed 4/4. It still needs immutable source-transition metadata validation and partial-open connection cleanup; anchor verification, queue/repair and outcome/review reconciliation remain unimplemented. #102 separately adds a read-only held-outcome list, not markers.
+ - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). Anchor verification, queue/repair and outcome/review reconciliation remain unimplemented. #102 separately adds a read-only held-outcome list, not markers.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
