@@ -1,7 +1,7 @@
 # Outcome Dependency Review Markers Specification
 
 **Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented. PR #102 adds a read-only held-outcome list only.
-**Assessment base:** main at 8376f4106d767383069e05c5fadc6583645aa297 (21 November 2026)  
+**Assessment base:** main at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026)  
 **Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing (#102); assessment base main `8376f4106d767383069e05c5fadc6583645aa297`
 **Related specification:** decision/audit reconciliation (#57), with the minimal read-only detector in #100
 
