@@ -63,7 +63,7 @@ Only Claude's exact confirmation entry in the AI Collaboration Log may state tha
 
 ## 6. M2 planning specifications
 
-The following companion documents define the operator workflow for later implementation. They are plans only; none authorises execution or rehearsal:
+The following companion documents define the remaining operator workflow. They are planning specifications; the current owner approval authorises only the local synthetic M2 scope described here, not simulation wiring, real data, credentials, connectors, write-back or a declaration of rehearsal completion:
 
 - [One-command start plan](M2_ONE_COMMAND_START_PLAN.md)
 - [Synthetic fixture selection plan](M2_FIXTURE_SELECTION_PLAN.md)
