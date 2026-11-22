@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101 and #102.
+**Assessment base:** main at `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026), including merged #58, #70, #71, #74, #78, #79, #80, #82, #84, #85, #86, #88, #89, #91, #92, #93, #94, #95, #96, #97, #99, #100, #101 and #102.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -104,7 +104,7 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 ### Stage 4 — migrate outcome recording and review
 
 **Current status: PUBLIC ROLE-STRING ROUTES RETIRED by merged #92; public wrapper opt-outs removed by #96; direct policy-helper bypasses closed by #99.** `record_outcome_as()` and `review_outcome_as()` are the only public outcome write/review routes and derive actor identity from Principal. The underlying `_record_outcome()` / `_review_outcome()` helpers remain private implementation details; their optional audit parameters are not a separate public security boundary.
-The separate read-only `agora outcomes held --decisions <db>` command (#102) surfaces disputed, unreviewed, invalid-history and orphan-review cases; it does not alter the Principal write boundary or implement dependency markers/propagation.
+The separate read-only `agora outcomes held --decisions <db>` command (#102) surfaces disputed, unreviewed, invalid-history and orphan-review cases; #106 normalizes connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. Neither changes the Principal write boundary or implements dependency markers/propagation.
 
 - `record_outcome_as(store, *, principal, **kwargs)` derives recorder/actor from Principal and calls `decide_principal(..., required_role="operator")`.
 - `review_outcome_as(store, decision_id, decision_version, outcome_id, *, principal, **kwargs)` derives reviewer/actor from Principal and requires `reviewer`.
@@ -159,7 +159,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` (22 November 2026)
+## Current migration status — main `112030a219e2d6f7278a46a95be2468634bf563a` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. The role-string PDP compatibility surface and principal-aware callback migration remain open.
@@ -173,10 +173,10 @@ Verified on main:
 - **#96:** removes `require_policy` / `require_anchored` opt-out kwargs from six protected public entry points; exact-head CI run `44956724553` passed 4/4.
 - **#97:** removes the legacy approval env switch and defaults direct policy enforcement from `POLICY_REQUIRED`; exact-head CI run `44958568446` passed 4/4.
 - **#99:** removes the direct `require_policy` override and requires an anchored writer for protected policy-denial events; exact-head CI run `44960946006` passed 4/4.
- - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). Anchor verification, queue/repair and outcome/review reconciliation remain unimplemented. #102 separately adds a read-only held-outcome list, not markers.
+ - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). Anchor verification, queue/repair and outcome/review reconciliation remain unimplemented. #102 separately adds a read-only held-outcome list; #106 makes connection-open errors fail closed, not markers.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
-**Current blockers:** role-string PDP/permission compatibility APIs and the principal-aware policy-callable migration remain; #100/#104 provide only a read-only decision lifecycle detector, now hardened against source-metadata and partial-open connection gaps, but with no anchor check or queue/repair workflow. #102 only lists held outcomes; dependency markers (#60), audit timeline/verification, backup/restore and tamper drill, run-record persistence, checked-in fixture set, tested operator runbook and logged dress rehearsal remain M2 work. No M1/M2 confirmation exists.
+**Current blockers:** role-string PDP/permission compatibility APIs and the principal-aware policy-callable migration remain; #100/#104 provide only a read-only decision lifecycle detector, now hardened against source-metadata and partial-open connection gaps, but with no anchor check or queue/repair workflow. #102/#106 only list held outcomes and fail closed on connection-open errors; dependency markers (#60), audit timeline/verification, backup/restore and tamper drill, run-record persistence, checked-in fixture set, tested operator runbook and logged dress rehearsal remain M2 work. No M1/M2 confirmation exists.
 
 No OIDC, real credentials, network identity, simulation, real data or write-back is authorised. Keep `VALIDATED_PREDICTION_ENABLED=False`.
