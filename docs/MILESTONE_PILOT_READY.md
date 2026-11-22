@@ -7,7 +7,7 @@
 
 ## 1. Executive assessment
 
-Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
+Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #107). Implementation PRs #94–#104, #106 and #107 are merged; documentation PR #105 is also merged. No open PRs were found at this assessment snapshot.
 
 The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100/#104 provide a read-only decision-lifecycle reconciliation detector with immutable source-transition checks and safe partial-open cleanup; #102/#106 provide a separate read-only held-outcome list with fail-closed connection-open handling. #107 adds `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` and `agora audit verify --audit <db> --anchor <file> --chain-id <id>`. Timeline verifies the hash chain before listing one decision's transitions and related audit events; it does not compare the anchor. Verify compares the chain with the local sidecar and reports the `local_sidecar` trust limitation. These commands do not repair stores or create outcome dependency markers. Scenario-input remains disconnected from the engine.
 
@@ -123,7 +123,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #106 | Held-list connection-open failure hardening | Merged; exact-head CI run `44970435296` passed 4/4 |
 | #107 | Read-only audit timeline and chain-vs-anchor verification CLI | Merged; exact-head CI run `44972864246` passed 4/4 |
 
-Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
+Main is `914e28e24c5f49b45173e595d21e02308a827c0f` (merge of #107). Implementation PRs #94–#104, #106 and #107 are merged; documentation PR #105 is also merged. No open PRs were found at this assessment snapshot.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -151,7 +151,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `914e28e24c5f49b45173e595d21e02308a827c0f` after #106 merged. Exact-head CI for #99, #100, #102, #104 and #106 passed all four matrix jobs; ChatGPT's docs-only PR #105 is the only open PR.
+This assessment is refreshed against main `914e28e24c5f49b45173e595d21e02308a827c0f` after #107 merged. Exact-head CI for #99, #100, #102, #104, #106 and #107 passed all four matrix jobs. PR #105 is merged; no open PRs were found at the assessment snapshot.
 
 ## 7. Permanent safety boundaries
 
