@@ -1,6 +1,6 @@
 # M2 One-Command Start — Planning Specification
 
-**Status:** Fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 (head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`, exact-head CI `44993280261`, 4/4). #130 refuses non-empty workdirs; #132 pins the fixture manifest and rejects direct fixture/workdir-root symlinks and empty versions; #135 rejects workdir symlink ancestors and filters linked fixture directories; #139 rejects lexical `..` in backup/pilot path walkers (exact-head CI `45011493565`, 4/4). Clean-install/start acceptance remains partial because tests do not prove installation from a clean checkout.
+**Status:** Fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 (head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`, exact-head CI `44993280261`, 4/4). #130 refuses non-empty workdirs; #132 pins the fixture manifest and rejects direct fixture/workdir-root symlinks and empty versions; #135 rejects workdir symlink ancestors and filters linked fixture directories; #139 rejects lexical `..` in backup/pilot path walkers (exact-head CI `45011493565`, 4/4). #144 closes clean-install/start acceptance with an isolated-venv install and installed CLI list/start test (head 38884bc8; exact-head CI 45015043801, 4/4).
 **Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`; #123/#125/#130's run record remains partial.
 **Boundary:** Offline/local synthetic fixtures and temporary local stores only.
 
@@ -14,7 +14,7 @@ The current M1 entry point is:
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Main includes `agora pilot list` and fixture-selected `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125), non-empty-workdir refusal (#130), pinned fixture manifest/direct-path checks (#132), workdir-ancestor and linked-fixture filtering (#135), and lexical `..` refusal in pilot/backup path walkers (#139). Clean package installation from a #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
+Main includes `agora pilot list` and fixture-selected `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125), non-empty-workdir refusal (#130), pinned fixture manifest/direct-path checks (#132), workdir-ancestor and linked-fixture filtering (#135), and lexical `..` refusal in pilot/backup path walkers (#139). #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 
 ## 2. Merged command surface and remaining acceptance contract
 
