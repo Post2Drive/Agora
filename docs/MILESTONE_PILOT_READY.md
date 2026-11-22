@@ -2,24 +2,24 @@
 
 **Status:** Evidence-based readiness assessment; not pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `ff736a71ff87335a4133411492c4d7ee975ef035`
+**Main base:** `8376f4106d767383069e05c5fadc6583645aa297`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Main is `ff736a71ff87335a4133411492c4d7ee975ef035` after merged PRs #97, #99 and #100. #99 removes the direct `require_policy` override from `enforce_policy()` and requires an anchored writer for protected policy-denial events; exact-head CI run `44960946006` passed 4/4. #100 adds the read-only `agora reconcile --decisions <db> --audit <db>` detector for decision lifecycle/approval transitions; exact-head CI run `44963254416` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. It verifies the audit hash chain, classifies matched/missing/conflict/source-invalid transitions and orphan lifecycle events, and exits 2 without classification on an invalid chain. It is not anchor verification, a queue, repair, or outcome/review reconciliation. The pilot still embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
+Main is `8376f4106d767383069e05c5fadc6583645aa297` after merged PRs #97, #99, #100, #101 and #102. #99 removes the direct policy-helper opt-out and requires an anchored writer for protected denial events (exact-head run 44960946006, 4/4). #100 adds read-only decision lifecycle/audit reconciliation (run 44963254416, 4/4); its source-transition metadata cross-check and partial-open connection cleanup remain incomplete and are Claude's next claimed slice. #102 adds a separate read-only held-outcome listing (run 44965953082, 4/4). Neither command verifies the sidecar anchor or provides queue/repair. The pilot still embeds its synthetic CSV/schema/binding, does not call `build_scenario_input()`, and does not persist the M2 run record.
 
-The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires `require_anchored()` for protected denial writes. Scenario-input remains disconnected from the engine. #100 adds only a read-only decision-lifecycle reconciliation detector; it does not repair gaps or cover outcomes/reviews.
+The `agora pilot` command is a guided local entry point. #92 retires public role-string outcome exports; #94 keeps pilot/data dispatch engine-import-free; #96 removes public policy/anchor opt-out kwargs; #97 removes the legacy approval environment switch; and #99 closes the direct policy-helper opt-out and requires an anchored writer for protected denial writes. #100 adds only a read-only decision-lifecycle reconciliation detector; #102 adds `agora outcomes held --decisions <db>` for disputed, unreviewed or invalid review histories and orphan review rows. The held list is not a dependency marker or propagation system. Scenario-input remains disconnected from the engine.
 
 The anchor remains a local JSONL sidecar with `local_sidecar` trust; coordinated rollback of both local stores is not detected, and the Linux lock-removal mutation gap remains. #96 removes public Principal-wrapper anchor opt-outs, #97 removes the legacy approval environment switch, and #99 closes the direct `enforce_policy()` bypass and rejects missing/plain denial writers when anchoring is required. Decision lifecycle methods still accept optional audit parameters in their low-level APIs, and private outcome helpers retain optional audit internals; the local-sidecar trust limitation is unchanged.
 
-#100 implements a read-only decision lifecycle/approval detector. It does not verify the anchor, reconcile outcome/review rows, persist a queue, or repair gaps. #60 outcome dependency review markers remain a specification only; manual procedures are not approved or rehearsed.
+#100 implements a read-only decision lifecycle/approval detector; it does not verify the sidecar anchor, reconcile outcome/review rows, persist a queue or repair gaps, and its source metadata checks plus partial-open connection cleanup remain outstanding. #102 adds a read-only held-outcome list, but no marker store, source-dependency propagation or automatic downstream flagging. The manual procedure is not approved or rehearsed.
 
 This assessment does not authorise simulation, calibration, backtest, forecast, study mutation, real data, credentials, network access, production use or external write-back.
 
 ## 2. Evidence basis and merged documentation
 
-Assessment base: `ff736a71ff87335a4133411492c4d7ee975ef035`.
+Assessment base: `8376f4106d767383069e05c5fadc6583645aa297`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -74,9 +74,9 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Principal-based approval and outcome wrappers | **Available — partial synthetic migration** | #96 removes public `require_anchored` opt-out kwargs; #97 removes the legacy approval env switch and leaves only the test-only module flag. Private internals remain implementation details. |
 | Audit hash chain | **Available — local chain only** | #38/#47; verifies its own chain but cannot independently detect a removed tail. |
 | Anchored audit chain | **Available — local-sidecar API; lifecycle writer requirement remains partial** | #99 requires an anchored writer for protected policy-denial events. Low-level decision lifecycle methods still accept optional audit arguments; the anchor remains `local_sidecar`, and coordinated rollback plus the Linux lock-removal mutation gap remain limitations. |
-| Observed outcome recording/review | **Available — Principal public routes; private internals remain** | #92 retires public role-string exports and #96 removes public anchor opt-outs. Private helpers still have optional audit internals; no outcome dependency marker/listing is implemented. |
-| Outcome dependency review markers | **Not implemented** | #60 is a specification only; no marker store/propagation worker. |
-| Decision/audit reconciliation | **Partial — read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval rows only, with chain verification and matched/missing/conflict/source-invalid/orphan classifications. No anchor check, queue, repair, or outcome/review coverage. |
+| Observed outcome recording/review | **Available — Principal public routes; private internals remain** | #92 retires public role-string exports and #96 removes public anchor opt-outs. #102 adds a separate read-only held-outcome list; it does not create dependency markers or change outcomes. Private helpers still have optional audit internals. |
+| Outcome dependency review markers | **Not implemented** | #60 remains a design specification; #102 only lists disputed/unreviewed/invalid outcomes and orphan review rows. No marker store, dependency graph, propagation or marker lifecycle exists. |
+| Decision/audit reconciliation | **Partial — read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval rows only, with hash-chain verification and matched/missing/conflict/source-invalid/orphan classifications. It still needs immutable source-transition metadata validation and partial-open connection cleanup; no anchor check, queue, repair or outcome/review reconciliation. #102's held list is separate. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results and first-denial stop; #94 keeps CLI pilot/data dispatch engine-import-free. It still does not persist the M2 run record or call `build_scenario_input()` / the engine. |
 | Integrated pilot readiness | **Not ready** | Implementation, wiring, operational and approval gates remain open. |
@@ -117,8 +117,10 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #97 | Remove legacy approval env switch and unanchored denial fallback | Merged; exact-head CI run `44958568446` passed 4/4 |
 | #99 | Remove direct policy-helper override and require anchored denial writer | Merged; exact-head CI run `44960946006` passed 4/4 |
 | #100 | Read-only decision/audit reconciliation detector | Merged; exact-head CI run `44963254416` passed 4/4 |
+| #101 | M1/M2 documentation refresh after #100 | Merged; exact-head CI run `44965464662` passed 4/4 |
+| #102 | Read-only `agora outcomes held` listing | Merged; exact-head CI run `44965953082` passed 4/4 |
 
-Main is `ff736a71ff87335a4133411492c4d7ee975ef035` (merge of #100). PRs #94–#100 are merged; no open PR existed at the start of this documentation refresh.
+Main is `8376f4106d767383069e05c5fadc6583645aa297` (merge of #102). PRs #94–#102 are merged; no PR was open at the start of this documentation refresh.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
@@ -134,8 +136,8 @@ Main is `ff736a71ff87335a4133411492c4d7ee975ef035` (merge of #100). PRs #94–#1
 - [x] #84 closes the `approve_as()` caller-resource downgrade path by ignoring the supplied resource and using stored decision scope plus fixed baseline sensitivity; its precise anchor-error/no-state-change coverage passed exact-head CI.
 - [ ] Make policy and anchor requirements non-bypassable at every governed boundary. #99 closes the direct `enforce_policy()` override and enforces an anchored denial writer, but low-level decision lifecycle methods still accept optional audit parameters and private outcome helpers retain optional audit internals. Add protected-service call-site proofs and negative tests/mutation proofs for missing/plain writers across all lifecycle transitions.
 - [ ] Principal-first migration completed for all decision/PDP/shared policy enforcement and outcome call sites; public outcome-role exports are retired and legacy approval is test-only, but role-string PDP/permission compatibility APIs remain in source and the trusted-identity adapter is synthetic-only.
-- [ ] Complete decision/audit reconciliation or obtain approval for a manual recovery procedure and rehearse it. #100 supplies a read-only decision-lifecycle detector only; it has no anchor check, queue, repair workflow, or outcome/review coverage.
-- [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. The manual procedure draft is not an implemented marker/propagation system.
+- [ ] Complete decision/audit reconciliation or obtain approval for a manual recovery procedure and rehearse it. #100 supplies only a read-only decision-lifecycle detector; validate immutable source transition/status/actor/method/time against the decision payload, exact audit operation/resource IDs, and close the first connection if the second store cannot open. Anchor verification, queue/repair and outcome/review reconciliation remain absent. Claude has claimed this hardening slice next.
+- [ ] Outcome dependency markers implemented, or a documented manual hold/review procedure approved and rehearsed. #102 now lists disputed, unreviewed, invalid-history and orphan-review cases read-only, but it does not create dependency markers, check source-hash changes, propagate holds or implement the manual procedure.
 - [x] A callable CLI/API entry point runs the synthetic example end to end: PR #88 provides `agora pilot --workdir <new-empty-directory>` with import, bind, decision, principal approval, anchored audit, observed outcome/review and a synthetic-labelled report; it does not call the engine.
 - [x] The CLI module no longer imports the simulation engine for pilot/data dispatch; #94 lazy-loads it only in engine-dependent handlers and passes exact-head CI 4/4. Fresh-process coverage is for `--help`, not a complete `--workdir` invocation.
 - [ ] Exact-head CI is green on final reviewed implementation heads; required mutation proofs and clean-checkout review evidence are recorded.
@@ -146,7 +148,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-This assessment is refreshed against main `ff736a71ff87335a4133411492c4d7ee975ef035` after #100 merged. Exact-head CI for #99 and #100 passed all four matrix jobs; no open PR existed at the start of this documentation refresh.
+This assessment is refreshed against main `8376f4106d767383069e05c5fadc6583645aa297` after #102 merged. Exact-head CI for #99, #100 and #102 passed all four matrix jobs; no PR was open at the start of this documentation refresh.
 
 ## 7. Permanent safety boundaries
 

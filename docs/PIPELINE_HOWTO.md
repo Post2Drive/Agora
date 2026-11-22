@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
 **Status:** Capability map and operator guide; a guided synthetic CLI now exists, but M1/M2 exit gates remain open.  
-**Assessment base:** `main` at `ff736a71ff87335a4133411492c4d7ee975ef035` (22 November 2026).
+**Assessment base:** `main` at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
-Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, audit timeline command, held-outcome listing, backup/restore/tamper drill or tested runbook exists. #100 adds a separate read-only decision lifecycle/audit detector, but no queue/repair or outcome/review reconciliation.
+Main has the guided local command `agora pilot --workdir <new-empty-directory>` (#88), with per-stage results, first-denial stop, anchored audit verification and a synthetic-labelled report. It does not call the simulation engine. It is not the full M2 operator pilot: no checked-in fixture set, durable run-record envelope, standalone audit timeline, backup/restore/tamper drill or tested runbook exists. #100 adds a separate read-only decision lifecycle/audit detector; its source-transition metadata validation and partial-open connection cleanup remain incomplete. #102 adds a separate read-only held-outcome listing, not dependency markers or propagation.
 
-The repository also provides separate CLI commands and Python APIs. #92 retires public role-string outcome exports; #94 removes the module-level `.sim.engine` import from `agora.cli`; #96 removes public `require_policy` / `require_anchored` opt-out kwargs; #97 removes the legacy approval env switch and unanchored `audit=None` fallback; #99 removes the direct `require_policy` override and requires `require_anchored()` for protected denial writes. #100 adds read-only decision lifecycle reconciliation only. Scenario-input remains disconnected from the engine.
+The repository also provides separate CLI commands and Python APIs. #92 retires public role-string outcome exports; #94 removes the module-level `.sim.engine` import from `agora.cli`; #96 removes public `require_policy` / `require_anchored` opt-out kwargs; #97 removes the legacy approval env switch and unanchored `audit=None` fallback; #99 removes the direct `require_policy` override and requires `require_anchored()` for protected denial writes. #100 adds read-only decision lifecycle reconciliation only; #102 adds `agora outcomes held --decisions <db>` for unreviewed/disputed/invalid review histories and orphan review rows. Neither command verifies the sidecar anchor or writes/repairs stores. Scenario-input remains disconnected from the engine.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -24,8 +24,8 @@ This guide documents the available components and their boundaries. It does not 
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89/#96 make `approve_as()` Principal-native with stored-decision-derived policy input and no public anchor opt-out kwarg. #97 removes the legacy env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains. |
 | Anchored audit chain | **AVAILABLE — local-sidecar API; partial protected mode** | #63/#71/#74/#75/#89/#96/#97 provide writer, factory, append wiring and protected Principal wrappers without public anchor opt-out kwargs; #97 refuses the `audit=None` fallback, but `enforce_policy()` still accepts a supplied plain `AuditChainStore` without anchor validation. Trust is `local_sidecar`. |
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected public wrappers** | #92 retires public role-string exports and #96 removes public `require_anchored=False` kwargs. Private helper audit can still be omitted internally; this is not a public caller bypass. |
-| Outcome dependency review markers | **NOT AVAILABLE** | #60 is a specification only; no marker store or propagation worker. |
-| Decision/audit reconciliation | **PARTIAL — read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval transitions only; no anchor verification, queue, repair or outcome/review coverage. |
+| Outcome dependency review markers | **NOT AVAILABLE** | #60 remains a design specification. #102 lists held outcomes read-only, but no marker store, dependency graph, propagation worker or marker lifecycle exists. |
+| Decision/audit reconciliation | **PARTIAL — read-only detector** | #100 adds `agora reconcile` for decision lifecycle/approval transitions only; source metadata validation and partial-open connection cleanup remain incomplete. No anchor verification, queue, repair or outcome/review audit coverage. |
 | M2 run record | **NOT AVAILABLE in the pilot** | `agora/pilot.py` returns an in-memory `PilotResult`; it does not persist/verify the immutable `RUN_PROVENANCE_SPEC.md` envelope. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
 | One callable end-to-end entry point | **AVAILABLE — guided synthetic CLI (#88), partial M1 evidence** | `agora pilot --workdir <new-empty-directory>` runs provision/import/bind/decision/approval/outcome record/review/audit verify/report with per-stage results and first-denial stop; no engine call. It does not persist the M2 run record or use `build_scenario_input()`. |
@@ -164,7 +164,7 @@ The #53 implementation provides `DecisionOutcomeStore` and append-only outcome/r
 
 There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data; #89 defaults their anchor check on; #92 retires public role-string outcome exports; #96 removes public `require_anchored=False` kwargs. The public wrapper gate is not bypassable through that keyword, although private helper audit remains optional internally.
 
-Outcome dependency review markers are not implemented. #100 adds a read-only decision lifecycle/audit detector only; it does not cover outcome/review rows, verify the local anchor, persist a queue or repair gaps.
+Outcome dependency review markers are not implemented. #102 adds `agora outcomes held --decisions <db>` to list disputed, unreviewed, invalid-history and orphan-review cases read-only; it does not check source-hash changes, create markers or propagate holds. #100 adds a read-only decision lifecycle/audit detector only; it does not cover outcome/review rows, verify the sidecar anchor, persist a queue or repair gaps.
 ### Read-only decision/audit reconciliation detector (#100)
 
 The available command is:
@@ -173,7 +173,7 @@ The available command is:
 agora reconcile --decisions ./data/decisions.sqlite3 --audit ./data/audit_chain.sqlite3
 ```
 
-It opens both stores read-only, verifies the complete audit hash chain before classification, and lists decision lifecycle/approval transitions as `matched`, `missing`, `conflict` or `source_invalid`, plus orphan lifecycle events. Exit codes: `0` = no detected gaps; `1` = gaps listed; `2` = blocked (for example, missing/unreadable store or invalid chain), with no classifications. It does not verify the sidecar anchor, reconcile outcomes/reviews, write a queue, or repair any gap. Source-transition metadata cross-checks remain incomplete; see `docs/RECONCILIATION_SPEC.md`.
+It opens both stores read-only, verifies the complete audit hash chain before classification, and lists decision lifecycle/approval transitions as `matched`, `missing`, `conflict` or `source_invalid`, plus orphan lifecycle events. Exit codes: `0` = no detected gaps; `1` = gaps listed; `2` = blocked (for example, missing/unreadable store or invalid chain), with no classifications. It does not verify the sidecar anchor, reconcile outcomes/reviews, write a queue or repair any gap. Source-transition metadata cross-checks and partial-open connection cleanup remain incomplete; Claude has claimed that hardening slice next. See `docs/RECONCILIATION_SPEC.md`.
 
 ## 10. Step G — generate a separate simulated-labelled report
 
@@ -193,10 +193,10 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 ## 11. Remaining work before M1/M2 readiness
 
-The following gaps remain after the #88 guided pilot and #100 read-only detector:
+The following gaps remain after the #88 guided pilot, #100 read-only reconciliation detector and #102 held-outcome list:
 
-1. Complete #60 outcome dependency review markers and held-outcome listing, with stable reason codes and source/dependency evidence checks.
-2. Harden the #100 detector's source-transition integrity checks, add a stable source/audit correlation identifier, and define anchor verification. Queue/repair remains a separate future slice and requires its own approval; an approved, rehearsed manual recovery procedure is the alternative M1 evidence.
+1. Implement #60 outcome dependency review markers or approve and rehearse the manual hold/review procedure. #102 already lists disputed, unreviewed, invalid-history and orphan-review cases, but does not inspect source-hash changes or propagate holds through dependency edges.
+2. Complete the claimed #100 hardening: compare transition/status/actor/method/timestamp to the immutable decision payload; validate audit operation and exact resource IDs; use `ExitStack` or equivalent so partial store-open failure closes every acquired connection. Add mutation proofs for each mismatch and partial-open cleanup. Anchor verification and stable correlation remain separate gaps.
 3. Persist and verify the immutable operator run record in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
 4. Add the checked-in synthetic fixture set; #88 currently embeds its CSV/schema/binding in Python, and the proposed fixture paths remain absent on main.
 5. Add readable audit timeline and plain-language verification commands, backup/restore and tamper drills, tested operator runbook commands, and a separately approved/logged dress rehearsal.
