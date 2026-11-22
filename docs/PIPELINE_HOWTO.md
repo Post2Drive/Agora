@@ -164,7 +164,7 @@ The #53 implementation provides `DecisionOutcomeStore` and append-only outcome/r
 
 There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data; #89 defaults their anchor check on; #92 retires public role-string outcome exports; #96 removes public `require_anchored=False` kwargs. The public wrapper gate is not bypassable through that keyword, although private helper audit remains optional internally.
 
-Outcome dependency review markers are not implemented. #102 adds `agora outcomes held --decisions <db>` to list disputed, unreviewed, invalid-history and orphan-review cases read-only; it does not check source-hash changes, create markers or propagate holds. #100/#104 provide a read-only decision lifecycle/audit detector with immutable source-metadata and audit-event validation; it does not cover outcome/review rows, verify the sidecar anchor, persist a queue or repair gaps.
+Outcome dependency review markers are not implemented. #102/#106 add `agora outcomes held --decisions <db>` to list disputed, unreviewed, invalid-history and orphan-review cases read-only; #106 maps connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. It does not check source-hash changes, create markers or propagate holds. #100/#104 provide a read-only decision lifecycle/audit detector with immutable source-metadata and audit-event validation; it does not cover outcome/review rows, verify the sidecar anchor, persist a queue or repair gaps.
 ### Read-only decision/audit reconciliation detector (#100)
 
 The available command is:
