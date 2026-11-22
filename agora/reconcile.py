@@ -8,6 +8,7 @@ not verify. Output uses opaque IDs and stable codes only. Synthetic data only.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack, closing
 import json
 from pathlib import Path
 import sqlite3
@@ -32,31 +33,60 @@ def _ro(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
 
 
+_STATUS = {"proposed": "proposed", "approved": "approved", "rejected": "rejected",
+           "expired": "rejected", "superseded": "superseded"}
+
+
+def _source_problem(transition: str, actor: str, method: str, occurred_at: str,
+                    payload: Any) -> str | None:
+    """Cross-check a stored transition row against its immutable record payload."""
+    try:
+        record = json.loads(payload)
+    except (TypeError, ValueError):
+        return "RECORD_PAYLOAD_INVALID"
+    if not isinstance(record, dict):
+        return "RECORD_PAYLOAD_INVALID"
+    if _STATUS.get(transition) != record.get("status"):
+        return "TRANSITION_STATUS_MISMATCH"
+    if transition == "expired":
+        wanted_actor = "system:expiry"
+    elif transition == "proposed":
+        wanted_actor = record.get("proposer")
+    elif transition == "approved":
+        wanted_actor = record.get("approver")
+    elif transition == "rejected":
+        wanted_actor = record.get("reviewer")
+    else:  # superseded: any decision participant
+        wanted_actor = actor if actor in (record.get("proposer"), record.get("reviewer"),
+                                          record.get("approver")) else None
+    if wanted_actor is None or actor != wanted_actor:
+        return "ACTOR_MISMATCH"
+    if method != record.get("approval_method"):
+        return "METHOD_MISMATCH"
+    if occurred_at != record.get("updated_at"):
+        return "TIMESTAMP_MISMATCH"
+    return None
+
+
 def reconcile(decisions_db: str | Path, audit_db: str | Path) -> dict[str, Any]:
     """Return a deterministic report. Raises ReconcileBlocked when it cannot proceed."""
     try:
-        audit = _ro(Path(audit_db))
-        source = _ro(Path(decisions_db))
-    except sqlite3.Error as exc:
-        raise ReconcileBlocked("STORE_UNREADABLE") from exc
-    try:
-        try:
+        with ExitStack() as stack:
+            audit = stack.enter_context(closing(_ro(Path(audit_db))))
+            source = stack.enter_context(closing(_ro(Path(decisions_db))))
             rows = audit.execute(
                 "SELECT seq,event_id,previous_hash,event_json,event_hash FROM audit_events ORDER BY seq"
             ).fetchall()
             transitions = source.execute(
-                "SELECT decision_id,version,transition,actor,decision_fingerprint "
+                "SELECT decision_id,version,transition,actor,decision_fingerprint,method,occurred_at "
                 "FROM decision_approval_events ORDER BY decision_id,version,event_id"
             ).fetchall()
             records = {
-                (d, v): f for d, v, f in source.execute(
-                    "SELECT decision_id,version,fingerprint FROM decision_records")
+                (d, v): (f, p) for d, v, f, p in source.execute(
+                    "SELECT decision_id,version,fingerprint,payload_json FROM decision_records")
             }
-        except sqlite3.Error as exc:
-            raise ReconcileBlocked("STORE_UNREADABLE") from exc
-    finally:
-        audit.close()
-        source.close()
+    except sqlite3.Error as exc:
+        raise ReconcileBlocked("STORE_UNREADABLE") from exc
 
     _last, broken = verify_rows(rows)
     if broken is not None:
@@ -86,11 +116,17 @@ def reconcile(decisions_db: str | Path, audit_db: str | Path) -> dict[str, Any]:
             findings.append({"status": "source_invalid", "decision_id": decision_id,
                              "code": "VERSION_HISTORY_GAP"})
 
-    for decision_id, version, transition, actor, fingerprint in transitions:
+    for decision_id, version, transition, actor, fingerprint, method, occurred_at in transitions:
         base = {"decision_id": decision_id, "version": version, "transition": transition}
-        if records.get((decision_id, version)) != fingerprint:
+        stored = records.get((decision_id, version))
+        if stored is None or stored[0] != fingerprint:
             counts["source_invalid"] += 1
             findings.append({**base, "status": "source_invalid", "code": "FINGERPRINT_MISMATCH"})
+            continue
+        problem = _source_problem(transition, actor, method, occurred_at, stored[1])
+        if problem:
+            counts["source_invalid"] += 1
+            findings.append({**base, "status": "source_invalid", "code": problem})
             continue
         wanted = (decision_id, f"version-{version}")
         hits = [e for e in events
@@ -103,7 +139,10 @@ def reconcile(decisions_db: str | Path, audit_db: str | Path) -> dict[str, Any]:
             counts["conflict"] += 1
             findings.append({**base, "status": "conflict", "code": "DUPLICATE_AUDIT_EVENTS",
                              "audit_sequences": [h["seq"] for h in hits]})
-        elif hits[0].get("decision_fingerprint") != fingerprint or hits[0].get("subject_id") != actor:
+        elif (hits[0].get("decision_fingerprint") != fingerprint or hits[0].get("subject_id") != actor
+              or hits[0].get("operation") != ("decision_approval" if transition == "approved"
+                                              else "decision_lifecycle")
+              or hits[0].get("resource_ids") != [decision_id, f"version-{version}"]):
             counts["conflict"] += 1
             findings.append({**base, "status": "conflict", "code": "AUDIT_EVENT_MISMATCH",
                              "audit_sequences": [hits[0]["seq"]]})
