@@ -2,7 +2,7 @@
 
 **Status:** Draft acceptance inventory for Claude's M2 item 8. This is a documentation contract, not evidence that commands have been executed. The automated test must run only in temporary directories using the checked-in synthetic fixture. It must never invoke the simulation engine, network, connectors, credentials, real data or `agora/sim/**`.
 
-**Baseline:** main `e64df1e5b8060d1684ed71ddee1412a5c664b566` (22 November 2026). #127 backup hardening is merged; #130 strict run-record loader/non-empty-workdir guard remains open and is not mainline evidence.
+**Baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). #127 backup hardening and #130 strict run-record loader/non-empty-workdir guard are merged. #130's workdir check does not reject a symlink to an empty directory.
 
 ## 1. Test harness rules
 
@@ -23,9 +23,9 @@
 | P01 | Fixture catalogue | `pilot list` | 0 | Lists `synthetic-units-v1`; read-only; no project created. |
 | P02 | Guided start | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 0 | Completed result; nine named stages; run record exists; `data_class=synthetic`, `engine_invoked=false`, `validated_prediction_enabled=false`; report label is simulated/synthetic. |
 | P03 | Unknown fixture denial | `pilot start --fixture __unknown_fixture__ --workdir <fresh-workdir>` | 2 | `FX_UNKNOWN_FIXTURE`; no project/store/workdir side effect. |
-| P04 | Existing workdir denial | `pilot start --fixture synthetic-units-v1 --workdir <nonempty-workdir>` | 2 | `WORKDIR_NOT_EMPTY`; existing sentinel bytes unchanged; no project created. #130 proposes this guard but remains open. |
+| P04 | Existing workdir denial | `pilot start --fixture synthetic-units-v1 --workdir <nonempty-workdir>` | 2 | `WORKDIR_NOT_EMPTY`; existing sentinel bytes unchanged; no project created. Implemented by merged #130. |
 | P05 | Missing fixture argument | `pilot start --workdir <fresh-workdir>` | 2 | `FX_FIXTURE_REQUIRED`; no project/store/workdir side effect. |
-| P06 | Symlinked workdir root | `pilot start --fixture synthetic-units-v1 --workdir <symlink-to-outside-empty-dir>` | 2 | Proposed stable `WORKDIR_UNSAFE_PATH`; refuse before writing outside the temporary root. |
+| P06 | Symlinked workdir root | `pilot start --fixture synthetic-units-v1 --workdir <symlink-to-outside-empty-dir>` | 2 | Proposed stable `WORKDIR_UNSAFE_PATH`; merged #130 rejects non-empty directories but still follows an empty-directory symlink. |
 | P07 | Symlinked fixture path | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | Proposed stable `FX_UNSAFE_PATH`; a symlinked fixture directory/manifest/payload must be rejected before reading outside the checked-in fixture root. |
 | P08 | Empty fixture version | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_INVALID`; empty/whitespace-only fixture version is invalid. |
 | P09 | Manifest digest mismatch | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | Proposed stable `FX_MANIFEST_HASH_MISMATCH`; modifying manifest and payload together must not pass an independently pinned digest. |
