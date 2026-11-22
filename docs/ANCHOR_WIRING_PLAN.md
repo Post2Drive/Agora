@@ -1,6 +1,6 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), and read-only sidecar-anchor verification inside reconciliation (#119) are merged. The local-sidecar trust boundary, marker/audit reconciliation gaps and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), and read-only sidecar-anchor verification inside reconciliation (#119) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Post-merge review found that #116 commits marker lifecycle state before its audit append and does not scope-check supersession replacements; these are fail-closed hardening gaps. This is a wiring plan, not deployment or rehearsal approval.
 **Assessment base:** `main` at `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
@@ -57,6 +57,10 @@ The shared `enforce_policy()` boundary is called by:
 These callers invoke policy enforcement before reading source bytes or opening the snapshot database. Preserve that ordering. The policy-denial path is the only production-code constructor of `AuditChainStore` found by repository code search; decision and outcome APIs receive their audit object from their caller.
 
 In production, `POLICY_REQUIRED=True`, so `policy=None` is denied; the no-op branch is reachable only when the test-only protection flag is relaxed. Do not allow a protected operation to become authorised because `policy=None` was passed.
+
+### 2.5 Outcome-marker lifecycle audit boundary
+
+PR #116 adds append-only marker/edge/event storage, but review of `agora/decisions/markers.py::advance_marker_as()` found that the marker event is committed before `_audit()`. If the anchored audit append fails, a `resolved` marker with disposition `valid` or a `superseded` marker can remain persisted; `blocking_markers()` excludes both states. The same function accepts any different existing marker as a supersession replacement without checking decision ID/version or affected type/ref, and it does not persist a bounded supersession reason. Require audit-before-commit or a durable pending state that remains blocking, plus exact same-target replacement validation and a persisted reason. Add audit-failure and cross-target mutation tests before operator reliance.
 
 ## 3. Target integration contract
 
