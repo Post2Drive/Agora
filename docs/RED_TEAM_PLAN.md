@@ -2,7 +2,7 @@
 
 **Status:** Plan only. No attack has been executed as part of this document. This is the synthetic governance-integrity track; it is separate from predictive validation. M2 remains in progress and M3 is proposal-only.
 
-**Baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #138 exact source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4), but no writer-side lock; manifest re-read gap remains. #139 B13 path normalization is merged (CI `45011493565`, 4/4). RT13 still needs a deterministic concurrent-writer test; strict run-provenance validation/atomic publication and #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
+**Baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #138 exact source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4), but no writer-side lock; manifest re-read gap remains. #139 B13 path normalization is merged (CI `45011493565`, 4/4). RT13 still needs a deterministic concurrent-writer test; strict run-provenance validation/atomic publication remain open. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 
 ## 1. Objective and rules
 
