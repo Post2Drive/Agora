@@ -157,7 +157,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #132 | Fixture/workdir symlink, pinned manifest digest and empty-version hardening | Merged at head `c1fad55c448d0a7e6c49b098824a25e857f7372d`; exact-head CI `44997320523` passed 4/4; parent-symlink workdir coverage remains open |
 | #134 | Direct backup/verify/restore root symlink and reparse-point refusal | Merged at head `47e9a7ec827ed5b5f097605d694263fe660fbb5a`; exact-head CI `44999538699` passed 4/4 |
 | #135 | Workdir-ancestor symlink refusal and fixture-catalogue link filtering | Merged at head `2db77c29451c0a9e38c90a148ea635ff143d5cac`; exact-head CI `45001811790` passed 4/4 |
-| #136 | Backup ancestor/pre-read/lstat-error refusal | Open draft at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` is 1/4 complete; not mainline; add `..`-through-symlink regression before treating path walk as complete |
+| #136 | Backup ancestor/pre-read/lstat-error refusal | Open draft at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` is 4/4 passed; not mainline; add `..`-through-symlink regression before treating path walk as complete |
 
 Assessment base is main `c01098d8f815b1e76b12296f41e887d5f6dd87d0` after #133 merged. M1 remains Claude-confirmed. #127 backup hardening, #130 partial strict-loader/workdir checks and #132 fixture integrity/direct-root checks are merged. Clean-install proof, workdir-ancestor symlink coverage, full run-record provenance/atomic publication, backup root/snapshot locking, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
 
@@ -189,7 +189,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`, including the operator runbook, command inventory, backup/tamper plan and rehearsal plan. #135 completes workdir-ancestor symlink refusal and linked-fixture catalogue filtering. PR #136 is still open and not mainline; source-pair snapshot locking/head equality, full provenance/failure-atomic publication, runbook-command tests, marker/audit outbox recovery, clean-install proof and separately approved rehearsal remain open; no M2 completion is claimed.
 
-This assessment is refreshed against main `c01098d8f815b1e76b12296f41e887d5f6dd87d0`. Exact-head CI for #127 (`44994798420`), #130 (`44995421141`), #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. PR #136 exact-head run `45006493190` is in progress (1/4 complete). Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
+This assessment is refreshed against main `c01098d8f815b1e76b12296f41e887d5f6dd87d0`. Exact-head CI for #127 (`44994798420`), #130 (`44995421141`), #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. PR #136 exact-head run `45006493190` is in progress (4/4 passed). Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
 
 ## 7. Permanent safety boundaries
 
