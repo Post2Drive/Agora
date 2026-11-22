@@ -131,3 +131,96 @@ def test_start_never_imports_engine_or_network(tmp_path):
     r = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
                        capture_output=True, text=True, timeout=120)
     assert "NO_SIM 0" in r.stdout, r.stdout + r.stderr
+
+
+# ---- M2 item 4 hardening: symlinks, pinned manifest digest, empty version, symlink workdir ----
+
+def _use_copy(tmp_path, monkeypatch):
+    root = _copy_root(tmp_path)
+    monkeypatch.setattr(pf, "FIXTURE_ROOT", root)
+    return root
+
+
+def test_symlinked_fixture_dir_manifest_or_payload_refused(tmp_path, monkeypatch):
+    root = _use_copy(tmp_path, monkeypatch)
+    d = root / "synthetic-units-v1"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for name in ("units.csv", "manifest.json"):
+        real = d / name
+        moved = outside / name
+        moved.write_bytes(real.read_bytes())
+        real.unlink()
+        try:
+            real.symlink_to(moved)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable")
+        with pytest.raises(pf.FixtureError) as e:
+            pf.load_fixture("synthetic-units-v1")
+        assert e.value.code == "FX_UNSAFE_PATH"
+        real.unlink()
+        real.write_bytes(moved.read_bytes())
+
+
+def test_symlinked_fixture_directory_refused(tmp_path, monkeypatch):
+    root = _use_copy(tmp_path, monkeypatch)
+    real = root / "synthetic-units-v1"
+    moved = tmp_path / "elsewhere"
+    real.rename(moved)
+    try:
+        real.symlink_to(moved, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    with pytest.raises(pf.FixtureError) as e:
+        pf.load_fixture("synthetic-units-v1")
+    assert e.value.code == "FX_UNSAFE_PATH"
+
+
+def test_manifest_and_payload_edited_together_fails_pin(tmp_path, monkeypatch):
+    root = _use_copy(tmp_path, monkeypatch)
+    d = root / "synthetic-units-v1"
+    csv = d / "units.csv"
+    csv.write_bytes(csv.read_bytes() + b"\n")
+    man = json.loads((d / "manifest.json").read_text())
+    man["files"]["units.csv"] = pf._sha(csv.read_bytes())
+    (d / "manifest.json").write_text(json.dumps(man, indent=2))
+    with pytest.raises(pf.FixtureError) as e:
+        pf.load_fixture("synthetic-units-v1")
+    assert e.value.code == "FX_MANIFEST_HASH_MISMATCH"
+
+
+def test_unpinned_checked_in_fixture_refused(tmp_path, monkeypatch):
+    _use_copy(tmp_path, monkeypatch)
+    monkeypatch.setattr(pf, "PINNED_MANIFEST_DIGESTS", {})
+    with pytest.raises(pf.FixtureError) as e:
+        pf.load_fixture("synthetic-units-v1")
+    assert e.value.code == "FX_MANIFEST_HASH_MISMATCH"
+
+
+@pytest.mark.parametrize("ver", ["", "   "])
+def test_empty_fixture_version_refused(tmp_path, ver):
+    root = _copy_root(tmp_path)
+    mp = root / "synthetic-units-v1" / "manifest.json"
+    man = json.loads(mp.read_text())
+    man["fixture_version"] = ver
+    mp.write_text(json.dumps(man, indent=2))
+    with pytest.raises(pf.FixtureError) as e:
+        pf.load_fixture("synthetic-units-v1", root)
+    assert e.value.code == "FX_MANIFEST_INVALID"
+
+
+def test_symlinked_empty_workdir_refused_and_outside_untouched(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    from agora.pilot import UnsafeWorkdir
+    with pytest.raises(UnsafeWorkdir):
+        run_pilot(link)
+    assert list(outside.iterdir()) == []
+    r = _cli("start", "--fixture", "synthetic-units-v1", "--workdir", str(link), cwd=Path(__file__).resolve().parents[1])
+    assert r.returncode == 2 and "WORKDIR_UNSAFE_PATH" in r.stdout
+    assert list(outside.iterdir()) == []
