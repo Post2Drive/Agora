@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Review still finds a cross-store marker commit-failure gap and #120 backup/restore consistency/scope gaps. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119/#122), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. The original marker audit-order/supersession and reconcile verify/classify race findings are closed. Residuals: marker DB commit failure after successful audit append can leave an orphan audit event; reconcile's lock helper may create a `.lock` metadata file and its concurrency test uses a fixed sleep. #120 backup/restore scope and consistency gaps remain. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `41137618f04cf44c111acfaff565663b25eb5fe3` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `27269a0b939e966dc5eee72c915562e68a61ec67`, after #121 docs, #122 hardening and #123 run-record implementation merged. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2; #123 adds an initial run record but not the complete provenance envelope. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `41137618f04cf44c111acfaff565663b25eb5fe3`, after #124's documentation refresh. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2 after #122. #123's run record remains partial; #125's fixture/start implementation is open and not on main.
 
 ### 2.1 Audit primitives
 
@@ -99,7 +99,7 @@ Pass the anchored writer through the existing `audit` parameter for `propose`, `
 - Preserve each existing event type, event ID, resource IDs, reason code and policy version.
 - Enforce the anchored-writer requirement at each protected lifecycle entry point before state reads or writes. #109 adds this guard to `propose()`, `reject()`, `expire()` and `supersede()`; retain tests for missing/plain writers and no state change. Tests may inject a fake appender only to prove bounded failure paths.
 - Preserve the current failure semantics: the decision transition may already be committed when chain/anchor append fails. Surface that partial state explicitly; do not attempt to roll back or rewrite the decision record.
-- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. #119 verifies the sidecar before classification; #122 holds the same anchor lock across verification and classification. The lock helper opens its sidecar with `a+b`, so a missing lock file may be created during reconciliation; the #122 concurrency test uses a fixed sleep rather than a deterministic handshake. Marker audit-before-commit prevents a failed audit append from clearing a hold, but a marker DB commit failure after successful audit append still needs reconciliation semantics.
+- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. #119 verifies the sidecar before classification; #122 holds the same anchor lock across verification and classification, closing the TOCTOU gap. The lock helper still opens its sidecar with `a+b`, so it may create a `.lock` metadata file; the concurrency test still uses a fixed sleep and should be made deterministic.
 
 **Acceptance:** every protected lifecycle transition produces an anchored event; missing writer is denied in protected mode; anchor failure raises and identifies the committed transition/event for reconciliation; proposer/reviewer/approver separation and exact-version checks remain unchanged.
 
