@@ -175,6 +175,48 @@ def verify_anchored(chain: AuditChainStore, anchors: AnchorStore) -> dict[str, A
     return result("anchored_verified", True, sequence=head_seq, head_hash=head_hash)
 
 
+class _ReadOnlyChain:
+    """Minimal read-only chain view over a mode=ro SQLite connection."""
+
+    def __init__(self, db: Any):
+        self.db = db
+
+    def verify(self) -> dict[str, Any]:
+        from .audit_chain import verify_rows
+        rows = self.db.execute(
+            "SELECT seq,event_id,previous_hash,event_json,event_hash FROM audit_events ORDER BY seq").fetchall()
+        previous, broken = verify_rows(rows)
+        if broken:
+            return {"valid": False, "first_broken_sequence": broken}
+        return {"valid": True, "entries": len(rows), "last_hash": previous}
+
+
+def verify_anchored_readonly(audit_db: str | Path, anchor_path: str | Path, chain_id: str) -> dict[str, Any]:
+    """verify_anchored() over a read-only connection: no bootstrap, no writes, no repair.
+
+    Open/read failures return status ``store_unreadable`` (never raises for those).
+    """
+    import sqlite3
+    path = Path(audit_db)
+    if not path.is_file():
+        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
+    try:
+        db = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
+    try:
+        try:
+            anchors = AnchorStore(anchor_path, chain_id)
+        except AnchorError as exc:
+            return {"valid": False, "status": "anchor_invalid", "trust_level": TRUST_LEVEL, "reason": str(exc)}
+        try:
+            return verify_anchored(_ReadOnlyChain(db), anchors)  # type: ignore[arg-type]
+        except sqlite3.Error:
+            return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
+    finally:
+        db.close()
+
+
 class AnchoredAuditChain:
     """Append wrapper: chain append, then a durable anchor, then success."""
 

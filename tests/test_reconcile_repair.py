@@ -50,10 +50,10 @@ def _apply(tmp_path, audit, who="approver", head=None, **kw):
 
 def test_repair_appends_missing_event_and_reconcile_becomes_intact(tmp_path):
     store, audit = _setup(tmp_path)
-    assert rc.reconcile(tmp_path / "decisions.db", tmp_path / "audit.sqlite3")["counts"]["missing"] == 1
+    assert rc.reconcile(tmp_path / "decisions.db", tmp_path / "audit.sqlite3", anchor_path=tmp_path / "anchor.jsonl", chain_id="c1")["counts"]["missing"] == 1
     out = _apply(tmp_path, audit)
     assert out["repaired"] == 1
-    report = rc.reconcile(tmp_path / "decisions.db", tmp_path / "audit.sqlite3")
+    report = rc.reconcile(tmp_path / "decisions.db", tmp_path / "audit.sqlite3", anchor_path=tmp_path / "anchor.jsonl", chain_id="c1")
     assert report["intact"] is True and report["counts"]["matched"] == 1
     assert audit.verify()["valid"] is True
     event = json.loads(audit.chain.db.execute("SELECT event_json FROM audit_events ORDER BY seq DESC").fetchone()[0])
