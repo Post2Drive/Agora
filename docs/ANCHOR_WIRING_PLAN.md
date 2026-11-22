@@ -61,11 +61,11 @@ In production, `POLICY_REQUIRED=True`, so `policy=None` is denied; the no-op bra
 
 ### 2.5 Outcome-marker lifecycle audit boundary
 
-#147 persists marker-open audit intent; #149 adds real-chain same-payload replay; #151 makes `find_event()` require an anchored-valid chain under the anchor lock and gives `advance_marker_as()` stable transition IDs with same-payload retry; #152 adds two independent replay callers (CI `45034452114`, 4/4). Its barrier precedes pending-row delivery, so add a delivery-boundary handshake. Legacy-marker backfill remains open; Claude's current claim is runbook-binding (#155 merged). Outcome/review marker-audit reconciliation remains separate.
+#147 persists marker-open audit intent; #149 adds real-chain same-payload replay; #151 requires anchored-valid lookup and stable transition IDs; #152 adds two independent replay callers (exact-head CI `45034452114`, 4/4). Its barrier is before the pending-row query, so it does not prove both callers fetched the same row before delivery; a delivery-boundary handshake remains a post-M2 test-strengthening item. Legacy-marker backfill and outcome/review marker-audit reconciliation remain open. Claude's exact 23:43 IST entry confirms M2 reached; the latest logged Claude command is `docs/M3_DESIGN.md`, with no M3 owner go recorded.
 
 ### 2.6 Backup/restore anchor-consistency boundary (#120/#127/#134)
 
-#148 holds the source anchor-writer lock across verification/copy/post-verification, excludes the sidecar `.lock`, and reuses one manifest snapshot for verify/restore (CI `45026655360`, 4/4). #154 adds exact manifest version/sequence typing and lowercase 64-hex head validation (CI `45037406804`, 4/4). #155 adds the B10 event-based real-writer lock test (CI `45039917180`, 4/4). The pilot workdir ancestor walker fails closed on `lstat` errors, but `tests/test_pilot.py` still needs the intermediate-ancestor `PermissionError` mutation proof before workdir/run-record creation.
+#148 holds the source anchor-writer lock across verification/copy/post-verification, excludes the sidecar `.lock`, and reuses one manifest snapshot for verify/restore (CI `45026655360`, 4/4). #154 adds exact manifest version/sequence typing and lowercase 64-hex head validation (CI `45037406804`, 4/4). #159 maps B10 to the real-writer lock test (CI `45045492204`, 4/4), but its observer signals immediately before the OS lock syscall and the companion test signals at factory entry with a bounded wait; deterministic kernel-confirmed contention remains a follow-up. #160 adds the pilot intermediate-ancestor `lstat` PermissionError fail-closed mutation proof (CI `45048298704`, 4/4). #161 adds atomic exclusive run-record publication (CI `45051090990`, 4/4); strict provenance version/timezone, manifest timestamp equality and report completeness remain follow-ups.
 
 ## 3. Target integration contract
 
@@ -97,7 +97,7 @@ Pass the anchored writer through the existing `audit` parameter for `propose`, `
 - Preserve each existing event type, event ID, resource IDs, reason code and policy version.
 - Enforce the anchored-writer requirement at each protected lifecycle entry point before state reads or writes. #109 adds this guard to `propose()`, `reject()`, `expire()` and `supersede()`; retain tests for missing/plain writers and no state change. Tests may inject a fake appender only to prove bounded failure paths.
 - Preserve the current failure semantics: the decision transition may already be committed when chain/anchor append fails. Surface that partial state explicitly; do not attempt to roll back or rewrite the decision record.
-#147 persists marker-open audit intent; #149 adds real-chain same-payload replay; #151 makes `find_event()` require an anchored-valid chain under the anchor lock and gives `advance_marker_as()` stable transition IDs with same-payload retry; #152 adds two independent replay callers (CI `45034452114`, 4/4). Its barrier precedes pending-row delivery, so add a delivery-boundary handshake. Legacy-marker backfill remains open; Claude's current claim is runbook-binding (#155 merged). Outcome/review marker-audit reconciliation remains separate.
+
 
 **Acceptance:** every protected lifecycle transition produces an anchored event; missing writer is denied in protected mode; anchor failure raises and identifies the committed transition/event for reconciliation; proposer/reviewer/approver separation and exact-version checks remain unchanged.
 
@@ -224,7 +224,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-#147 persists marker-open audit intent; #149 adds real-chain same-payload replay; #151 makes `find_event()` require an anchored-valid chain under the anchor lock and gives `advance_marker_as()` stable transition IDs with same-payload retry; #152 adds two independent replay callers (CI `45034452114`, 4/4). Its barrier precedes pending-row delivery, so add a delivery-boundary handshake. Legacy-marker backfill remains open; Claude's current claim is runbook-binding (#155 merged). Outcome/review marker-audit reconciliation remains separate.
+
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
