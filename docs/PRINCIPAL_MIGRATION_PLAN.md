@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026), including merged #111, #113, #115, #116 and #119. #111 restricts role-string PDP imports to the internal allowlist and makes the role-string approval authorizer private; #113 closes the protected shared-policy Principal-binding gap with `BoundPolicy`. Identity remains synthetic-only; no OIDC or production identity is claimed.
+**Assessment base:** main at `776669cac7c30722726ed87813f677d6d6d89aec` (22 November 2026), including merged #111, #113, #115, #116, #119 and #122 plus docs refresh #121. #111 restricts role-string PDP imports and makes the legacy approval authorizer private; #113 requires `BoundPolicy` in protected enforcement. #122's marker/reconcile hardening does not change the Principal migration boundary. Identity remains synthetic-only; no OIDC or production identity is claimed.
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
