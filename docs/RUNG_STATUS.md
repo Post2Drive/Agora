@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `e64df1e5b8060d1684ed71ddee1412a5c664b566` (22 November 2026), including merged implementation PRs through #127 and documentation PRs through #126. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2. #125 fixture/list/start and #127 backup hardening are on main. #130 strict run-record loading/non-empty-workdir guard is open and is not counted as implemented. Remaining M2 exit evidence is incomplete.
+**Assessment base:** `main` at `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026), including merged implementation PRs through #130 and documentation PRs through #126. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2. #125 fixture/list/start, #127 backup hardening and #130 strict-loader/non-empty-workdir changes are on main. Remaining M2 exit evidence is incomplete.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -65,7 +65,7 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#124:** documentation refresh merged at head `c937abc412bbae6f3ac2e728a6e6ab4fdd0fb285`; exact-head docs CI run `44991628960` passed 4/4.
 - **#125:** checked-in synthetic fixture and `agora pilot list/start` merged at head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`; exact-head CI run `44993280261` passed 4/4. Fixture hardening and clean-install proof remain open.
 
-At the assessed main snapshot, implementation PRs through #127 and documentation PRs through #126 are merged on `e64df1e5b8060d1684ed71ddee1412a5c664b566`. Claude's exact 09:05 IST entry confirms M1. #125 supplies the fixture/start component and #127 hardens backup/restore; #130 remains an open, unmerged strict-loader/workdir PR. M2 remains incomplete and no rehearsal is claimed.
+At the assessed main snapshot, implementation PRs through #130 and documentation PRs through #126 are merged on `70e561bf7309911ac86bed9f19be957ade73b338`. Claude's exact 09:05 IST entry confirms M1. #125 supplies the fixture/start component, #127 hardens backup/restore, and #130 adds partial strict run-record loading/workdir checks. M2 remains incomplete and no rehearsal is claimed.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23â€“#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
@@ -95,7 +95,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 
 ## Process note
 
-This assessment is a documentation snapshot of main at `e64df1e5b8060d1684ed71ddee1412a5c664b566`; implementation PRs through #125 and docs PRs #121/#124 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`) and #125 (`44993280261`) passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
+This assessment is a documentation snapshot of main at `70e561bf7309911ac86bed9f19be957ade73b338`; implementation PRs through #125 and docs PRs #121/#124 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`) and #125 (`44993280261`) passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
 
 
-Open implementation PR (not counted as merged): #130, head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, strict run-record loader and non-empty-workdir guard; exact-head Actions run `44995421141` was in progress at this assessment. Review still requires fixture metadata/hash consistency, complete provenance fields and failure-atomic publication.
+Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, exact-head Actions run `44995421141` passed 4/4. It validates required field types, synthetic-only status, false engine/prediction flags, hash syntax and non-empty workdirs. It still does not validate required nonblank fields/enums, exact repository SHA, fixture block/map shape, the full `input_provenance` envelope or failure-atomic publication.
