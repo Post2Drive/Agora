@@ -2,7 +2,7 @@
 
 **Status:** Draft acceptance inventory for Claude's M2 item 8. This is a documentation contract, not evidence that commands have been executed. The automated test must run only in temporary directories using the checked-in synthetic fixture. It must never invoke the simulation engine, network, connectors, credentials, real data or `agora/sim/**`.
 
-**Baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). #127 backup hardening and #130 strict run-record loader/non-empty-workdir guard are merged. #130's workdir check does not reject a symlink to an empty directory.
+**Baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026). #127 backup hardening, #130 partial strict run-record loader/non-empty-workdir guard and #132 fixture integrity/direct workdir-root symlink hardening are merged. Exact-head CI for #132 (`44997320523`) passed 4/4. Clean-install proof and workdir-ancestor symlink coverage remain open.
 
 ## 1. Test harness rules
 
@@ -25,10 +25,11 @@
 | P03 | Unknown fixture denial | `pilot start --fixture __unknown_fixture__ --workdir <fresh-workdir>` | 2 | `FX_UNKNOWN_FIXTURE`; no project/store/workdir side effect. |
 | P04 | Existing workdir denial | `pilot start --fixture synthetic-units-v1 --workdir <nonempty-workdir>` | 2 | `WORKDIR_NOT_EMPTY`; existing sentinel bytes unchanged; no project created. Implemented by merged #130. |
 | P05 | Missing fixture argument | `pilot start --workdir <fresh-workdir>` | 2 | `FX_FIXTURE_REQUIRED`; no project/store/workdir side effect. |
-| P06 | Symlinked workdir root | `pilot start --fixture synthetic-units-v1 --workdir <symlink-to-outside-empty-dir>` | 2 | Proposed stable `WORKDIR_UNSAFE_PATH`; merged #130 rejects non-empty directories but still follows an empty-directory symlink. |
-| P07 | Symlinked fixture path | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | Proposed stable `FX_UNSAFE_PATH`; a symlinked fixture directory/manifest/payload must be rejected before reading outside the checked-in fixture root. |
-| P08 | Empty fixture version | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_INVALID`; empty/whitespace-only fixture version is invalid. |
-| P09 | Manifest digest mismatch | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | Proposed stable `FX_MANIFEST_HASH_MISMATCH`; modifying manifest and payload together must not pass an independently pinned digest. |
+| P06 | Symlinked workdir root | `pilot start --fixture synthetic-units-v1 --workdir <symlink-to-outside-empty-dir>` | 2 | `WORKDIR_UNSAFE_PATH`; merged #132 rejects the direct workdir-root symlink before creating the project; outside directory remains empty. |
+| P07 | Symlinked fixture path | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_UNSAFE_PATH`; merged #132 rejects a symlinked fixture directory, manifest or payload file before reading it. Add explicit per-file coverage for `schema.json` and `binding.json`; current test covers `units.csv` and `manifest.json`. |
+| P08 | Empty fixture version | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_INVALID`; merged #132 rejects empty/whitespace-only fixture versions before any project/store creation. |
+| P09 | Manifest digest mismatch | `pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>` | 2 | `FX_MANIFEST_HASH_MISMATCH`; merged #132 independently pins the checked-in manifest digest, so editing manifest and payload together does not pass. |
+| P10 | Symlinked workdir ancestor | `pilot start --fixture synthetic-units-v1 --workdir <symlink-parent>/new-workdir` | 2 | **Not implemented:** expect `WORKDIR_UNSAFE_PATH` before any directory creation; prove an outside sentinel/target remains untouched. #132 checks only the final `workdir` component, so a non-existent child beneath a symlinked parent can still be created outside the intended root. |
 | D01 | CSV import | `data import-csv --project <project> --csv <synthetic-csv> --schema <schema> --role scenario_input` | 0 | Prints `imported:` plus opaque import ID; no row values printed. |
 | D02 | Snapshot list | `data snapshots --project <project>` | 0 | Includes the exact import ID and metadata fields; no raw row values. |
 | D03 | Import metadata | `data show --project <project> --import-id <import-id>` | 0 | Prints the selected manifest metadata only. |
@@ -60,7 +61,7 @@
 - `agora outcomes held` is read-only. Exit 1 means a hold exists; it is not a command failure.
 - `agora reconcile` is a read-only detector. Repair remains an API-only operation and is not part of this command inventory.
 - `agora audit timeline` verifies the hash chain before displaying events; `agora audit verify` checks the chain against the local sidecar anchor. The sidecar cannot detect coordinated rollback of both chain and anchor.
-- Backup/restore rows B01–B09 are reconciled to #127's merged behavior. B08/B09 specify remaining root-path symlink hardening; they are not implemented on main. #130 is merged and adds partial strict loader checks, but it does not complete the full run-provenance schema.
+- Backup/restore rows B01–B09 are reconciled to #127's merged behavior. B08/B09 specify remaining project/backup/restore-target root-path symlink hardening; they are not implemented on main, and Claude's next code slice is the backup root-symlink/snapshot-lock work. #130 adds partial strict run-record checks but not the full run-provenance schema. #132 completes P06–P09 direct fixture/workdir-root hardening; P10 records the remaining workdir-ancestor symlink bypass.
 
 ## 4. Acceptance gate for item 8
 
@@ -71,6 +72,6 @@ No commands were executed to prepare this specification.
 
 ## 4. Run-record contract checks (API-level, no engine)
 
-The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. Merged #130 implements part of this strict loader but still does not require the full `RUN_PROVENANCE_SPEC.md` envelope, validate the fixture block/map deeply, or publish the record failure-atomically.
+The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. Merged #130 implements part of this strict loader; #132 adds independently pinned fixture manifest and file hashes, but the run record still does not require the full `RUN_PROVENANCE_SPEC.md` envelope, validate the fixture block/map deeply, or publish failure-atomically.
 
 Acceptance additionally requires exact repository SHA (not `unknown`), fixture ID/version, independently pinned manifest digest, exact input-manifest/scenario/schema/binding/ontology/policy fingerprints, stable timestamps/status enums, and failure-atomic record publication. Mutation proofs must show the test fails when each required-field, hash-cross-check, manifest binding or atomic-publication guard is removed.
