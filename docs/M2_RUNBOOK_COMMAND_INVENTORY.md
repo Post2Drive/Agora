@@ -51,6 +51,7 @@
 | B07 | Restore tamper refusal | `restore --backup <tampered-backup> --target <new-target-dir>` | 2 | Stable `BACKUP_FILE_MODIFIED`, `BACKUP_NOT_INTACT` or `RESTORED_NOT_INTACT` result; partial target removed; backup unchanged. |
 | B08 | Project-root symlink refusal | `backup --project <symlink-to-outside-project> --dest <new-backup-dir>` | 2 | Proposed stable `UNSAFE_PATH` before reading `run_record.json`/audit files; outside source not read/copied. |
 | B09 | Backup/restore root symlink refusal | `backup verify --backup <symlink-to-outside-backup>` or `restore --backup <backup-dir> --target <symlink-to-outside-target>` | 2 | Proposed stable `UNSAFE_PATH` before manifest read or target write; outside sentinel untouched. |
+| B10 | Source snapshot changed during backup | `backup --project <synthetic-project-with-concurrent-anchored-writer> --dest <new-backup-dir>` | 2 | `SNAPSHOT_CHANGED`; destination removed/not retained; source pair unchanged except for the separately controlled writer append; captured chain ID/sequence/head must match the source verdict. Use a deterministic synchronization hook in the test harness, not a timing sleep. |
 
 ## 3. CLI contract notes
 
