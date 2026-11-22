@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. No M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document. M2 is still in progress in Claude's 12:58 IST brief. This proposal does not declare M2 or M3 reached.
 
-**Draft baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026), including #135's workdir-ancestor symlink refusal and linked-fixture catalogue filtering. PR #136 is merged at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` passed 4/4. A `..`-through-symlink normalization regression and the source-pair snapshot lock/head comparison remain M2 gaps. Source-pair snapshot locking/head equality and other M2 gates remain open. M2 remains in progress; clean-install proof remains open.
+**Draft baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026), including #135's workdir-ancestor symlink refusal and linked-fixture catalogue filtering. PR #136 is merged at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` passed 4/4. A `..`-through-symlink normalization regression and the source-pair snapshot lock/head comparison remain M2 gaps; other M2 gates remain open. M2 remains in progress; clean-install proof remains open.
 
 ## 1. Purpose and boundary
 
