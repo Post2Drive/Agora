@@ -59,7 +59,7 @@
 - `agora outcomes held` is read-only. Exit 1 means a hold exists; it is not a command failure.
 - `agora reconcile` is a read-only detector. Repair remains an API-only operation and is not part of this command inventory.
 - `agora audit timeline` verifies the hash chain before displaying events; `agora audit verify` checks the chain against the local sidecar anchor. The sidecar cannot detect coordinated rollback of both chain and anchor.
-- Backup/restore rows B01–B09 are reconciled to #127's merged behavior. B08/B09 specify remaining root-path symlink hardening; they are not implemented on main. #130 is open and does not complete the full run-provenance schema.
+- Backup/restore rows B01–B09 are reconciled to #127's merged behavior. B08/B09 specify remaining root-path symlink hardening; they are not implemented on main. #130 is merged and adds partial strict loader checks, but it does not complete the full run-provenance schema.
 
 ## 4. Acceptance gate for item 8
 
@@ -70,6 +70,6 @@ No commands were executed to prepare this specification.
 
 ## 4. Run-record contract checks (API-level, no engine)
 
-The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. The current #130 PR proposes part of this strict loader but remains open and does not yet require the full `RUN_PROVENANCE_SPEC.md` envelope.
+The command test must also load the resulting `run_record.json` through `load_run_record(project)` and reject missing required keys, wrong types (including booleans where integers are required), non-synthetic data class, either engine/prediction flag true, malformed SHA-256 values, malformed fixture blocks/file-hash maps and malformed stage results. Merged #130 implements part of this strict loader but still does not require the full `RUN_PROVENANCE_SPEC.md` envelope, validate the fixture block/map deeply, or publish the record failure-atomically.
 
 Acceptance additionally requires exact repository SHA (not `unknown`), fixture ID/version, independently pinned manifest digest, exact input-manifest/scenario/schema/binding/ontology/policy fingerprints, stable timestamps/status enums, and failure-atomic record publication. Mutation proofs must show the test fails when each required-field, hash-cross-check, manifest binding or atomic-publication guard is removed.
