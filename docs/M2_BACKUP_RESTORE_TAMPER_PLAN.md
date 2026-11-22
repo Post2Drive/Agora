@@ -1,7 +1,7 @@
 # M2 Backup, Restore and Tamper Drills — Planning Specification
 
 **Status:** Local synthetic backup/verify/restore CLI is implemented by merged PR #120; this plan remains the safety/hardening and operator-drill specification. No operator tamper drill or rehearsal has been run.
-**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. The current owner instruction approves local synthetic M2 implementation. Temporary local synthetic stores only; this does not authorise simulation, real data, credentials, connectors, write-back or any protected study mutation.
+**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. The current owner instruction approves local synthetic M2 implementation, but the 10:50 owner decision orders the three post-M1 hardening fixes before further M2 build. Temporary local synthetic stores only; this does not authorise simulation, real data, credentials, connectors, write-back or any protected study mutation.
 
 ## 1. Backup consistency contract
 
