@@ -121,7 +121,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #102 | Read-only `agora outcomes held` listing | Merged; exact-head CI run `44965953082` passed 4/4 |
 | #106 | Held-list connection-open failure hardening | Merged; exact-head CI run `44970435296` passed 4/4 |
 
-Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #104). PRs #94–#104 are merged; no PR was open at the start of this documentation refresh.
+Main is `112030a219e2d6f7278a46a95be2468634bf563a` (merge of #106). Implementation PRs #94–#104 and #106 are merged; ChatGPT's draft docs PR #105 is the only open PR.
 
 ## 5. Required exit gates before the milestone can be declared reached
 
