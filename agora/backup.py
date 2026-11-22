@@ -141,13 +141,17 @@ def _read_manifest_full(root: Path) -> tuple[dict[str, str], str, Any, Any]:
     if not isinstance(manifest, dict):
         raise BackupBlocked("BACKUP_MANIFEST_INVALID")
     files, chain_id = manifest.get("files"), manifest.get("chain_id")
-    if (manifest.get("manifest_version") != 1 or manifest.get("synthetic_only") is not True
+    version, seq, head = manifest.get("manifest_version"), manifest.get("chain_sequence"), manifest.get("chain_head_hash")
+    if (type(version) is not int or version != 1 or manifest.get("synthetic_only") is not True
+            or type(seq) is not int or seq < 0
+            or not isinstance(head, str) or len(head) != 64
+            or any(c not in "0123456789abcdef" for c in head)
             or not isinstance(chain_id, str) or not chain_id
             or not isinstance(files, dict) or not files
             or any(not _safe_rel(k) or not isinstance(v, str) or len(v) != 64
                    or any(c not in "0123456789abcdef" for c in v) for k, v in files.items())):
         raise BackupBlocked("BACKUP_MANIFEST_INVALID")
-    return files, chain_id, manifest.get("chain_sequence"), manifest.get("chain_head_hash")
+    return files, chain_id, seq, head
 
 
 def _head(verdict: dict[str, Any]) -> tuple[Any, Any]:
