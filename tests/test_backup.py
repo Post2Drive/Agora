@@ -510,12 +510,34 @@ def _spy_lock(monkeypatch, module, attr, name_filter, attempting, acquired):
     monkeypatch.setattr(module, attr, spy)
 
 
+def _spy_os_lock_primitive(monkeypatch, name_filter, attempting):
+    """Set `attempting` at the real OS lock call (flock / msvcrt.locking), made by the named thread
+    immediately before it can block. A factory-entry flag would be set before the thread is
+    actually waiting, so the handshake would not prove the writer is contending for the lock."""
+    import os
+    import threading
+    if os.name == "nt":
+        import msvcrt
+        holder, attr = msvcrt, "locking"
+    else:
+        import fcntl
+        holder, attr = fcntl, "flock"
+    real = getattr(holder, attr)
+
+    def spy(*a, **k):
+        if threading.current_thread().name == name_filter:
+            attempting.set()
+        return real(*a, **k)
+    monkeypatch.setattr(holder, attr, spy)
+
+
 def test_real_writer_cannot_append_while_backup_holds_the_snapshot(project, tmp_path, monkeypatch):
     import threading
     import agora.audit_anchor as anchor_mod
     import agora.backup as mod
     attempting, acquired = threading.Event(), threading.Event()
-    _spy_lock(monkeypatch, anchor_mod, "_exclusive_lock", "late-writer", attempting, acquired)
+    _spy_lock(monkeypatch, anchor_mod, "_exclusive_lock", "late-writer", threading.Event(), acquired)
+    _spy_os_lock_primitive(monkeypatch, "late-writer", attempting)
     real = mod._copy_tree
     state = {}
 

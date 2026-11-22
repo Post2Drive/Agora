@@ -33,7 +33,7 @@ COVERED_ELSEWHERE = {
     "P07": ("tests/test_pilot_fixture.py", "test_symlinked_fixture_dir_manifest_or_payload_refused"),
     "P08": ("tests/test_pilot_fixture.py", "test_empty_fixture_version_refused"),
     "P09": ("tests/test_pilot_fixture.py", "test_manifest_and_payload_edited_together_fails_pin"),
-    "B10": ("tests/test_backup.py", "test_chain_changing_during_copy_is_detected_and_cleaned"),
+    "B10": ("tests/test_backup.py", "test_real_writer_cannot_append_while_backup_holds_the_snapshot"),
     "B12": ("tests/test_runbook_commands.py",
             "test_B12_lstat_failure_on_an_intermediate_ancestor_fails_closed"),
 }
