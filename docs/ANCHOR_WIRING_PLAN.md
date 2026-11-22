@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `776669cac7c30722726ed87813f677d6d6d89aec`, after #121 docs and #122 hardening merged. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2 after #122; #123 is an open draft run-record slice, not yet merged or fully compliant with the provenance contract. No M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `27269a0b939e966dc5eee72c915562e68a61ec67`, after #121 docs, #122 hardening and #123 run-record implementation merged. Claude's exact 09:05 IST log entry confirms M1. The owner approved local synthetic M2; #123 adds an initial run record but not the complete provenance envelope. No M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
@@ -210,7 +210,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 - Keep `VALIDATED_PREDICTION_ENABLED=False`.
 - This plan is not permission to begin implementation; each code slice requires its own scoped approval and draft PR.
 
-## 10. Current mainline status after PR #122 and docs refresh #121
+## 10. Current mainline status after PR #123, #122 and docs refresh #121
 
 **Stage A — writer factory/lifecycle: IMPLEMENTED.** `open_anchored_audit(chain_path, anchor_path, chain_id)` uses explicit paths and chain ID, does not bootstrap, rejects same-file and unclean chain/anchor pairs, returns an anchored writer and closes the underlying chain. Missing/invalid anchor state fails closed.
 
@@ -226,7 +226,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-**Remaining acceptance gates:** close the marker/audit cross-store commit-failure case with a durable pending/outbox or reconciliation contract; harden #120 backup source-pair snapshot, synthetic allowlist/symlink rejection, manifest schema and restore post-copy hashes; complete M2 run records/checked-in fixture/one-command start and tested runbook; retain the explicit block on unanchored-tail recovery.
+**Remaining acceptance gates:** close the marker/audit cross-store commit-failure case with a durable pending/outbox or reconciliation contract; harden #120 backup source-pair snapshot, synthetic allowlist/symlink rejection, manifest schema and restore post-copy hashes; complete the run-record provenance fields/validation, checked-in fixture/one-command start and tested runbook; retain the explicit block on unanchored-tail recovery.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
