@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** main at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026), including merged #111, #113, #115, #116 and #119. #111 restricts role-string PDP imports to the internal allowlist and makes the role-string approval authorizer private; #113 closes the protected shared-policy Principal-binding gap with `BoundPolicy`. Identity remains synthetic-only; no OIDC or production identity is claimed.
+**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -161,7 +161,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026)
+## Current migration status — main `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. Role-string PDP compatibility functions remain only as internal allowlisted compatibility surfaces after #111; protected callbacks require Principal-bound `BoundPolicy` after #113. The adapter remains synthetic-only.

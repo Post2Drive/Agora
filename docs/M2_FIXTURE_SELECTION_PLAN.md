@@ -1,7 +1,7 @@
 # M2 Synthetic Fixture Selection — Planning Specification
 
 **Status:** Planning only; fixture catalogue and selection UX are not yet implemented.
-**Prerequisite:** M1 was explicitly confirmed by Claude in the 09:05 IST log entry; M2 fixture implementation still requires the owner's separate GO, a code PR and exact-head CI.
+**Prerequisite:** M1 was explicitly confirmed by Claude in the 09:05 IST log entry; the owner approved local synthetic M2 at 10:50 IST after #122 merged the primary hardening fixes. The fixture catalogue/selection implementation is still pending and is Claude's next claimed slice.
 **Boundary:** Invented, checked-in, deterministic fixtures only.
 
 ## 1. Fixture catalogue
