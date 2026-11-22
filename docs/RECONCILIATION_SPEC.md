@@ -1,6 +1,6 @@
 # Decision Store and Audit-Chain Reconciliation Specification
 
-**Status:** Partial implementation. #100/#104 provide the read-only decision lifecycle detector; #119 adds read-only sidecar-anchor verification before classification and requires `--anchor` / `--chain-id`; #115 adds API-only, approver-authorised, idempotent repair for missing decision audit events. Repair has no CLI, does not cover outcome/review rows, and cannot recover an unanchored tail. Review found a possible TOCTOU window between #119's verification connection and the subsequent classification connection under concurrent writes.
+**Status:** Partial implementation. #100/#104 provide the read-only decision lifecycle detector; #119 adds sidecar-anchor verification before classification and requires `--anchor` / `--chain-id`; #122 holds the same anchor lock across verification and classification; #115 adds API-only, approver-authorised, idempotent repair for missing decision audit events. Repair has no CLI, does not cover outcome/review rows, and cannot recover an unanchored tail. Review caveats: the lock helper may create a `.lock` metadata file, and the race test uses a fixed sleep rather than a deterministic handshake.
 
 ## 1. Problem and objective
 
@@ -69,7 +69,7 @@ agora reconcile --decisions <db> --audit <db> --anchor <file> --chain-id <id>
 
 The Python signature is `reconcile(decisions_db, audit_db, *, anchor_path, chain_id)`. It verifies the audit chain against the local sidecar read-only before classifying decision lifecycle/approval transitions. It proceeds only when `verify_anchored_readonly()` returns `anchored_verified`; missing/malformed/wrong-chain anchors, chain-integrity failure, truncation, anchor mismatch, unanchored tail and unreadable stores fail closed with stable blocked codes and no classifications. No bootstrap, repair or write occurs during detection.
 
-After the anchor check, the current implementation opens a second read-only connection for source/audit classification. **Review finding:** the verification connection is closed before the classification connection is opened. A concurrent writer could append an unanchored tail between those phases, so the earlier anchor verdict may not describe the rows subsequently classified. Do not claim concurrent-writer atomicity until a shared anchor lock or one consistent read snapshot covers verification and classification. Add a deterministic regression test that injects a chain append between the two phases and proves reconciliation blocks without classifying.
+#122 now holds the same `AnchorStore.lock()` across the anchor verification and classification phases, preventing a concurrent anchored append from invalidating the verified snapshot. **Review caveats:** `AnchorStore.lock()` delegates to a helper that opens the sidecar lock path with `a+b`, so it can create a `.lock` file during reconciliation; decide whether this metadata write is allowed under the read-only contract. The #122 concurrency test uses a fixed sleep instead of a deterministic handshake proving the writer reached the lock attempt; strengthen the test so removing the lock fails reliably.
 
 The detector also:
 
@@ -81,7 +81,7 @@ The detector also:
 
 #104 cross-checks source transition/status/actor/method/timestamp against immutable `decision_records.payload_json`, validates audit operation and exact resource IDs, and closes partial-open connections safely. #115 adds a separate API-only repair for missing decision events; it requires an approver Principal, anchored writer, clean anchor and exact audit head. #102/#106 remain a separate read-only held-outcome list. Neither #115 nor #102/#106 reconciles outcome/review or marker audit rows.
 
-PR #100 exact-head Actions run `44963254416`, #104 run `44968039923`, #115 run `44980052093` and #119 run `44981680171` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. These CI results do not close the TOCTOU review finding above.
+PR #100 exact-head Actions run `44963254416`, #104 run `44968039923`, #115 run `44980052093`, #119 run `44981680171` and #122 run `44989188092` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. These CI results establish the tested implementation head, but the lock-file metadata side effect and deterministic race-test proof remain review caveats.
 
 ## 6. Idempotent repair protocol
 
@@ -187,7 +187,7 @@ The implementation test suite must show named tests fail if a mutation:
 ## 12. Rollout gates and non-goals
 
 1. Add immutable correlation metadata to new decision transition records; define how legacy transitions are classified when correlation data is absent.
-2. Implemented by #100/#104 and anchor-hardened by #119: the read-only `agora reconcile` detector verifies the chain and local sidecar before classifying decision lifecycle/approval transitions. #115 adds a separate API-only repair for missing decision events. Stable correlation IDs, a durable queue, outcome/review and marker-audit reconciliation remain gaps; the #119 verify/read TOCTOU window needs a shared lock or consistent snapshot. #102/#106 provide a separate read-only held-outcome list, not cross-store reconciliation.
+2. Implemented by #100/#104 and anchor-hardened by #119/#122: the read-only `agora reconcile` detector verifies the chain and local sidecar before classifying decision lifecycle/approval transitions; #122 holds the shared anchor lock across verification/classification. #115 adds a separate API-only repair for missing decision events. Stable correlation IDs, a durable queue, outcome/review and marker-audit reconciliation remain gaps. Clarify the lock-file metadata side effect and make the concurrency test deterministic.
 3. Implement the append-only queue and independent review workflow.
 4. Add idempotent repair behind explicit configuration and approval.
 5. Prove crash/retry/concurrency behaviour and run mutation tests in a clean checkout.
