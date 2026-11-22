@@ -1,6 +1,6 @@
 # Decision Store and Audit-Chain Reconciliation Specification
 
-**Status:** Partial implementation. PR #100 adds a read-only detector for decision lifecycle/approval transitions; the queue, independent-review and repair workflow specified below remains unimplemented. The current detector does not verify the sidecar anchor and does not cover outcome/review rows.
+**Status:** Partial implementation. PR #100 adds a read-only detector for decision lifecycle/approval transitions; source metadata validation and partial-open connection cleanup remain the next claimed hardening slice. The queue, independent-review and repair workflow remains unimplemented. The detector does not verify the sidecar anchor or cover outcome/review rows.
 
 ## 1. Problem and objective
 
@@ -71,9 +71,9 @@ The merged detector currently:
 4. Classifies source transitions as `matched`, `missing`, `conflict` or `source_invalid`; lists orphan lifecycle audit events separately.
 5. Emits deterministic JSON findings followed by a summary. Exit codes are 0 for no detected gaps, 1 for listed gaps, and 2 when blocked by a missing/unreadable store or invalid chain.
 
-**Review limitations to close before relying on the detector as complete reconciliation:** the current source check does not compare `decision_approval_events.transition`, actor, method or timestamp with the immutable `decision_records.payload_json`; a tampered transition row can retain the record fingerprint. The read-only store-opening path also needs a regression test that closes the already-open audit connection when the decisions store is missing. The detector has no sidecar-anchor verification, stable correlation ID, queue/repair workflow, or outcome/review coverage. These are not implemented by #100.
+**Review limitations to close before relying on the detector as complete reconciliation:** the current source check does not compare `decision_approval_events.transition`, actor, method or timestamp with the immutable `decision_records.payload_json`; a tampered transition row and correspondingly re-hashed audit event can be reported as matched while the immutable record disagrees. It also does not validate audit `operation` or require `resource_ids` to be exactly `[decision_id, f"version-{version}"]`. If the audit DB opens but the decisions DB is missing, the second `_ro()` raises before the cleanup `finally` is entered, leaving the audit connection open. Claude has claimed this source-metadata/ExitStack hardening slice next. The detector still has no sidecar-anchor verification, stable correlation ID, queue/repair workflow, or outcome/review coverage.
 
-PR #100 exact-head Actions run `44963254416` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Its tests cover matching/missing/conflicting/orphan events, version/fingerprint issues, invalid chain, missing stores, read-only determinism, CLI exit codes and engine-import isolation; they do not yet cover the metadata mismatch or partial-open connection cases.
+PR #100 exact-head Actions run `44963254416` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Tests cover matching/missing/conflicting/orphan events, version/fingerprint issues, invalid chain, missing stores, read-only determinism, CLI exit codes and engine-import isolation; they do not cover transition/actor/method/timestamp mismatches against the immutable payload, audit operation/resource-ID shape, or partial-open connection cleanup. PR #102 separately adds the read-only held-outcome list; it is not reconciliation of outcome rows against the audit chain.
 
 ## 6. Idempotent repair protocol
 
@@ -175,7 +175,7 @@ The implementation test suite must show named tests fail if a mutation:
 ## 12. Rollout gates and non-goals
 
 1. Add immutable correlation metadata to new decision transition records; define how legacy transitions are classified when correlation data is absent.
-2. Implemented minimally by #100: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Extend source-transition metadata validation, stable correlation and anchor verification before treating this as a complete reconciliation control.
+2. Implemented minimally by #100: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Its source metadata cross-checks and partial-open cleanup still need the claimed hardening; stable correlation, anchor verification, outcome/review coverage and queue/repair remain separate gaps. #102 provides a separate read-only held-outcome list, not cross-store reconciliation.
 3. Implement the append-only queue and independent review workflow.
 4. Add idempotent repair behind explicit configuration and approval.
 5. Prove crash/retry/concurrency behaviour and run mutation tests in a clean checkout.
