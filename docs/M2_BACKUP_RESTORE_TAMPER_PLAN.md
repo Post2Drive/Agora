@@ -1,7 +1,7 @@
 # M2 Backup, Restore and Tamper Drills — Planning Specification
 
-**Status:** Local synthetic backup/verify/restore CLI is implemented by merged PR #120; this plan remains the safety/hardening and operator-drill specification. No operator tamper drill or rehearsal has been run.
-**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. The current owner instruction approves local synthetic M2 implementation, but the 10:50 owner decision ordered the three post-M1 hardening fixes, now closed by merged #122. Temporary local synthetic stores only; this does not authorise simulation, real data, credentials, connectors, write-back or any protected study mutation.
+**Status:** #120 backup/verify/restore CLI and #127 hardening are merged. #127 adds the synthetic run-record gate, symlink/unsafe-path refusal, manifest schema validation, copied chain/anchor re-verification and post-copy restored-file hashes. Exact-head Actions run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This document remains the operator safety/drill specification; no operator tamper drill or rehearsal has been run.
+**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. Local synthetic M2 implementation is owner-approved. Temporary local synthetic stores only; no simulation, real data, credentials, connectors, write-back or protected study mutation.
 
 ## 1. Backup consistency contract
 
@@ -18,7 +18,7 @@ A backup manifest should record:
 
 Never include event payload values, personal data, credentials or secrets in the manifest.
 
-## 2. Restore procedure — CLI component merged; hardening pending
+## 2. Restore procedure — CLI and hardening merged; operator validation pending
 
 Merged command surface (#120; exact-head Actions run `44986367729` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs):
 
@@ -28,13 +28,14 @@ agora backup verify --backup <backup-dir>
 agora restore --backup <backup-dir> --target <new-empty-target-dir>
 ```
 
-The current implementation verifies the source chain/anchor before copying, snapshots SQLite files with SQLite's backup API, writes per-file SHA-256 values to `BACKUP_MANIFEST.json`, verifies manifest membership/hashes and the backup chain/anchor before restore, refuses non-empty targets, and verifies the restored chain/anchor.
+The merged #127 patch changes the prior #120 behavior as follows:
+- Backup requires `run_record.json` with `data_class == "synthetic"`; otherwise it blocks with `SOURCE_NOT_SYNTHETIC`.
+- Symlinks in the source/backup tree and unsafe manifest-relative paths are refused with `UNSAFE_PATH`.
+- The manifest validator requires version 1, `synthetic_only is True`, a nonblank chain ID and a safe relative-path-to-lowercase-SHA256 mapping; malformed manifests block with `BACKUP_MANIFEST_INVALID`.
+- After copying the source files, backup re-verifies the copied chain/anchor against the source verdict; a changed or invalid pair blocks with `SNAPSHOT_CHANGED` and removes the incomplete destination.
+- Restore re-hashes every copied file against the manifest before success; a mismatch blocks with `RESTORED_NOT_INTACT`.
 
-Post-merge review found two races that must be fixed before operator reliance:
-- `backup()` does not hold the same `AnchorStore.lock()` across source verification and copying the audit SQLite/anchor pair. An anchored append can interleave after the source verdict or between the DB and anchor copies; the function can return success with an inconsistent pair.
-- `restore()` verifies the backup, then copies files, but only verifies the restored chain/anchor afterward. It does not re-hash every restored file against the manifest after the copy; a non-audit file changed after pre-verification can be restored without detection.
-- The source is not proven synthetic: `_files(project)` recursively copies every file, follows symlinks through `Path.is_file()`/`shutil.copy2`, and the manifest hardcodes `synthetic_only=True`. No project marker or fixture-hash allowlist is checked, so arbitrary files, credential/config files or symlink targets can be copied under a false synthetic label.
-- `verify_backup()` does not validate `manifest_version` or `synthetic_only`, and `files` is only a type annotation, not a runtime check. A malformed `files` list can reach `.items()` and raise `AttributeError` instead of a stable `BackupBlocked` result.
+#127 adds tests and mutation proofs for the synthetic gate, symlink refusal, manifest validation, snapshot re-verification and restore re-hashing. Exact-head CI run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The operator command test and tamper rehearsal are still outstanding. Do not infer from the merged hardening that an operator rehearsal has occurred.
 
 1. Stop all writers and preserve the current pair unchanged.
 2. Verify the backup manifest and both component hashes.
@@ -60,8 +61,11 @@ Planned synthetic-only cases:
 - Simulate an unanchored tail: protected appends and repair must stop; preserve both stores.
 - Inject an anchored writer between source verification and backup pair copy: the backup must block or hold the shared anchor lock until a consistent pair is captured.
 - Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
-- Point backup at an unmarked/non-synthetic project and at a project containing a symlink to an outside file: both must fail closed without reading/copying the target or writing a `synthetic_only` manifest.
-- Tamper `manifest_version`, set `synthetic_only` false, replace `files` with a list, or corrupt `chain_id`/digest values: verification must return stable blocked codes, never an uncaught exception.
+- Point backup at an unmarked/non-synthetic project: expect `SOURCE_NOT_SYNTHETIC` and no destination.
+- Place a symlink in the source or backup tree, or use an unsafe relative manifest path: expect `UNSAFE_PATH` and no outside-target read/copy.
+- Tamper `manifest_version`, set `synthetic_only` false, replace `files` with a list, or corrupt `chain_id`/digest values: expect `BACKUP_MANIFEST_INVALID`, never an uncaught exception.
+- Change the copied chain/anchor during backup: expect `SNAPSHOT_CHANGED` and no retained partial backup.
+- Mutate a non-audit file after backup verification but before/during restore copy: expect `RESTORED_NOT_INTACT` and no published target.
 
 ## 4. Acceptance evidence
 
@@ -69,10 +73,10 @@ Planned synthetic-only cases:
 - Each tamper case asserts a stable blocked/error status and no silent repair.
 - Restore tests verify exact hashes, chain ID, sequence and head.
 - Failure tests prove original stores and backup bytes remain unchanged.
-- Backup concurrency tests prove the same `AnchorStore.lock()` spans source verification and audit DB/anchor snapshot; removing the lock must fail the test.
-- Restore tests re-hash every staged restored file against the manifest after copy and verify the chain/anchor before publishing the target; removing post-copy hash verification must fail the test.
-- Backup tests require a verified synthetic project marker/fixture allowlist, reject symlinks and unapproved paths, and prove the manifest's `synthetic_only` value is evidence-based.
-- Manifest tests validate version, synthetic-only flag, chain ID, and a relative-path-to-SHA256 mapping; malformed schemas return stable blocked codes.
+- #127 CI and mutation evidence covers the synthetic run-record gate, symlink/path refusal, manifest schema, copied chain/anchor re-verification and restored-file re-hashing. Preserve exact-head CI evidence in the milestone docs.
+- The current synthetic gate is the `run_record.json` `data_class=synthetic` check; this is not equivalent to a separately pinned fixture-hash allowlist for every file in a project. Keep the scope distinction explicit.
+- The automated runbook command test must exercise backup/verify/restore and each stable refusal code in temporary synthetic directories.
+- A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
 - A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
 
 ## 5. Explicit non-goals
