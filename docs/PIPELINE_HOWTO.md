@@ -32,7 +32,7 @@ This guide documents the available components and their boundaries. It does not 
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
 | One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 adds `agora pilot list/start` with a checked-in fixture. The run record remains partial; clean-install proof and fixture integrity/workdir hardening remain open.
 
-## 2.1 Guided synthetic pilot command on main (#88; CLI import isolation #94)
+## 2.1 Guided synthetic pilot command on main (#88/#125; CLI import isolation #94)
 
 The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.main()`. The supported invocation is:
 
@@ -229,7 +229,7 @@ The following M2 gaps remain on main `969a040a497668740d20e1ace83841046639b2d6` 
 
 The current merged local synthetic commands on main `969a040a497668740d20e1ace83841046639b2d6` are:
 
- ```bash
+```bash
 agora pilot list
 agora pilot start --fixture synthetic-units-v1 --workdir ./tmp-agora-pilot
 # Legacy M1 path remains available:
