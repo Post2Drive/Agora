@@ -30,7 +30,7 @@ def test_missing_scope_is_denied():
 
 def test_missing_or_unknown_sensitivity_is_denied_for_every_operation():
     for operation in OPERATIONS:
-        role = "approver" if operation == "decision_approval" else "operator"
+        role = "approver" if operation in {"decision_approval", "reconciliation_repair"} else "operator"
         result = decide(_subject(), role, operation, _resource())
         assert result["decision"] == "deny"
         assert result["reason"] == "sensitivity_missing"
@@ -40,7 +40,7 @@ def test_missing_or_unknown_sensitivity_is_denied_for_every_operation():
 
 def test_sealed_holdout_is_denied_for_every_operation():
     for operation in OPERATIONS:
-        role = "approver" if operation == "decision_approval" else "operator"
+        role = "approver" if operation in {"decision_approval", "reconciliation_repair"} else "operator"
         result = decide(_subject(), role, operation, _resource(source_role="sealed_holdout"))
         assert result["decision"] == "deny"
         assert result["reason"] == "sealed_holdout_forbidden"
@@ -88,3 +88,10 @@ def test_decision_outcome_operation_role_matrix():
     for role, expected in (("operator", "allow"), ("reviewer", "allow"),
                            ("approver", "deny"), ("reader", "deny")):
         assert decide(_subject(), role, "decision_outcome", resource)["decision"] == expected
+
+
+def test_reconciliation_repair_operation_role_matrix():
+    resource = {"project_id": "project-a", "resource_ids": ["reconciliation"], "source_sensitivity": "internal"}
+    for role, expected in (("approver", "allow"), ("operator", "deny"),
+                           ("reviewer", "deny"), ("reader", "deny")):
+        assert decide(_subject(), role, "reconciliation_repair", resource)["decision"] == expected
