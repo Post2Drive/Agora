@@ -2,12 +2,12 @@
 
 **Status:** Claude-confirmed M1 code-complete; this is not M2 operator-pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `776669cac7c30722726ed87813f677d6d6d89aec`
+**Main base:** `27269a0b939e966dc5eee72c915562e68a61ec67`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Assessment base is main `776669cac7c30722726ed87813f677d6d6d89aec` after #121 merged; #122 is also merged. Claude's exact 09:05 IST log entry confirms M1 on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`. #122 (head `73c2d5db61db775602a18ad1d170bc010b39ebbf`, Actions run `44989188092`) moves marker audit append before marker commit, requires same-decision/version/affected-object supersession with a bounded reason, and holds the anchor lock across reconciliation verification/classification. M2 is owner-approved for local synthetic work but remains incomplete: #123 is still a draft; its exact-head CI passed 4/4, while its record schema still misses required provenance fields. Checked-in fixture/one-command start, backup hardening, tested runbook and logged rehearsal remain open. No M2 readiness is claimed.
+Assessment base is main `27269a0b939e966dc5eee72c915562e68a61ec67` after #123 merged. Claude's exact 09:05 IST log entry confirms M1. #122 (head `73c2d5db61db775602a18ad1d170bc010b39ebbf`, run `44989188092`) closes the primary marker audit-order/supersession and reconcile-lock findings. #123 is now merged at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122` (merge commit `27269a0b939e966dc5eee72c915562e68a61ec67`); exact-head Actions run `44990673166` passed all four jobs. Its first run_record.json is only a partial implementation: it records the embedded CSV hash and basic IDs/stage results but omits schema/binding/manifest/ontology/policy provenance and full load-time validation. M2 remains incomplete: checked-in fixture/one-command start, run-record hardening, backup hardening, tested runbook and logged rehearsal remain open.
 
 #111 retires the public role-string approval authorizer and restricts role-string PDP imports to the internal allowlist. #113 completes protected Principal-bound policy enforcement with `BoundPolicy`; identity remains synthetic-only. #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing decision audit events only (API, no CLI; unanchored-tail recovery blocks). #116 supplies explicit-edge outcome markers; #122 closes the audit-append-failure-before-commit and same-target supersession gaps. A residual cross-store failure remains possible if the audit append succeeds but the marker-store commit then fails; marker/audit reconciliation is not implemented. #119 plus #122 hold the anchor lock across verification and classification; the lock helper can create a sidecar `.lock` file, and its concurrency test still uses a timing sleep. #120 adds local synthetic backup/verify/restore CLI commands, but source snapshot locking, symlink/fixture allowlisting, manifest schema validation and post-copy restore hashing remain open. The anchor trust level remains `local_sidecar`.
 
@@ -25,9 +25,9 @@ Claude's 09:05 IST log entry explicitly confirms M1 reached on main `83d0645b983
 python -m agora.cli pilot --workdir <new-empty-dir>
 ```
 
-Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on that SHA; ChatGPT did not execute the command or tests. #119 and #122 are now merged on current main `776669cac7c30722726ed87813f677d6d6d89aec`; #122 exact-head Actions run `44989188092` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on the confirmation SHA; ChatGPT did not execute the command or tests. #122 and #123 are now merged on current main `27269a0b939e966dc5eee72c915562e68a61ec67`; #122 run `44989188092` and #123 run `44990673166` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-Assessment base: `776669cac7c30722726ed87813f677d6d6d89aec`.
+Assessment base: `27269a0b939e966dc5eee72c915562e68a61ec67`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -95,7 +95,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Decision/audit reconciliation | **Done — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar and #122 holds the same anchor lock across verification/classification. #115 remains API-only, approver-authorised and exact-head-bound for missing decision events. The lock helper opens a sidecar file with `a+b`, which may create a metadata file; the concurrency test uses a fixed sleep rather than a deterministic handshake. Repair excludes outcome/review rows and unanchored-tail recovery remains blocked. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results and first-denial stop; #94 keeps CLI pilot/data dispatch engine-import-free. It still does not persist the M2 run record or call `build_scenario_input()` / the engine. |
-| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | M1 is confirmed by Claude's exact 09:05 IST entry. Main `776669cac7c30722726ed87813f677d6d6d89aec` includes #122 hardening and #121 docs. #123 is an open draft run-record slice (exact-head CI 4/4), not merged and not yet compliant with the fixture/run-provenance field contract. Checked-in fixture/one-command start, backup hardening, tested runbook and logged rehearsal remain open. |
+| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | M1 is confirmed by Claude's exact 09:05 IST entry. Main `27269a0b939e966dc5eee72c915562e68a61ec67` includes #122 hardening and #123's initial run_record.json. #123 is merged but only partial: schema/binding/manifest/ontology/policy provenance and full loader validation remain missing. Checked-in fixture/one-command start, backup hardening, tested runbook and logged rehearsal remain open. |
 
 ## 4. Pull request status snapshot
 
@@ -146,9 +146,9 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #120 | Local synthetic backup/verify/restore CLI and tamper-detection tests | Merged; exact-head CI run `44986367729` passed 4/4 |
 | #121 | Documentation refresh after #120/#122 | Merged at head `769de633b6d13c14d60a353da989b716443f0d12`; exact-head Actions run `44990546024` passed 4/4 |
 | #122 | Post-M1 marker audit ordering, supersession scope and reconcile lock | Merged at head `73c2d5db61db775602a18ad1d170bc010b39ebbf`; exact-head Actions run `44989188092` passed 4/4 |
-| #123 | M2 pilot run-record first slice | Open draft at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`; exact-head Actions run `44990673166` passed 4/4; provenance field coverage and load-time schema/hash validation remain incomplete |
+| #123 | M2 pilot run-record first slice | Merged at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`; exact-head Actions run `44990673166` passed 4/4; provenance field coverage and load-time schema/hash validation remain incomplete |
 
-Assessment base is main `776669cac7c30722726ed87813f677d6d6d89aec` after #121 merged; #122 is merged. M1 remains Claude-confirmed. #120 is an M2 backup/restore component only, not a completed operator drill; #123 remains an unmerged run-record draft and M2 is not reached.
+Assessment base is main `27269a0b939e966dc5eee72c915562e68a61ec67` after #123 merged. M1 remains Claude-confirmed. #123 adds an initial pilot run record but does not satisfy the full provenance contract; #120 is still only a backup/restore component, not an operator drill. M2 is not reached.
 
 ## 5. M1 exit gates — Claude confirmation recorded
 
@@ -170,7 +170,7 @@ Assessment base is main `776669cac7c30722726ed87813f677d6d6d89aec` after #121 me
 - [x] The CLI module no longer imports the simulation engine for pilot/data dispatch; #94 lazy-loads it only in engine-dependent handlers and passes exact-head CI 4/4. Fresh-process coverage is for `--help`, not a complete `--workdir` invocation.
 - [x] Exact-head CI is green on the M1 implementation heads: #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`) and #122 (`44989188092`) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs; mutation proofs are recorded in the implementation PRs.
 - [x] Claude logged the exact M1 confirmation at 09:05 IST on 22 November 2026, naming main `83d0645b983365dddd9da07d4c1352e0b66e3d00`, the clean-checkout pilot command and the nine completed stages.
-- [ ] M2 exit criteria remain incomplete. The owner approved local synthetic M2 after the three post-M1 fixes; #122 merged those primary fixes. #123 is still a draft and its initial record lacks schema/binding/manifest/ontology/policy provenance required by the fixture/run-provenance contract. The checked-in fixture/one-command start, backup hardening, executable runbook test and logged rehearsal remain open. Scenario-input-to-engine wiring remains blocked unless Claude and the owner separately approve that exact item.
+- [ ] M2 exit criteria remain incomplete. #123 is merged but its run record remains partial: schema/binding/manifest/ontology/policy hashes and full schema/hash validation are missing. The checked-in fixture/one-command start (Claude's current claimed slice), backup hardening, executable runbook test and logged rehearsal remain open. Scenario-input-to-engine wiring remains blocked unless Claude and the owner separately approve that exact item.
 
 Passing these gates means only that a scoped synthetic rehearsal may be considered. It does not establish predictive validity, real demand, sales performance, production security or permission for external actions.
 
@@ -178,7 +178,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`. #120 implements the local backup/verify/restore CLI, but synthetic-source allowlisting, symlink rejection, shared snapshot locking, manifest validation and post-copy restore hashing remain open. #123 is a draft run-record slice with exact-head CI 4/4, but its field coverage and fail-closed loader validation remain incomplete. The checked-in fixture, runbook-command tests and logged rehearsal remain open; no M2 completion is claimed.
 
-This assessment is refreshed against main `776669cac7c30722726ed87813f677d6d6d89aec` after #121 merged. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`) and open #123 (`44990673166`) passed their four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests, the pilot, backup, restore or a rehearsal. M2 is owner-approved but incomplete.
+This assessment is refreshed against main `27269a0b939e966dc5eee72c915562e68a61ec67`. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`) and #123 (`44990673166`) passed their four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
 
 ## 7. Permanent safety boundaries
 
