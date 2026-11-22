@@ -2,7 +2,7 @@
 
 **Status:** Draft acceptance inventory for Claude's M2 item 8. This is a documentation contract, not evidence that commands have been executed. The automated test must run only in temporary directories using the checked-in synthetic fixture. It must never invoke the simulation engine, network, connectors, credentials, real data or `agora/sim/**`.
 
-**Baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026). #127, #130, #132, #134 and #135 are merged; exact-head CI for #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) passed 4/4. #135 closes workdir-ancestor refusal and linked-fixture catalogue filtering. Merged PR #136 adds backup ancestor/pre-read/lstat-error checks; exact-head CI `45006493190` is 4/4 passed. Its `..`-through-symlink path-normalization case remains to be tested. Clean-install proof remains open.
+**Baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026). #127, #130, #132, #134, #135 and #136 are merged; exact-head CI for #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) passed 4/4. #135 closes workdir-ancestor refusal and linked-fixture catalogue filtering. Merged PR #136 adds backup ancestor/pre-read/lstat-error checks; exact-head CI `45006493190` is 4/4 passed. Its `..`-through-symlink path-normalization case remains to be tested. Clean-install proof remains open.
 
 ## 1. Test harness rules
 
