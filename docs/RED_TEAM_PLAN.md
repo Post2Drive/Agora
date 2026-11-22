@@ -2,7 +2,7 @@
 
 **Status:** Plan only. No attack has been executed as part of this document. This is the synthetic governance-integrity track; it is separate from predictive validation. M2 remains in progress and M3 is proposal-only.
 
-**Baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only. Exact detection codes below are taken from current main where present. A planned code is explicitly labelled when the implementation does not yet expose a stable code.
+**Baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026). #132 now pins the checked-in fixture manifest and rejects direct fixture directory/manifest/payload symlinks, empty fixture versions and direct workdir-root symlinks. Parent-component workdir symlink coverage and clean-install proof remain open. Exact detection codes below are taken from current main where present. A planned code is explicitly labelled when the implementation does not yet expose a stable code.
 
 ## 1. Objective and rules
 
@@ -42,7 +42,7 @@ These are not attack results; they are review targets to be tested by Claude aga
 
 - #127 defines stable backup codes including `SOURCE_NOT_SYNTHETIC`, `UNSAFE_PATH`, `SNAPSHOT_CHANGED`, `BACKUP_MANIFEST_INVALID`, `BACKUP_FILE_MODIFIED`, `BACKUP_EXTRA_FILE`, `BACKUP_NOT_INTACT` and `RESTORED_NOT_INTACT`. The current code must be checked for project/backup/restore-target root symlinks and parent symlink traversal before reads or writes.
 - #127's post-copy check currently compares anchored-verifier validity/status. A red-team test should require captured chain ID, sequence and head equality across snapshot, not only equal status strings.
-- #130 validates required run-record fields and non-empty workdirs, but current collaboration log identifies remaining strictness questions around empty/unknown identifiers, nested fixture hash shape, manifest cross-checks, complete input provenance and failure-atomic publication. Workdir-root symlink semantics are a separate test.
+- #130 validates required run-record fields and non-empty workdirs; #132 adds fixture manifest pinning and direct fixture/workdir-root symlink refusal. Remaining strictness questions include empty/unknown run-record identifiers, nested fixture hash shape, manifest cross-checks, complete input provenance and failure-atomic publication. A symlinked workdir ancestor remains a path-boundary test gap.
 - The marker/audit cross-store commit-failure case remains a separate implementation concern. This plan does not assume it has been fixed.
 - A local sidecar anchor cannot detect coordinated rollback of both audit database and anchor by an actor able to rewrite both. Record this as a trust limitation; do not label coordinated rollback as detected unless an independent checkpoint is actually used.
 
