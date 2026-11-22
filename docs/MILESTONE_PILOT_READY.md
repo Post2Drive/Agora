@@ -95,7 +95,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Decision/audit reconciliation | **Done — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the chain against its sidecar before classification (CLI requires `--anchor` and `--chain-id`); #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing events only. Repair is API-only, has no CLI, excludes outcome/review rows and blocks unanchored-tail recovery. A concurrency TOCTOU review finding remains open. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results and first-denial stop; #94 keeps CLI pilot/data dispatch engine-import-free. It still does not persist the M2 run record or call `build_scenario_input()` / the engine. |
-| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | M1 was explicitly confirmed by Claude at 09:05 IST on main `83d0645`; current main includes #119 reconciliation anchor verification and #120 backup/verify/restore CLI. M2 fixture/one-command start, run-record persistence, backup snapshot/restore-copy hardening, executable runbook test and logged rehearsal remain open. The owner has approved local synthetic M2 implementation, but the 10:50 IST owner decision prioritises the three post-M1 hardening fixes before further M2 build; no milestone completion is claimed. |
+| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | M1 was explicitly confirmed by Claude at 09:05 IST on main `83d0645`; current main includes #119 reconciliation anchor verification and #120 backup/verify/restore CLI. M2 fixture/one-command start, run-record persistence, backup snapshot/restore-copy hardening, executable runbook test and logged rehearsal remain open. The owner has approved local synthetic M2 implementation, but the 10:50 IST owner decision prioritised the three post-M1 hardening fixes, now closed by merged #122; no milestone completion is claimed. |
 
 ## 4. Pull request status snapshot
 
@@ -145,7 +145,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #119 | Read-only sidecar-anchor verification before reconcile classification | Merged; exact-head CI run `44981680171` passed 4/4 |
 | #120 | Local synthetic backup/verify/restore CLI and tamper-detection tests | Merged; exact-head CI run `44986367729` passed 4/4 |
 | #121 | Documentation refresh after #120 | Open draft; exact-head CI is tracked on the current docs-only head |
-| #122 | Post-M1 marker audit ordering, supersession scope and reconcile lock | Open draft; exact-head CI run `44989188092` in progress (4 matrix jobs) |
+| #122 | Post-M1 marker audit ordering, supersession scope and reconcile lock | Merged at head `73c2d5d`; four green jobs (ubuntu/windows × py3.11/3.12) |
 
 Assessment base is main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. M1 remains Claude-confirmed by the exact 09:05 IST entry; #116, #119 and #120 are merged. #120 is an M2 component only, not M2 completion.
 
@@ -169,7 +169,7 @@ Assessment base is main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 me
 - [x] The CLI module no longer imports the simulation engine for pilot/data dispatch; #94 lazy-loads it only in engine-dependent handlers and passes exact-head CI 4/4. Fresh-process coverage is for `--help`, not a complete `--workdir` invocation.
 - [x] Exact-head CI is green on the M1 implementation heads: #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`) and #119 (`44981680171`) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs; mutation proofs are recorded in the implementation PRs.
 - [x] Claude logged the exact M1 confirmation at 09:05 IST on 22 November 2026, naming main `83d0645b983365dddd9da07d4c1352e0b66e3d00`, the clean-checkout pilot command and the nine completed stages.
-- [ ] M2 exit criteria remain incomplete. The current owner instruction authorizes local synthetic M2 implementation, but the 10:50 IST owner decision requires the three post-M1 hardening fixes first; #120 is only a merged backup/verify/restore CLI component, not a completed operator drill. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval naming that item.
+- [ ] M2 exit criteria remain incomplete. The current owner instruction authorizes local synthetic M2 implementation, but the 10:50 IST owner decision required the three post-M1 hardening fixes first (closed by merged #122); #120 is only a merged backup/verify/restore CLI component, not a completed operator drill. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval naming that item.
 
 Passing these gates means only that a scoped synthetic rehearsal may be considered. It does not establish predictive validity, real demand, sales performance, production security or permission for external actions.
 
@@ -177,7 +177,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`: one-command start, fixture selection, plain-language audit/anchor verification, and backup/restore/tamper drills. #120 now implements the local backup/verify/restore CLI, but concurrent snapshot/restore-copy hardening, runbook-command tests and the logged rehearsal remain open. No M2 completion or rehearsal is claimed.
 
-This assessment is refreshed against main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`) and #120 (`44986367729`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests, the pilot, backup, restore or a rehearsal. M2 implementation is owner-approved for local synthetic scope but remains incomplete; the 10:50 IST owner decision prioritises the three post-M1 hardening fixes first.
+This assessment is refreshed against main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`) and #120 (`44986367729`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests, the pilot, backup, restore or a rehearsal. M2 implementation is owner-approved for local synthetic scope but remains incomplete; the 10:50 IST owner decision prioritised the three post-M1 hardening fixes first (closed by merged #122).
 
 ## 7. Permanent safety boundaries
 

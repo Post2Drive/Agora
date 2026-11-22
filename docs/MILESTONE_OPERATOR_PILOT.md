@@ -1,6 +1,6 @@
 # M2 — Operator-Usable Synthetic Pilot
 
-**Status:** The owner has approved local synthetic M2 implementation. The latest 10:50 IST owner decision orders the three post-M1 hardening fixes first (marker audit ordering, supersession scope/reason, reconcile lock), then M2 work resumes. This checklist is an acceptance contract, not a readiness declaration; M2 remains incomplete and no rehearsal is claimed.  
+**Status:** The owner has approved local synthetic M2 implementation. The latest 10:50 IST owner decision ordered the three post-M1 hardening fixes first (marker audit ordering, supersession scope/reason, reconcile lock); these are closed by merged #122 and M2 work has resumed. This checklist is an acceptance contract, not a readiness declaration; M2 remains incomplete and no rehearsal is claimed.  
 **Assessment base:** `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026).
 **Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; #119 and #120 are subsequently merged on current main `527476bb4e0450050843dd23a2aa6d5417627ded`. The current owner instruction authorizes local synthetic M2 implementation only; prohibited categories remain blocked.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
@@ -32,7 +32,7 @@ This milestone demonstrates governance and operator usability only. It does not 
 
 ## 3. M2 authorisation gate
 
-M1 is Claude-confirmed. The current owner instruction explicitly marks M2 owner-approved for local synthetic implementation, superseding Claude's earlier 10:42 hold; the latest 10:50 owner decision prioritises the three post-M1 hardening fixes before further M2 build. Continue only within this checklist and the safety boundaries below. #120 is a merged backup/verify/restore component, not a completed operator drill. No rehearsal has been run or recorded; the dress rehearsal remains a later evidence step after implementation, exact-head CI and runbook-test acceptance.
+M1 is Claude-confirmed. The current owner instruction explicitly marks M2 owner-approved for local synthetic implementation, superseding Claude's earlier 10:42 hold; the latest 10:50 owner decision prioritised the three post-M1 hardening fixes, now closed by merged #122. Continue only within this checklist and the safety boundaries below. #120 is a merged backup/verify/restore component, not a completed operator drill. No rehearsal has been run or recorded; the dress rehearsal remains a later evidence step after implementation, exact-head CI and runbook-test acceptance.
 
 ## 4. Explicit non-goals and blocked work
 

@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026), including merged implementation PRs through #120. Claude's exact 09:05 IST log entry confirms M1 on `83d0645`; the current owner instruction approves local synthetic M2 implementation, but the latest 10:50 owner decision prioritises the three post-M1 hardening fixes first; M2 remains incomplete and no rehearsal is claimed.
+**Assessment base:** `main` at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026), including merged implementation PRs through #120. Claude's exact 09:05 IST log entry confirms M1 on `83d0645`; the current owner instruction approves local synthetic M2 implementation, but the latest 10:50 owner decision prioritised the three post-M1 hardening fixes first (closed by merged #122); M2 remains incomplete and no rehearsal is claimed.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -59,7 +59,7 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#119:** adds read-only sidecar-anchor verification before reconcile classification; CLI requires `--anchor` and `--chain-id`; exact-head run `44981680171` passed 4/4.
 - **#120:** local synthetic `agora backup`, `agora backup verify` and `agora restore`; backup verifies the source chain/anchor and restore checks manifest hashes plus the restored chain/anchor. Exact-head Actions run `44986367729` passed all four matrix jobs. Review still requires a shared anchor lock across source verification/copy and post-copy verification of every restored file; no operator drill is claimed.
 
-At the assessed main snapshot, implementation PRs through #120 are merged. Claude's explicit 09:05 IST log entry confirms M1 on `83d0645`. The current owner instruction approves local synthetic M2 implementation; the 10:50 owner decision orders marker audit ordering, supersession scope/reason and reconcile locking first. M2 remains incomplete and no rehearsal is claimed. This documentation refresh is based on main `527476bb4e0450050843dd23a2aa6d5417627ded`.
+At the assessed main snapshot, implementation PRs through #120 are merged. Claude's explicit 09:05 IST log entry confirms M1 on `83d0645`. The current owner instruction approves local synthetic M2 implementation; the 10:50 owner decision ordered marker audit ordering, supersession scope/reason and reconcile locking first; merged #122 closed them (main fbfb6f0). M2 remains incomplete and no rehearsal is claimed. This documentation refresh is based on main `527476bb4e0450050843dd23a2aa6d5417627ded`.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23–#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.

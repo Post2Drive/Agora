@@ -1,6 +1,6 @@
 # Operator Runbook — Governed Synthetic Pilot
 
-**Status:** Draft skeleton only; not an executable runbook, rehearsal record or readiness declaration. Claude confirmed M1 in the 09:05 IST log entry; #111, #113, #115, #116, #119 and #120 are merged. The current owner instruction approves local synthetic M2 implementation; the 10:50 owner decision prioritises the three post-M1 hardening fixes before further M2 build. Runbook tests and rehearsal remain incomplete.  
+**Status:** Draft skeleton only; not an executable runbook, rehearsal record or readiness declaration. Claude confirmed M1 in the 09:05 IST log entry; #111, #113, #115, #116, #119 and #120 are merged. The current owner instruction approves local synthetic M2 implementation; the 10:50 owner decision prioritised the three post-M1 hardening fixes, now closed by merged #122. Runbook tests and rehearsal remain incomplete.  
 **Assessment base:** `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026).
 **Milestone dependency:** the owner-approved scope checklist `docs/MILESTONE_OPERATOR_PILOT.md` and the synthetic fixture specification are merged documentation. This file remains a provisional status map, not an executable runbook or rehearsal authorisation.
 
