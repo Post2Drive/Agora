@@ -155,7 +155,6 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #129 | Consolidated M1/M2 documentation, runbook, command inventory and rehearsal plan | Draft/open; exact-head CI pending after this refresh |
 | #130 | Strict run-record loader and non-empty-workdir guard | Merged at `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`; exact-head CI `44995421141` passed 4/4. Loader is partial against RUN_PROVENANCE_SPEC; atomic publish and full provenance remain open |
 | #132 | Fixture/workdir symlink, pinned manifest digest and empty-version hardening | Merged at head `c1fad55c448d0a7e6c49b098824a25e857f7372d`; exact-head CI `44997320523` passed 4/4; parent-symlink workdir coverage remains open |
-| #132 | Fixture/workdir symlink, pinned manifest digest and empty-version hardening | Merged at head `c1fad55c448d0a7e6c49b098824a25e857f7372d`; exact-head CI `44997320523` passed 4/4; parent-symlink workdir coverage remains open |
 
 Assessment base is main `15a92c56fdac14bb6266eec4acbd15b528d4b035` after #132 merged. M1 remains Claude-confirmed. #127 backup hardening, #130 partial strict-loader/workdir checks and #132 fixture integrity/direct-root checks are merged. Clean-install proof, workdir-ancestor symlink coverage, full run-record provenance/atomic publication, backup root/snapshot locking, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
 
