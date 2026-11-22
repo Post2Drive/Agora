@@ -603,6 +603,10 @@ def main(argv=None) -> int:
     if raw_argv and raw_argv[0] == "audit" and len(raw_argv) > 1 and raw_argv[1] in {"timeline", "verify"}:
         from .audit_cli import main as audit_main
         return audit_main(raw_argv[1:])
+    if raw_argv and raw_argv[0] in {"backup", "restore"}:
+        from .backup import main as backup_main
+        # `agora backup --project P --dest D`, `agora backup verify --backup D`, `agora restore ...`
+        return backup_main(raw_argv[1:] if raw_argv[:2] == ["backup", "verify"] else raw_argv)
     if raw_argv and raw_argv[0] == "pilot":
         from .pilot import main as pilot_main
         return pilot_main(raw_argv[1:])
