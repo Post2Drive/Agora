@@ -246,6 +246,9 @@ def _write_report(project: Path, ctx: Mapping[str, Any]) -> Path:
 def _linked_component(path: Path) -> bool:
     """True if the workdir or ANY existing ancestor is a symlink/reparse point (fail closed on lstat errors)."""
     import os
+    import stat
+    if ".." in Path(path).parts:  # lexical '..' could erase a symlink component: refuse
+        return True
     cur = Path(os.path.abspath(path))
     for p in (cur, *cur.parents):
         try:
@@ -254,7 +257,7 @@ def _linked_component(path: Path) -> bool:
             continue
         except OSError:
             return True
-        if p.is_symlink() or (getattr(st, "st_file_attributes", 0) & 0x400):
+        if stat.S_ISLNK(st.st_mode) or (getattr(st, "st_file_attributes", 0) & 0x400):
             return True
     return False
 

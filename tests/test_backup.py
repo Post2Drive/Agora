@@ -400,3 +400,70 @@ def test_verify_rejects_manifest_head_mismatch_or_missing(project, tmp_path, edi
     with pytest.raises(BackupBlocked):
         restore(tmp_path / "bk", tmp_path / "r")
     assert not (tmp_path / "r").exists()
+
+
+def test_symlink_dotdot_component_refused_before_outside_read_write(project, tmp_path):
+    """symlink/.. must not be normalised away: it resolves outside, so refuse lexically."""
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    link = tmp_path / "lnk"
+    _symlink_or_skip(link, sub)
+    sneaky = link / ".." / project.name  # lexically == tmp_path/project, really sub/../project
+    with pytest.raises(BackupBlocked) as e:
+        backup(sneaky, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    outside = tmp_path / "outside_dd"
+    outside.mkdir()
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, link / ".." / "outside_dd" / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []
+    backup(project, tmp_path / "bk")
+    with pytest.raises(BackupBlocked) as e:
+        verify_backup(link / ".." / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    with pytest.raises(BackupBlocked) as e:
+        restore(tmp_path / "bk", link / ".." / "outside_dd" / "r")
+    assert e.value.code == "UNSAFE_PATH"
+    assert list(outside.iterdir()) == []
+
+
+def test_plain_dotdot_without_symlink_also_refused_fail_closed(project, tmp_path):
+    with pytest.raises(BackupBlocked) as e:
+        backup(tmp_path / "x" / ".." / project.name, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+
+
+def test_intermediate_ancestor_lstat_error_fails_closed(project, tmp_path, monkeypatch):
+    import os
+    import agora.backup as bk
+    real = os.lstat
+    mid = project.parent  # an ancestor, not the project root itself
+
+    def boom(p, *a, **k):
+        if str(p) == str(mid):
+            raise PermissionError("denied")
+        return real(p, *a, **k)
+
+    monkeypatch.setattr(bk.os, "lstat", boom)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert not (tmp_path / "bk").exists()
+
+
+@pytest.mark.parametrize("rel", ["audit/chain.sqlite3", "audit_anchor/anchor.jsonl"])
+def test_nested_symlinked_chain_or_anchor_refused_before_any_read(project, tmp_path, monkeypatch, rel):
+    target = project / rel
+    outside = tmp_path / "outside_blob"
+    outside.write_bytes(target.read_bytes())
+    target.unlink()
+    _symlink_or_skip(target, outside)
+    import agora.backup as bk
+    read = []
+    monkeypatch.setattr(bk, "_is_synthetic_project", lambda p: read.append(p) or True)
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "UNSAFE_PATH"
+    assert read == []
+    assert not (tmp_path / "bk").exists()
