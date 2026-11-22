@@ -236,6 +236,10 @@ class AnchoredAuditChain:
                 raise AnchorWriteError("event was appended but its anchor could not be written") from exc
             return appended
 
+    def find_event(self, event_id: str) -> dict[str, Any] | None:
+        with self.anchors.lock():
+            return self.chain.find_event(event_id)
+
     def close(self) -> None:
         self.chain.close()
 
