@@ -32,7 +32,8 @@ def test_recorded_outcome_is_awaiting_review(tmp_path):
     held = _held(tmp_path)
     assert held == [{"decision_id": approved.decision_id, "decision_version": approved.version,
                      "outcome_id": out["outcome_id"], "state": "recorded", "reason": "awaiting_review"}]
-    assert SECRET_NOTE not in str(held) and "42" not in str(held)
+    assert SECRET_NOTE not in str(held)
+    assert set(held[0]) == {"decision_id", "decision_version", "outcome_id", "state", "reason"}
 
 
 def test_reviewed_is_not_held_and_disputed_is(tmp_path):
