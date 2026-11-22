@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** `main` at `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026).
+**Assessment base:** `main` at `5a579eb2c75257764ec8752273f3241544cf4bf8` (22 November 2026; #147 marker-open outbox merged, recovery partial).
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -161,14 +161,14 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026)
+## Current migration status — main `5a579eb2c75257764ec8752273f3241544cf4bf8` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. Role-string PDP compatibility functions remain only as internal allowlisted compatibility surfaces after #111; protected callbacks require Principal-bound `BoundPolicy` after #113. The adapter remains synthetic-only.
 - **#80/#84/#89/#96:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and no longer accepts a public `require_anchored` opt-out kwarg.
 - **#82/#97:** legacy role-string `approve()` remains in source but the environment switch is removed; only the test-only `LEGACY_APPROVE_ENABLED` module flag enables it.
 - **#70/#86/#89/#92/#96:** public outcome writes route through `record_outcome_as()` / `review_outcome_as()`; #92 retires role-string exports and #96 removes public anchor opt-out kwargs. Private helpers still accept optional audit internally.
-- **#88/#123/#125/#130/#132/#135:** `agora pilot --workdir <new-empty-directory>` remains the M1 guided synthetic path; #125 adds the checked-in fixture and `agora pilot list/start`. #130 adds partial run-record validation; #132 pins the fixture manifest, rejects direct fixture symlinks/empty versions and a direct symlinked workdir root; #135 rejects symlink/reparse-point workdir ancestors and filters linked fixture directories. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4); full RUN_PROVENANCE_SPEC fields, strict nested validation and failure-atomic publication remain outstanding.
+- **#88/#123/#125/#130/#132/#135:** `agora pilot --workdir <new-empty-directory>` remains the M1 guided synthetic path; #125 adds the checked-in fixture and `agora pilot list/start`. #130 adds partial run-record validation; #132 pins the fixture manifest, rejects direct fixture symlinks/empty versions and a direct symlinked workdir root; #135 rejects symlink/reparse-point workdir ancestors and filters linked fixture directories. #144/#145 prove clean-checkout install/start plus exact run-record/false-flag/console-script no-engine assertions (head 6338c5a5; exact-head CI 45021238785 passed 4/4); full RUN_PROVENANCE_SPEC fields, strict nested validation and failure-atomic publication remain outstanding.
 - **#89:** default-True policy/anchor parameters passed exact-head CI run `44948055801` (4/4).
 - **#92:** public role-string outcome exports retired; merged at `a191b587`, exact-head CI run `44950576945` passed 4/4.
 - **#94:** `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers; fresh-process tests cover CLI import and pilot help dispatch. Exact-head CI run `44955653075` passed 4/4.
@@ -176,7 +176,7 @@ Verified on main:
 - **#97:** removes the legacy approval env switch and defaults direct policy enforcement from `POLICY_REQUIRED`; exact-head CI run `44958568446` passed 4/4.
 - **#99:** removes the direct `require_policy` override and requires an anchored writer for protected policy-denial events; exact-head CI run `44960946006` passed 4/4.
 - **#109:** adds pre-mutation anchored-writer guards to `propose()`, `reject()`, `expire()` and `supersede()` when `ANCHOR_REQUIRED=True`; exact-head CI run `44975437439` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
- - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). #119 adds read-only sidecar-anchor verification before decision reconciliation classification; #115 adds a separate API-only missing-decision-event repair. Stable correlation queue, outcome/review audit reconciliation and marker/audit reconciliation remain unimplemented. #102/#106 provide a separate read-only held-outcome list; #116 adds the first marker slice but not reconciliation.
+ - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). #119 adds read-only sidecar-anchor verification before decision reconciliation classification; #115 adds a separate API-only missing-decision-event repair. #147 adds marker-open outbox persistence, but crash-window replay still fails against the real chain's duplicate event-ID guard; transition-event recovery, concurrent delivery and legacy-row backfill remain open. Stable correlation queue and outcome/review audit reconciliation remain unimplemented. #102/#106 provide a separate read-only held-outcome list; #116 adds the first marker slice but not reconciliation.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
