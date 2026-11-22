@@ -2,7 +2,7 @@
 
 **Status:** Plan only. No attack has been executed as part of this document. This is the synthetic governance-integrity track; it is separate from predictive validation. M2 remains in progress and M3 is proposal-only.
 
-**Baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). Exact detection codes below are taken from current main where present. A planned code is explicitly labelled when the implementation does not yet expose a stable code.
+**Baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only. Exact detection codes below are taken from current main where present. A planned code is explicitly labelled when the implementation does not yet expose a stable code.
 
 ## 1. Objective and rules
 
