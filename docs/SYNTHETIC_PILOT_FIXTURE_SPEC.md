@@ -55,7 +55,7 @@ Do not add any row that resembles a real customer, hospital, apartment, person, 
 
 ## 5. Required tests (future implementation)
 
-1. Clean-checkout test confirms all three exact fixture paths exist and are parseable.
+1. Clean-checkout test confirms all four exact fixture artefacts (manifest, CSV, schema and binding) are packaged and parseable.
 2. Golden-schema test proves required fields, types, enumerations and bounds.
 3. Mutation tests remove a required column, duplicate an ID, add an unknown column, alter a pinned binding target, change fixture bytes, change the manifest and payload together, alter the independently pinned manifest digest, introduce symlinked fixture paths, and replace an exact ID with `latest`; each must fail closed.
 4. Import test proves immutable snapshot/manifest IDs and that a changed fixture does not overwrite the prior snapshot.
