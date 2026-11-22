@@ -166,9 +166,22 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
         "stage_results": [{"step": x.step, "result": x.status, "reason": x.detail[:300]} for x in steps],
     }
     out = project / RUN_RECORD_NAME
-    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(record, fh, indent=2, sort_keys=True)
+    # Atomic, exclusive publish: write+fsync a private temp file, then hard-link it to the
+    # final name (link fails if the name exists, so no overwrite). A crash never leaves a
+    # partial record under RUN_RECORD_NAME.
+    tmp = project / f".{RUN_RECORD_NAME}.{uuid.uuid4().hex}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(record, fh, indent=2, sort_keys=True)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.link(tmp, out)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
     return out
 
 
