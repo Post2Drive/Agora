@@ -491,25 +491,50 @@ def _append_event(project, event_id="late-1"):
                       "operation": "import", "decision": "allow"})
 
 
+def _spy_lock(monkeypatch, module, attr, name_filter, attempting, acquired):
+    """Wrap a lock factory: `attempting` is set when a matching thread asks for the lock and
+    `acquired` once it holds it. Handshake events replace sleep/timeout based synchronisation."""
+    import contextlib
+    import threading
+    real = getattr(module, attr)
+
+    @contextlib.contextmanager
+    def spy(*a, **k):
+        mine = threading.current_thread().name == name_filter
+        if mine:
+            attempting.set()
+        with real(*a, **k) as value:
+            if mine:
+                acquired.set()
+            yield value
+    monkeypatch.setattr(module, attr, spy)
+
+
 def test_real_writer_cannot_append_while_backup_holds_the_snapshot(project, tmp_path, monkeypatch):
     import threading
+    import agora.audit_anchor as anchor_mod
     import agora.backup as mod
+    attempting, acquired = threading.Event(), threading.Event()
+    _spy_lock(monkeypatch, anchor_mod, "_exclusive_lock", "late-writer", attempting, acquired)
     real = mod._copy_tree
     state = {}
 
     def copy_with_writer(src, dst, rels):
-        t = threading.Thread(target=_append_event, args=(project,))
+        t = threading.Thread(target=_append_event, args=(project,), name="late-writer")
         t.start()
-        t.join(timeout=1.5)  # a real anchored writer must block on the same lock
-        state["blocked"] = t.is_alive()
         state["thread"] = t
+        # handshake: the writer is provably waiting on the lock before the snapshot is copied
+        assert attempting.wait(timeout=30), "writer never reached the lock"
+        # a correct lock keeps it out for the whole copy; if the lock is missing it gets in
+        state["acquired_during_copy"] = acquired.wait(timeout=0.5)
         real(src, dst, rels)
+        state["acquired_during_copy"] = state["acquired_during_copy"] or acquired.is_set()
     monkeypatch.setattr(mod, "_copy_tree", copy_with_writer)
     before = mod.verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, mod.DEFAULT_CHAIN_ID)
     res = backup(project, tmp_path / "bk")
-    state["thread"].join(timeout=20)
-    assert state["blocked"] is True, "writer was not excluded while the snapshot was taken"
-    assert not state["thread"].is_alive()
+    state["thread"].join(timeout=30)
+    assert state["acquired_during_copy"] is False, "writer was not excluded while the snapshot was taken"
+    assert acquired.is_set() and not state["thread"].is_alive()
     info = verify_backup(tmp_path / "bk")  # snapshot is intact and holds the PRE-append head
     manifest = json.loads((tmp_path / "bk" / MANIFEST).read_text())
     assert (manifest["chain_sequence"], manifest["chain_head_hash"]) == (before["sequence"], before["head_hash"])
@@ -518,21 +543,25 @@ def test_real_writer_cannot_append_while_backup_holds_the_snapshot(project, tmp_
     assert res["audit_status"] == info["audit_status"] == "anchored_verified"
 
 
-def test_backup_blocks_while_another_writer_holds_the_lock(project, tmp_path):
+def test_backup_blocks_while_another_writer_holds_the_lock(project, tmp_path, monkeypatch):
     import threading
+    import agora.backup as mod
     from agora.audit_anchor import AnchorStore
     from agora.backup import DEFAULT_CHAIN_ID
+    attempting, acquired = threading.Event(), threading.Event()
+    _spy_lock(monkeypatch, mod, "_source_writer_lock", "bk-thread", attempting, acquired)
     out = {}
 
     def run():
         out["res"] = backup(project, tmp_path / "bk")
     with AnchorStore(project / ANCHOR_REL, DEFAULT_CHAIN_ID).lock():
-        t = threading.Thread(target=run)
+        t = threading.Thread(target=run, name="bk-thread")
         t.start()
-        t.join(timeout=1.5)
-        assert t.is_alive(), "backup did not wait for the writer lock"
+        assert attempting.wait(timeout=30), "backup never asked for the writer lock"
+        assert not acquired.wait(timeout=0.5), "backup did not wait for the writer lock"
         assert not (tmp_path / "bk" / MANIFEST).exists()
-    t.join(timeout=20)
+    t.join(timeout=30)
+    assert acquired.is_set() and not t.is_alive()
     assert out["res"]["audit_status"] == "anchored_verified"
 
 
