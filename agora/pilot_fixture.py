@@ -19,6 +19,11 @@ DEFAULT_FIXTURE = "synthetic-units-v1"
 REQUIRED_FILES = ("units.csv", "schema.json", "binding.json")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
+# Independent pin of each checked-in manifest's digest: editing manifest AND payload together
+# (so the internal hashes still agree) is caught here. Update only via a reviewed PR.
+PINNED_MANIFEST_DIGESTS = {
+    "synthetic-units-v1": "sha256:1bc5020b9874a8065c787c6e6df756fad4d4c25ffd402b5e5149843be465f18f",
+}
 
 
 class FixtureError(Exception):
@@ -56,6 +61,9 @@ def load_fixture(fixture_id: str, root: Path | None = None) -> Fixture:
     if not isinstance(fixture_id, str) or not _ID.match(fixture_id) or fixture_id not in list_fixtures(base):
         raise FixtureError("FX_UNKNOWN_FIXTURE", f"valid ids: {', '.join(list_fixtures(base)) or 'none'}")
     d = base / fixture_id
+    for p in (d, d / "manifest.json", *(d / n for n in REQUIRED_FILES)):
+        if p.is_symlink():
+            raise FixtureError("FX_UNSAFE_PATH", p.name)
     try:
         man_bytes = (d / "manifest.json").read_bytes()
         man = json.loads(man_bytes)
@@ -65,6 +73,12 @@ def load_fixture(fixture_id: str, root: Path | None = None) -> Fixture:
             or man.get("synthetic_only") is not True or man.get("data_class") != "synthetic"
             or not isinstance(man.get("fixture_version"), str) or not isinstance(man.get("files"), dict)):
         raise FixtureError("FX_MANIFEST_INVALID", "required keys/synthetic flag")
+    if not man["fixture_version"].strip():
+        raise FixtureError("FX_MANIFEST_INVALID", "empty fixture version")
+    if base.resolve() == FIXTURE_ROOT.resolve():
+        pin = PINNED_MANIFEST_DIGESTS.get(fixture_id)
+        if pin is None or _sha(man_bytes) != pin:
+            raise FixtureError("FX_MANIFEST_HASH_MISMATCH", "manifest digest differs from pinned value")
     files = man["files"]
     if set(files) != set(REQUIRED_FILES) or not all(isinstance(v, str) and _HASH.match(v) for v in files.values()):
         raise FixtureError("FX_MANIFEST_INVALID", "file hash map")

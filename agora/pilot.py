@@ -243,6 +243,10 @@ def _write_report(project: Path, ctx: Mapping[str, Any]) -> Path:
     return out
 
 
+class UnsafeWorkdir(Exception):
+    """Work directory root is a symlink (or reparse point): refused before any write."""
+
+
 def run_pilot(workdir: str | Path, *, now: datetime | None = None,
               identities: Mapping[str, Mapping[str, Any]] | None = None,
               provision_audit: bool = True, fixture_id: str = DEFAULT_FIXTURE) -> PilotResult:
@@ -250,6 +254,8 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
     base = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
     fixture = load_fixture(fixture_id)  # verified before any store/dir is created; raises FixtureError
     project = Path(workdir) / PROJECT_ID
+    if Path(workdir).is_symlink():
+        raise UnsafeWorkdir(str(workdir))
     if Path(workdir).exists() and (not Path(workdir).is_dir() or any(Path(workdir).iterdir())):
         raise FileExistsError(f"{workdir} is not an empty directory; use a new empty work directory")
     project.mkdir(parents=True)
@@ -421,6 +427,9 @@ def main(argv: list[str] | None = None) -> int:
         result = run_pilot(args.workdir, fixture_id=fixture_id)
     except FixtureError as exc:
         print(f"{exc.code}: fixture refused before any store was opened. Valid ids: " + ", ".join(list_fixtures()))
+        return 2
+    except UnsafeWorkdir:
+        print("WORKDIR_UNSAFE_PATH: work directory must not be a symlink")
         return 2
     except FileExistsError as exc:
         print(f"WORKDIR_NOT_EMPTY: {exc}")
