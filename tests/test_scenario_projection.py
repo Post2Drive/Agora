@@ -58,7 +58,7 @@ def test_base_scenario_not_mutated():
     lambda p, m: p["instances"][0]["property_values"].update({A: 5.0}),  # out of bounds mean
     lambda p, m: p["instances"][0]["property_values"].update({A: None}),  # null
     lambda p, m: p["instances"][0]["property_values"].update({A: "[REDACTED]"}),
-    lambda p, m: (p["instances"][0]["property_values"].update({S: "[REDACTED]"}), m["personas"].update({"[REDACTED]": "x"}), m["personas"].pop("a")),
+    lambda p, m: ([i["property_values"].update({S: "[REDACTED]"}) for i in p["instances"][:2]], m["personas"].update({"[REDACTED]": "x"}), m["personas"].pop("a")),
     lambda p, m: p["instances"][0]["property_values"].update({A: float("nan")}),
     lambda p, m: p["instances"][0]["property_values"].update({A: True}),
     lambda p, m: p["instances"][0]["property_sensitivity"].update({A: "sensitive"}),
