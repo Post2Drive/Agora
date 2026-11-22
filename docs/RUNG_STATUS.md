@@ -97,7 +97,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 
 ## Process note
 
-This assessment is a documentation snapshot of main at `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8`; implementation PRs through #135 and docs PR #133 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`), #125 (`44993280261`), #127 (`44994798420`), #130 (`44995421141`), #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) passed 4/4. PR #136 exact-head run `45006493190` passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
+This assessment is a documentation snapshot of main at `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8`; implementation PRs through #135 and docs PR #133 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`), #125 (`44993280261`), #127 (`44994798420`), #130 (`44995421141`), #132 (`44997320523`), #134 (`44999538699`) and #135 (`45001811790`) plus #136 (`45006493190`) passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
 
 
 Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, exact-head Actions run `44995421141` passed 4/4. It validates required field types, synthetic-only status, false engine/prediction flags, hash syntax and non-empty workdirs. It still does not validate required nonblank fields/enums, exact repository SHA, fixture block/map shape, the full `input_provenance` envelope or failure-atomic publication.
