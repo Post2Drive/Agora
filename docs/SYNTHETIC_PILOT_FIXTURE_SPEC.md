@@ -1,7 +1,7 @@
 # Synthetic Operator-Pilot Fixture Specification
 
-**Status:** Draft specification for Claude and owner review; no fixture files are added by this document.  
-**Assessment base:** `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026)  
+**Status:** Draft specification; no checked-in fixture files are present on main. PR #123 proposes a pilot run record but is not merged and does not yet store all fixture/schema/binding/manifest and ontology/policy provenance required here.
+**Assessment base:** `main` at `776669cac7c30722726ed87813f677d6d6d89aec` (22 November 2026).
 **Data class:** Invented synthetic records only
 
 ## 1. Purpose
@@ -41,7 +41,7 @@ Do not add any row that resembles a real customer, hospital, apartment, person, 
 - The binding must map each source column to an exact typed target field and declare purpose/retention only where the target contract requires them.
 - The binding must use a pinned ontology/domain-pack version and immutable binding ID; no "latest" aliases.
 - The importer must produce an exact immutable import ID and manifest hash. Re-importing changed content must produce a distinguishable snapshot, not overwrite an earlier one.
-- Store fixture/schema/binding content hashes in the run record. Never invent or pre-fill hashes in documentation.
+- Store fixture/schema/binding content hashes in the run record. PR #123 currently hashes only the embedded CSV; it must also persist schema, binding and manifest hashes plus ontology/policy fingerprints, and verify the complete envelope on load. Never invent or pre-fill hashes in documentation.
 
 ## 4. Determinism and provenance
 
