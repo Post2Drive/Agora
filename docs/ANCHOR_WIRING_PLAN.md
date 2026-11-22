@@ -46,7 +46,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires `require_anchored()` for protected policy-denial writes; `None`, a plain `AuditChainStore` and duck-typed non-anchored writers are refused when `ANCHOR_REQUIRED=True`. The test-only protection flags remain confined to test fixtures. Preserve this fail-closed behavior and policy-before-source-read ordering.
+`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires `require_anchored()` for protected policy-denial writes; `None`, a plain `AuditChainStore` and duck-typed non-anchored writers are refused when `ANCHOR_REQUIRED=True`. This proves policy presence and denial-audit anchoring, not policy provenance: `enforce_policy()` accepts any caller-supplied `(operation, resource)` callable, and `principal_policy()` currently returns an ordinary closure. A custom allow-returning callable can pass the presence check. Principal-bound policy validation remains an M1 gate. Preserve the fail-closed denial behavior and policy-before-source-read ordering.
 
 The shared `enforce_policy()` boundary is called by:
 
