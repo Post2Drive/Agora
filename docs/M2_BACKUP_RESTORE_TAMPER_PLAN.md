@@ -1,6 +1,6 @@
 # M2 Backup, Restore and Tamper Drills — Planning Specification
 
-**Status:** #120 backup/verify/restore CLI and #127 hardening are merged. #127 adds the synthetic run-record gate, in-tree symlink/unsafe-path refusal, manifest schema validation, copied chain/anchor re-verification and post-copy restored-file hashes; exact-head Actions run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Current main is `15a92c56fdac14bb6266eec4acbd15b528d4b035` after #132 fixture/workdir hardening (exact-head CI `44997320523`, 4/4); that fixture change does not close the separate backup project/backup/target root-symlink or source-pair snapshot-lock gaps. This document remains the operator safety/drill specification; no operator tamper drill or rehearsal has been run.
+**Status:** #120 backup/verify/restore CLI, #127 manifest/synthetic/in-tree-path hardening and #134 direct root symlink/reparse-point refusal are merged. #134 exact-head Actions run `44999538699` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. M2 remains incomplete: ancestor-component paths, nested pre-read symlinks, fail-closed lstat errors and source-pair snapshot locking/head equality need follow-up; no operator tamper drill or rehearsal has been run.
 **Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. Local synthetic M2 implementation is owner-approved. Temporary local synthetic stores only; no simulation, real data, credentials, connectors, write-back or protected study mutation.
 
 ## 1. Backup consistency contract
@@ -28,16 +28,16 @@ agora backup verify --backup <backup-dir>
 agora restore --backup <backup-dir> --target <new-empty-target-dir>
 ```
 
-The merged #127 patch changes the prior #120 behavior as follows:
+The merged #127/#134 patches change the prior #120 behavior as follows:
 - Backup requires `run_record.json` with `data_class == "synthetic"`; otherwise it blocks with `SOURCE_NOT_SYNTHETIC`.
 - Symlinks in the source/backup tree and unsafe manifest-relative paths are refused with `UNSAFE_PATH`.
 - The manifest validator requires version 1, `synthetic_only is True`, a nonblank chain ID and a safe relative-path-to-lowercase-SHA256 mapping; malformed manifests block with `BACKUP_MANIFEST_INVALID`.
 - After copying the source files, backup re-verifies the copied chain/anchor; a changed or invalid pair blocks with `SNAPSHOT_CHANGED` and removes the incomplete destination.
-- The root paths themselves are not explicitly checked with `lstat` before use: project/backup/restore-target root symlinks can redirect the initial run-record/manifest reads or destination writes. Reject a symlinked root before any read/write, including a symlinked parent where the safety contract requires it.
+- #134 checks direct project/destination/backup-root/data/manifest/restore-target components for symlink or Windows reparse-point paths and blocks with `UNSAFE_PATH` before the corresponding operation. It does not inspect every ancestor component; a symlinked parent can still redirect the path. `backup()` also checks chain/anchor existence and reads `run_record.json` before `_files()` recursively scans the project, so a nested linked run record/chain/anchor can be followed before refusal. `_is_link()` currently treats every `lstat` `OSError` as not-linked; only an expected missing leaf should be tolerated.
 - `backup()` does not hold one shared `AnchorStore.lock()` across initial verification and the audit DB/anchor pair snapshot, and the post-copy check compares verifier status rather than a captured sequence/head. Add a shared-lock or equivalent snapshot protocol and prove exact chain ID, sequence and head equality.
 - Restore re-hashes every copied file against the manifest before success; a mismatch blocks with `RESTORED_NOT_INTACT`.
 
-#127 adds tests and mutation proofs for the synthetic gate, symlink refusal, manifest validation, snapshot re-verification and restore re-hashing. Exact-head CI run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The operator command test and tamper rehearsal are still outstanding. Do not infer from the merged hardening that an operator rehearsal has occurred.
+#127 adds tests and mutation proofs for the synthetic gate, in-tree symlink refusal, manifest validation, snapshot re-verification and restore re-hashing. #134 adds four direct-root symlink/reparse-point tests; exact-head CI run `44999538699` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Parent-component, pre-read and lstat-error cases plus the source-pair snapshot-lock/head-equality proof remain outstanding. The operator command test and tamper rehearsal are still outstanding; no operator rehearsal is claimed.
 
 1. Stop all writers and preserve the current pair unchanged.
 2. Verify the backup manifest and both component hashes.
@@ -65,7 +65,7 @@ Planned synthetic-only cases:
 - Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
 - Point backup at an unmarked/non-synthetic project: expect `SOURCE_NOT_SYNTHETIC` and no destination.
 - Place a symlink inside the source or backup tree, or use an unsafe relative manifest path: expect `UNSAFE_PATH` and no outside-target read/copy.
-- Make the project root, backup root or restore target root a symlink to an outside directory: expect `UNSAFE_PATH` before marker/manifest reads or destination writes; prove the outside sentinel is untouched.
+- Direct symlink/reparse-point project, backup, data/manifest or restore-target roots now block with `UNSAFE_PATH` under #134. Add parent-component symlink cases and nested `run_record.json`/chain/anchor pre-read cases; prove no outside sentinel read/write and no partial destination.
 - Tamper `manifest_version`, set `synthetic_only` false, replace `files` with a list, or corrupt `chain_id`/digest values: expect `BACKUP_MANIFEST_INVALID`, never an uncaught exception.
 - Change the copied chain/anchor during backup: expect `SNAPSHOT_CHANGED` and no retained partial backup.
 - Mutate a non-audit file after backup verification but before/during restore copy: expect `RESTORED_NOT_INTACT` and no published target.
@@ -76,7 +76,7 @@ Planned synthetic-only cases:
 - Each tamper case asserts a stable blocked/error status and no silent repair.
 - Restore tests verify exact hashes, chain ID, sequence and head.
 - Failure tests prove original stores and backup bytes remain unchanged.
-- #127 CI and mutation evidence covers the synthetic run-record gate, symlink/path refusal, manifest schema, copied chain/anchor re-verification and restored-file re-hashing. Preserve exact-head CI evidence in the milestone docs.
+- #127 CI/mutation evidence covers the synthetic gate, in-tree path refusal, manifest schema, copied chain/anchor re-verification and restored-file re-hashing; #134's exact-head CI `44999538699` passed 4/4 for direct root symlink/reparse-point refusal. Preserve exact-head evidence; parent/pre-read/lstat-error and source-pair lock/head-equality proofs remain required.
 - The current synthetic gate is the `run_record.json` `data_class=synthetic` check; this is not equivalent to a separately pinned fixture-hash allowlist for every file in a project. Keep the scope distinction explicit.
 - The automated runbook command test must exercise backup/verify/restore and each stable refusal code in temporary synthetic directories.
 - A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
