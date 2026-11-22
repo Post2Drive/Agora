@@ -11,7 +11,7 @@ from agora.audit_chain import AuditAppender
 from agora.principal import Principal
 
 from .permissions import (
-    DecisionPermissionError, authorize_decision_approval, authorize_decision_approval_principal,
+    DecisionPermissionError, _legacy_authorize_decision_approval, authorize_decision_approval_principal,
 )
 from .schema import DecisionRecord, DecisionRecordError, load_decision_record
 from .store import DecisionRecordStore
@@ -262,7 +262,7 @@ def approve(
     # This call is mandatory: the central PDP grants decision_approval to
     # approver only and also checks scope and sensitivity.
     try:
-        policy_decision = authorize_decision_approval(subject, role, policy_resource)
+        policy_decision = _legacy_authorize_decision_approval(subject, role, policy_resource)
     except DecisionPermissionError as exc:
         _audit(
             audit, current, "approval_denied", actor, decision="deny",
