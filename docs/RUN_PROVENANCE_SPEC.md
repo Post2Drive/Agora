@@ -1,7 +1,7 @@
 # Run Provenance for Scenario Inputs — Rung 4
 
-**Status:** Normative contract; #142 implements the pilot `input_provenance` envelope and basic read-time hash/import/role checks on main (exact-head CI `45013670475`, 4/4). The implementation remains partial: legacy/new record discrimination, strict RFC3339 and integer version typing, manifest schema/time cross-checks, complete report/export fields and failure-atomic publication remain open. This document still does not edit `agora/sim/**`, run the simulation engine, launch simulations or enable validated prediction.
-existing run engine, launch simulations, or enable validated prediction.
+**Status:** Normative contract; #142 implements the pilot `input_provenance` envelope and core read-time hash/import/role checks. #142 stores the pilot `input_provenance` envelope and checks core hashes/import/role. Remaining: strict legacy/new discrimination; exact integer version types (`1.0` must not pass as 1); timezone-aware RFC3339; manifest/envelope timestamp cross-checks; complete report/export fields; failure-atomic publication. This document does not edit `agora/sim/**`, run the simulation engine, launch simulations or enable validated prediction.
+No simulation-engine integration, run launch or validated-prediction enablement is included in this specification.
 
 ## 1. Purpose and boundary
 
