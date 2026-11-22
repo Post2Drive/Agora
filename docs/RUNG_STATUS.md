@@ -26,7 +26,7 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#55:** deployment hardening specification.
 - **#56:** synthetic-data pilot runbook.
 - **#57:** read-only decision lifecycle/audit detector implemented by #100/#104 and later anchor-verified by #119; missing-event repair is a separate API in #115. Outcome/review reconciliation remains separate.
-- **#58:** first synthetic trusted-principal implementation slice; principal-based approval is available through `approve_as()`, while legacy role-string approval and other call-site migration remain.
+- **#58:** first synthetic trusted-principal foundation; later #111 makes the legacy role-string approval authorizer private/restricts PDP imports, and #113 completes the protected `BoundPolicy` policy gate. The adapter remains synthetic-only; production identity is not claimed.
 - **#63:** local-sidecar audit-anchor implementation merged; exact-head CI run 201 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. It has `local_sidecar` trust only.
 - **#70:** principal-gated outcome record/review wrappers and exact required-role filtering merged; exact-head CI run 209 ([44923562288](https://github.com/Post2Drive/Agora/actions/runs/44923562288)) passed all four matrix jobs. The wrappers still bridge to legacy role-string outcome functions.
 - **#71:** anchored writer factory and policy-denial/data-boundary wiring (Stages A/D) merged at `5f8fb6abc4ecd6fb1182cf971aea536f4af0b013`; exact-head CI run 211 ([44926109220](https://github.com/Post2Drive/Agora/actions/runs/44926109220)) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Decision lifecycle/outcome append wiring is present via #74; protected gates are limited to the named principal entry points.
