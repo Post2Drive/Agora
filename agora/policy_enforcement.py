@@ -24,6 +24,51 @@ class PolicyEnforcementError(PermissionError):
 
 PolicyCallable = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 
+_MINT = object()  # module-private capability token; only _mint_principal_policy holds it
+
+
+class PrincipalPolicy:
+    """Unforgeable policy capability bound to an adapter-issued Principal.
+
+    Instances can only be minted by agora.principal.principal_policy() (via the
+    private token). Subclassing and direct construction are refused, so a raw
+    always-allow callable can never be presented as one. enforce_policy() in
+    protected mode (agora.protection.POLICY_REQUIRED) accepts nothing else.
+    """
+
+    __slots__ = ("_fn", "_principal")
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("PrincipalPolicy cannot be subclassed")
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "PrincipalPolicy":
+        if not args or args[0] is not _MINT:
+            raise TypeError("PrincipalPolicy can only be minted by agora.principal.principal_policy()")
+        return super().__new__(cls)
+
+    def __init__(self, token: object, fn: PolicyCallable, principal: Any) -> None:
+        object.__setattr__(self, "_fn", fn)
+        object.__setattr__(self, "_principal", principal)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("PrincipalPolicy is immutable")
+
+    def __call__(self, operation: str, resource: Mapping[str, Any]) -> Mapping[str, Any]:
+        return self._fn(operation, resource)
+
+
+def _mint_principal_policy(fn: PolicyCallable, principal: Any) -> PrincipalPolicy:
+    return PrincipalPolicy(_MINT, fn, principal)
+
+
+def _is_principal_bound(policy: Any) -> bool:
+    # A non-Principal binding is still safe: decide_principal() denies it
+    # (principal_missing), so only the mint provenance needs checking here.
+    return type(policy) is PrincipalPolicy
+
+
+_NOT_BOUND = object()
+
 
 def enforce_policy(
     policy: PolicyCallable | None,
@@ -53,10 +98,16 @@ def enforce_policy(
     """
     if policy is None and not _protection.POLICY_REQUIRED:
         return None
-    if policy is None or not callable(policy):
+    if policy is not None and callable(policy) and _protection.POLICY_REQUIRED \
+            and not _is_principal_bound(policy):
+        # Protected mode: a raw callable (e.g. always-allow) is never trusted.
+        policy = _NOT_BOUND
+    if policy is None or not callable(policy) or policy is _NOT_BOUND:
         decision: Mapping[str, Any] = {
             "decision": "deny",
-            "reason": "policy_required" if policy is None else "policy_not_callable",
+            "reason": ("policy_required" if policy is None else
+                       "policy_not_principal_bound" if policy is _NOT_BOUND else
+                       "policy_not_callable"),
             "subject_id": "unknown", "policy_version": "unknown",
         }
     else:
@@ -130,4 +181,4 @@ def enforce_policy(
     raise PolicyEnforcementError(f"policy denied the {operation} operation: {reason}")
 
 
-__all__ = ["PolicyCallable", "PolicyEnforcementError", "enforce_policy"]
+__all__ = ["PolicyCallable", "PrincipalPolicy", "PolicyEnforcementError", "enforce_policy"]

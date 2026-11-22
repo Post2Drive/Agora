@@ -97,6 +97,11 @@ def test_outcome_and_approval_wrappers_deny_without_anchored_writer_by_default(t
 
 # --- direct enforce_policy hardening: no caller override, anchored writer only ---
 
+def _bound(key="op", **kw):
+    from agora.principal import principal_policy
+    return principal_policy(ADAPTER.issue(key), **kw)
+
+
 def _deny_policy(operation, resource):
     return {"decision": "deny", "reason": "cross_scope", "subject_id": "op-1", "policy_version": "v1"}
 
@@ -146,8 +151,8 @@ def test_enforce_policy_rejects_duck_typed_writer(tmp_path):
 def test_enforce_policy_denial_appends_to_anchored_writer(tmp_path):
     from agora.policy_enforcement import PolicyEnforcementError, enforce_policy
     with _anchored(tmp_path) as writer:
-        with pytest.raises(PolicyEnforcementError, match="cross_scope"):
-            enforce_policy(_deny_policy, project=tmp_path, operation="import", resource={}, audit=writer)
+        with pytest.raises(PolicyEnforcementError, match="scope_missing"):
+            enforce_policy(_bound(), project=tmp_path, operation="import", resource={}, audit=writer)
         assert writer.verify()["valid"]
         assert writer.chain.db.execute("SELECT count(*) FROM audit_events").fetchone()[0] == 1
 
@@ -162,7 +167,39 @@ def test_enforce_policy_missing_policy_with_anchored_writer_is_denied_and_audite
 
 def test_enforce_policy_allow_path_unchanged(tmp_path):
     from agora.policy_enforcement import enforce_policy
-    assert enforce_policy(_allow_policy, project=tmp_path, operation="import", resource={})["decision"] == "allow"
+    res = {"project_id": "pilot-1", "source_sensitivity": "internal"}
+    assert enforce_policy(_bound(), project=tmp_path, operation="import", resource=res)["decision"] == "allow"
+
+
+def test_enforce_policy_rejects_raw_callables_in_protected_mode_and_audits(tmp_path):
+    from agora.policy_enforcement import PolicyEnforcementError, enforce_policy
+    res = {"project_id": "pilot-1", "source_sensitivity": "internal"}
+    for i, raw in enumerate((_allow_policy, lambda o, r: {"decision": "allow"}, _bound().__call__)):
+        (tmp_path / f"w{i}").mkdir()
+        with _anchored(tmp_path / f"w{i}") as writer:
+            with pytest.raises(PolicyEnforcementError, match="policy_not_principal_bound"):
+                enforce_policy(raw, project=tmp_path, operation="import", resource=res, audit=writer)
+            ev = writer.chain.db.execute("SELECT event_json FROM audit_events").fetchall()
+            assert len(ev) == 1 and "policy_not_principal_bound" in ev[0][0]
+
+
+def test_principal_policy_cannot_be_forged_or_subclassed(tmp_path):
+    from agora.policy_enforcement import PolicyEnforcementError, PrincipalPolicy, enforce_policy
+    with pytest.raises(TypeError):
+        PrincipalPolicy(object(), _allow_policy, ADAPTER.issue("op"))
+    with pytest.raises(TypeError):
+        PrincipalPolicy()
+    with pytest.raises(TypeError):
+        type("Evil", (PrincipalPolicy,), {})
+    good = _bound()
+    with pytest.raises(AttributeError):
+        good._fn = _allow_policy
+    # lookalike duck type is still rejected
+    class Duck:
+        _principal = ADAPTER.issue("op")
+        def __call__(self, o, r): return {"decision": "allow"}
+    with pytest.raises(PolicyEnforcementError):
+        enforce_policy(Duck(), project=tmp_path, operation="import", resource={})
 
 
 # --- lifecycle entry points (propose/reject/expire/supersede) are anchored by default ---

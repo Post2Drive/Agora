@@ -153,7 +153,8 @@ def principal_policy(
         decision, _ = decide_principal(principal, operation, resource, now=now,
                                        required_role=required_role, trusted_issuers=trusted_issuers)
         return decision
-    return policy
+    from .policy_enforcement import _mint_principal_policy
+    return _mint_principal_policy(policy, principal)
 
 
 __all__ = ["principal_policy", "Assurance", "IdentityError", "Principal", "SyntheticFixtureAdapter", "decide_principal"]

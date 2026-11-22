@@ -27,6 +27,15 @@ def _allow(operation, resource):
             "policy_version": "t", "resource_ids": []}
 
 
+def _bound_allow(project):
+    from datetime import datetime, timezone
+    from agora.principal import SyntheticFixtureAdapter, principal_policy
+    ad = SyntheticFixtureAdapter({"op": {
+        "subject_id": "op-1", "tenant_id": "t1", "project_ids": [project.name], "roles": ["operator"],
+        "assurance": "HIGH", "expires_at": datetime(2099, 1, 1, tzinfo=timezone.utc)}})
+    return principal_policy(ad.issue("op"))
+
+
 @pytest.mark.protected_defaults
 def test_ingest_require_policy_denies_missing_policy_and_audits(tmp_path):
     src = tmp_path / "c.csv"
@@ -91,7 +100,7 @@ def test_binding_require_policy_denies_missing_policy(tmp_path, monkeypatch):
         materialize_instances(_binding(), _pack(), tmp_path, imported["import_id"])
     assert _events(tmp_path)[-1]["reason"] == "policy_required"
     assert materialize_instances(_binding(), _pack(), tmp_path, imported["import_id"],
-                                 policy=_allow, purpose="synthetic", retention="one day")
+                                 policy=_bound_allow(tmp_path), purpose="synthetic", retention="one day")
 
 
 def test_scenario_input_require_policy_denies_missing_policy(tmp_path, monkeypatch):
@@ -103,4 +112,4 @@ def test_scenario_input_require_policy_denies_missing_policy(tmp_path, monkeypat
                              transformation_policy=_policy())
     assert _events(tmp_path)[-1]["reason"] == "policy_required"
     assert build_scenario_input(_binding(), _pack(), tmp_path, imported["import_id"],
-                                transformation_policy=_policy(), policy=_allow)
+                                transformation_policy=_policy(), policy=_bound_allow(tmp_path))
