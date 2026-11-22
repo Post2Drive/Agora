@@ -28,7 +28,7 @@ This guide documents the available components and their boundaries. It does not 
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected public wrappers** | #92 retires public role-string exports and #96 removes public `require_anchored=False` kwargs. Private helper audit can still be omitted internally; this is not a public caller bypass. |
 | Outcome dependency review markers | **PARTIAL — first slice plus #122 lifecycle hardening** | #116 adds explicit-edge marker propagation; #122 makes audit-append failure roll back the marker transition and binds supersession to the same decision/version/object with a bounded reason. A marker DB commit failure after successful audit append can still leave an orphan audit event; marker/audit reconciliation, retention/erasure triggers, automatic report/run edges and CLI remain open. |
 | Decision/audit reconciliation | **DONE — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar and #122 holds the same anchor lock across verify/classify; #115 repairs missing decision events through an approver-authorised API only. The lock helper may create a sidecar `.lock` file, and the concurrency test uses a timing sleep; no outcome/review reconciliation or unanchored-tail recovery is included. |
-| M2 run record | **PARTIAL — initial implementation merged (#123)** | Exact-head CI run `44990673166` passed 4/4 on head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`. Main now writes one run_record.json with a CSV hash and basic IDs/stage results, but omits fixture/schema/binding/manifest/ontology/policy provenance required by the fixture and run-provenance specs; load_run_record checks only version and two booleans. |
+| M2 run record | **PARTIAL — #123/#125 merged** | #123 stores basic IDs/stage results and the embedded CSV hash; #125 adds fixture ID/version/manifest/file hashes. The complete scenario/input-manifest/schema/binding/ontology/policy envelope, strict loader validation and failure-atomic publication remain open. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
 | One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 adds `agora pilot list/start` with a checked-in fixture. The run record remains partial; clean-install proof and fixture integrity/workdir hardening remain open.
 
@@ -36,7 +36,7 @@ This guide documents the available components and their boundaries. It does not 
 
 The merged CLI dispatches `agora pilot` from `agora.cli.main()` to `agora.pilot.main()`. The supported invocation is:
 
- ```bash
+```bash
 agora pilot list
 agora pilot start --fixture synthetic-units-v1 --workdir ./tmp-agora-pilot
 # Legacy M1 path remains available:
