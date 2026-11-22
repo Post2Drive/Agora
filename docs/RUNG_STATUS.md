@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026), including merged PRs through #100; no PRs were open at the start of this refresh.
+**Assessment base:** `main` at `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026), including merged PRs through #102; no PRs were open at the start of this refresh.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
