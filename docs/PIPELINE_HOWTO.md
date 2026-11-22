@@ -1,14 +1,14 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
-**Status:** M1 was explicitly confirmed by Claude. The owner approved local synthetic M2 after the primary post-M1 hardening changes merged in #122; the operator workflow remains incomplete and M2 is not reached.
-**Assessment base:** `main` at `969a040a497668740d20e1ace83841046639b2d6` (22 November 2026).
+**Status:** M1 was explicitly confirmed by Claude. The owner approved local synthetic M2; #127 backup/restore hardening and #130 strict-loader/non-empty-workdir changes are merged, while the operator workflow remains incomplete and M2 is not reached.
+**Assessment base:** `main` at `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
 ## 1. Read this before running anything
 
-Main `969a040a497668740d20e1ace83841046639b2d6` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88) and the checked-in fixture/start extension from #125. #125 adds `agora pilot list` and `agora pilot start --fixture <id> --workdir <dir>`; exact-head CI run `44993280261` passed 4/4. Claude's exact 09:05 IST log entry confirms M1. #122 closes the primary marker audit-order/supersession and reconcile verify/classify race; residual marker cross-store commit failure, reconcile lock-file creation and fixed-sleep test semantics remain. #123/#125 persist fixture metadata but still omit the full run-provenance envelope and loader validation. #120 backup hardening, tested runbook and rehearsal remain open.
+Main `70e561bf7309911ac86bed9f19be957ade73b338` has the guided M1 command `agora pilot --workdir <new-empty-directory>` (#88), checked-in fixture/start (#125), hardened backup/restore (#127) and strict run-record loader/non-empty-workdir guard (#130). Exact-head CI passed 4/4 for #127 (`44994798420`) and #130 (`44995421141`). #130's loader still accepts empty/unknown string values, optional fixture metadata and malformed nested file-hash maps; it does not validate the full `input_provenance` envelope or atomic publication. #125 fixture manifest pinning, fixture/workdir symlink rejection, nonblank version checks and clean-install proof remain open. Root-path backup symlink/snapshot-lock follow-up, marker/audit outbox, runbook test and rehearsal remain open.
 
-M2 is not complete: #125 now adds one checked-in synthetic fixture and the `agora pilot list/start` command, but the manifest digest is not independently pinned, fixture paths follow symlinks, a pre-existing non-empty workdir without a project child is accepted, and the test does not prove clean installation from a checkout. #123/#125's run record still lacks the full RUN_PROVENANCE_SPEC.md envelope, strict loader validation and failure-atomic publication. #120 backup hardening, operator tamper drill and tested runbook remain open.
+M2 is not complete: #125 adds one checked-in synthetic fixture and `agora pilot list/start`, but its manifest digest is not independently pinned, fixture paths follow symlinks, empty fixture versions are accepted and clean installation is not proven. #130 is merged on main and now implements strict required-field/type/hash checks plus non-empty-workdir refusal; it still does not reject symlinked empty workdirs or validate the full RUN_PROVENANCE_SPEC input_provenance envelope and failure-atomic publication. #127 hardens backup/restore, but root-path symlink rejection and a shared source-pair snapshot lock/head check remain; operator command test, marker/audit outbox recovery and logged rehearsal remain open.
 
 This guide documents the available components and their boundaries. It does not authorise a simulation, calibration, backtest, forecast, study mutation, live pilot, production decision, real data, credentials, network access or external write-back. Do not use Nutrivance, NCC Park Square, customer records or any real personal/sensitive data. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
@@ -24,13 +24,13 @@ This guide documents the available components and their boundaries. It does not 
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89/#96 make `approve_as()` Principal-native with stored-decision-derived policy input and no public anchor opt-out kwarg. #97 removes the legacy env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains. |
 | Anchored audit chain | **AVAILABLE — local-sidecar API; protected entry points guarded** | #63/#71/#74/#75/#89/#96/#97 provide writer, factory, append wiring and protected Principal wrappers; #99 hardens policy-denial writes and #109 guards `propose()`/`reject()`/`expire()`/`supersede()` before mutation when `ANCHOR_REQUIRED=True`. Optional annotations do not permit `None` or plain writers on protected paths. Trust is `local_sidecar`. |
 | Audit timeline and chain/anchor verification | **AVAILABLE — read-only CLI (#107)** | `agora audit timeline` verifies the hash chain and lists one decision's stored transitions/related audit events; `agora audit verify` compares the chain with its local sidecar and states the trust limitation. Neither writes or repairs. |
-| Backup/restore | **AVAILABLE — local synthetic CLI component (#120), not operator-ready** | Commands verify chain/anchor and manifest membership/hashes, but source verification is not locked across the DB/anchor snapshot, source enumeration follows symlinks and lacks a synthetic fixture allowlist, malformed manifest types need stable rejection, and restore does not re-hash every staged file after copy. Runbook test and tamper drill remain open. |
+| Backup/restore | **AVAILABLE — hardened local synthetic CLI (#120/#127), not operator-ready** | #127 requires a run record marked synthetic, rejects symlinks/unsafe manifest paths inside enumerated trees, validates the manifest, re-verifies the copied chain/anchor and re-hashes every restored file. Root project/backup/target symlinks are not explicitly rejected before reads/writes, and a shared source-pair lock/head-equality proof remains. Runbook test and tamper drill remain open. |
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected public wrappers** | #92 retires public role-string exports and #96 removes public `require_anchored=False` kwargs. Private helper audit can still be omitted internally; this is not a public caller bypass. |
 | Outcome dependency review markers | **PARTIAL — first slice plus #122 lifecycle hardening** | #116 adds explicit-edge marker propagation; #122 makes audit-append failure roll back the marker transition and binds supersession to the same decision/version/object with a bounded reason. A marker DB commit failure after successful audit append can still leave an orphan audit event; marker/audit reconciliation, retention/erasure triggers, automatic report/run edges and CLI remain open. |
 | Decision/audit reconciliation | **DONE — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar and #122 holds the same anchor lock across verify/classify; #115 repairs missing decision events through an approver-authorised API only. The lock helper may create a sidecar `.lock` file, and the concurrency test uses a timing sleep; no outcome/review reconciliation or unanchored-tail recovery is included. |
-| M2 run record | **PARTIAL — #123/#125 merged** | #123 stores basic IDs/stage results and the embedded CSV hash; #125 adds fixture ID/version/manifest/file hashes. The complete scenario/input-manifest/schema/binding/ontology/policy envelope, strict loader validation and failure-atomic publication remain open. |
+| M2 run record | **PARTIAL — #123/#125/#130 merged** | #130 adds required-key/type, synthetic-only, false-engine/prediction, hash-format and non-empty-workdir checks. It does not require/validate the fixture block, nonblank identifiers, exact 40-hex repository SHA, timestamp/status enums, canonical input_manifest/scenario_hash, binding/ontology/policy fingerprints or failure-atomic publication. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
-| One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 adds `agora pilot list/start` with a checked-in fixture. The run record remains partial; clean-install proof and fixture integrity/workdir hardening remain open.
+| One callable end-to-end entry point | **AVAILABLE — M1 flow plus M2 fixture/start component** | Main provides the nine-stage `agora pilot --workdir` flow and #125 adds `agora pilot list/start` with a checked-in fixture. #130 rejects any non-empty workdir, but does not reject a symlinked empty workdir; clean-install proof and fixture integrity hardening remain open. |
 
 ## 2.1 Guided synthetic pilot command on main (#88/#125; CLI import isolation #94)
 
@@ -43,12 +43,12 @@ agora pilot start --fixture synthetic-units-v1 --workdir ./tmp-agora-pilot
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Use a new empty local work directory. Main includes `agora/pilot_fixtures/synthetic-units-v1` with CSV/schema/binding/manifest and the commands `agora pilot list` and `agora pilot start --fixture <id> --workdir <dir>`. The fixture is verified before store creation and per-file hashes are checked against the manifest. Review found that the manifest digest itself is not pinned, `Path.is_dir()` / `read_bytes()` follow symlinks, and the workdir guard checks only whether the `synthetic-pilot` child exists—not whether the requested workdir already contains unrelated files. The subprocess test starts from the repository tree and does not prove package installation from a clean checkout.
+Use a new empty local work directory. Main includes `agora/pilot_fixtures/synthetic-units-v1` with CSV/schema/binding/manifest and `agora pilot list` / `agora pilot start --fixture <id> --workdir <dir>`. #130 now rejects non-empty workdirs; a symlink to an empty directory still passes. Per-file hashes are checked before stores open, but the manifest digest is not independently pinned, `Path.is_dir()` / `read_bytes()` follow fixture symlinks, fixture version accepts an empty string, and clean-checkout install is unproven.
 
-The fixture/start command is a merged M2 component, not an M2-complete operator workflow. #125's run-record extension adds fixture ID/version/manifest/file hashes, but the full scenario/input-manifest/schema/binding/ontology/policy provenance, strict loader validation and failure-atomic persistence remain open. #120 backup hardening, runbook-command test and logged rehearsal remain open.
+The fixture/start command is a merged M2 component, not an M2-complete operator workflow. #125's run-record extension adds fixture ID/version/manifest/file hashes; #130 adds strict required-field/type/hash checks but does not require the fixture block or full RUN_PROVENANCE_SPEC envelope and does not publish atomically. Root-path backup symlink and source-pair lock/head-equality follow-ups, runbook-command test and logged rehearsal remain open.
 
 
-## 2.2 Backup/restore component on main (#120)
+## 2.2 Backup/restore component on main (#120/#127)
 
 The current CLI dispatch supports:
 
@@ -58,7 +58,7 @@ agora backup verify --backup <backup-dir>
 agora restore --backup <backup-dir> --target <new-empty-target-dir>
 ```
 
-The backup command checks the source chain against its sidecar before copying and records hashes for copied files. Verification checks manifest membership/hashes and the backup chain/anchor. Restore refuses a non-empty target and re-verifies the restored chain/anchor. Exact-head Actions run `44986367729` on PR #120 head `90153ce19489063fb601b59cf4704980f6489409` passed all four matrix jobs. Review still found no shared anchor lock spanning source verification and chain/anchor copying, no synthetic project/fixture allowlist or symlink rejection, incomplete manifest schema validation, and no post-copy re-hash of every restored file.
+The backup command checks the source chain against its sidecar, requires `run_record.json` with `data_class=synthetic`, rejects in-tree symlinks/unsafe paths, validates the manifest, re-verifies the copied chain/anchor and re-hashes every restored file. Exact-head Actions run `44994798420` on #127 passed all four matrix jobs. The root project/backup/restore-target path is not explicitly lstat-rejected before reads/writes, and the source verify-to-copy pair is not protected by one shared anchor lock/head-equality check. Runbook test and tamper drill remain open.
 
 ## 3. Preconditions and fixture rules
 
@@ -216,7 +216,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 ## 11. Remaining work for M2 operator readiness
 
-The following M2 gaps remain on main `969a040a497668740d20e1ace83841046639b2d6` after Claude's M1 confirmation, merged #88 pilot, #100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #124 docs refresh and #125 fixture/start. The owner approved local synthetic M2; M2 remains incomplete:
+The following M2 gaps remain on main `70e561bf7309911ac86bed9f19be957ade73b338` after Claude's M1 confirmation, merged #88 pilot, #100/#104/#119/#122 detector, #102/#106 held-outcome list, #116/#122 marker lifecycle, #120 backup CLI, #123 initial run record, #124 docs refresh and #125 fixture/start. The owner approved local synthetic M2; M2 remains incomplete:
 
 1. Complete marker/audit cross-store failure handling: #122 rolls back marker state when audit append fails, but if the audit append succeeds and the later marker DB commit fails, an orphan audit event can remain. Add a commit-failure regression and durable pending/outbox or reconciliation semantics. Retention/erasure triggers, automatic report/run edges and marker/audit reconciliation also remain open.
 2. Reconciliation's #119 verify/classify TOCTOU is serialized by #122's shared anchor lock. Clarify the lock-file creation side effect under the read-only contract and replace the fixed-sleep race test with a deterministic handshake; add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows.
@@ -227,7 +227,7 @@ The following M2 gaps remain on main `969a040a497668740d20e1ace83841046639b2d6` 
 
 ## 12. Current mainline pilot commands and future operator work
 
-The current merged local synthetic commands on main `969a040a497668740d20e1ace83841046639b2d6` are:
+The current merged local synthetic commands on main `70e561bf7309911ac86bed9f19be957ade73b338` are:
 
 ```bash
 agora pilot list
