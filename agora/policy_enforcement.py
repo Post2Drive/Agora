@@ -25,6 +25,12 @@ class PolicyEnforcementError(PermissionError):
 PolicyCallable = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 
 
+def _is_principal_bound(policy: Any) -> bool:
+    # Lazy import avoids a module-load cycle (principal imports agora.policy).
+    from .principal import is_principal_bound
+    return is_principal_bound(policy)
+
+
 def enforce_policy(
     policy: PolicyCallable | None,
     *,
@@ -51,10 +57,20 @@ def enforce_policy(
     AnchoredAuditChain (checked with require_anchored); None or a plain
     AuditChainStore is refused and the denial is still raised.
     """
-    if policy is None and not _protection.POLICY_REQUIRED:
+    if policy is None and not _protection.POLICY_REQUIRED and not _protection.PRINCIPAL_BOUND_REQUIRED:
         return None
-    if policy is None or not callable(policy):
-        decision: Mapping[str, Any] = {
+    decision: Mapping[str, Any]
+    if _protection.PRINCIPAL_BOUND_REQUIRED and not _is_principal_bound(policy):
+        # An arbitrary (operation, resource) callable cannot satisfy the
+        # protected contract: authority must come from an adapter-issued
+        # Principal bound into a BoundPolicy, which decide_principal re-checks.
+        decision = {
+            "decision": "deny",
+            "reason": "policy_required" if policy is None else "policy_not_principal_bound",
+            "subject_id": "unknown", "policy_version": "unknown",
+        }
+    elif policy is None or not callable(policy):
+        decision = {
             "decision": "deny",
             "reason": "policy_required" if policy is None else "policy_not_callable",
             "subject_id": "unknown", "policy_version": "unknown",

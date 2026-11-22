@@ -42,9 +42,9 @@ def test_protection_flags_are_on_in_production():
     """Fresh process: conftest cannot have relaxed anything."""
     import subprocess, sys
     r = subprocess.run([sys.executable, "-c",
-                        "from agora import protection as p; print(p.POLICY_REQUIRED, p.ANCHOR_REQUIRED)"],
+                        "from agora import protection as p; print(p.POLICY_REQUIRED, p.ANCHOR_REQUIRED, p.PRINCIPAL_BOUND_REQUIRED)"],
                        capture_output=True, text=True, timeout=60)
-    assert r.stdout.strip() == "True True", r.stderr
+    assert r.stdout.strip() == "True True True", r.stderr
 
 
 @pytest.mark.protected_defaults
@@ -97,12 +97,22 @@ def test_outcome_and_approval_wrappers_deny_without_anchored_writer_by_default(t
 
 # --- direct enforce_policy hardening: no caller override, anchored writer only ---
 
-def _deny_policy(operation, resource):
-    return {"decision": "deny", "reason": "cross_scope", "subject_id": "op-1", "policy_version": "v1"}
+# Principal-bound policies: production enforce_policy() rejects raw callables.
+from datetime import datetime, timezone
+from agora.principal import SyntheticFixtureAdapter, principal_policy
 
-
-def _allow_policy(operation, resource):
-    return {"decision": "allow", "reason": "ok", "subject_id": "op-1", "policy_version": "v1"}
+_FAR = datetime(2030, 1, 1, tzinfo=timezone.utc)
+_ENF_ADAPTER = SyntheticFixtureAdapter({
+    "scoped": {"subject_id": "op-1", "tenant_id": "t1", "project_ids": ["pilot-1"],
+               "roles": ["operator"], "assurance": "HIGH", "expires_at": _FAR},
+    "other": {"subject_id": "op-1", "tenant_id": "t1", "project_ids": ["other-project"],
+              "roles": ["operator"], "assurance": "HIGH", "expires_at": _FAR},
+})
+# Bound to a different project, so a pilot-1 resource is denied cross_scope.
+_deny_policy = principal_policy(_ENF_ADAPTER.issue("other"))
+# Bound to pilot-1 operator, so a pilot-1 internal import is allowed.
+_allow_policy = principal_policy(_ENF_ADAPTER.issue("scoped"))
+_ENF_RES = {"project_id": "pilot-1", "source_sensitivity": "internal", "resource_ids": ["r1"]}
 
 
 def _anchored(tmp_path):
@@ -147,7 +157,7 @@ def test_enforce_policy_denial_appends_to_anchored_writer(tmp_path):
     from agora.policy_enforcement import PolicyEnforcementError, enforce_policy
     with _anchored(tmp_path) as writer:
         with pytest.raises(PolicyEnforcementError, match="cross_scope"):
-            enforce_policy(_deny_policy, project=tmp_path, operation="import", resource={}, audit=writer)
+            enforce_policy(_deny_policy, project=tmp_path, operation="import", resource=_ENF_RES, audit=writer)
         assert writer.verify()["valid"]
         assert writer.chain.db.execute("SELECT count(*) FROM audit_events").fetchone()[0] == 1
 
@@ -162,7 +172,7 @@ def test_enforce_policy_missing_policy_with_anchored_writer_is_denied_and_audite
 
 def test_enforce_policy_allow_path_unchanged(tmp_path):
     from agora.policy_enforcement import enforce_policy
-    assert enforce_policy(_allow_policy, project=tmp_path, operation="import", resource={})["decision"] == "allow"
+    assert enforce_policy(_allow_policy, project=tmp_path, operation="import", resource=_ENF_RES)["decision"] == "allow"
 
 
 # --- lifecycle entry points (propose/reject/expire/supersede) are anchored by default ---
