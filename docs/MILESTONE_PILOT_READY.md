@@ -2,14 +2,14 @@
 
 **Status:** Claude-confirmed M1 code-complete; this is not M2 operator-pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `30385885f16b3750a879ef7df25140fabe29c4ba`
+**Main base:** `527476bb4e0450050843dd23a2aa6d5417627ded`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Assessment base is main `30385885f16b3750a879ef7df25140fabe29c4ba` after #119 merged. Claude's exact 09:05 IST log entry on 22 November confirms M1 reached on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; #119 subsequently added read-only sidecar-anchor verification to reconciliation and is merged on current main. A later concurrent Claude note says M1 was not yet confirmed; that conflicts with the explicit 09:05 confirmation and is recorded for Claude to reconcile. M2 implementation and rehearsal remain pending a separate owner GO. This documentation refresh is PR #117, rebased to current main.
+Assessment base is main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. Claude's exact 09:05 IST log entry on 22 November confirms M1 reached on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`. #119 adds read-only sidecar-anchor verification before reconciliation classification. #120 adds local synthetic `agora backup`, `agora backup verify` and `agora restore` commands; its exact-head Actions run `44986367729` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The current owner instruction marks M2 owner-approved for local synthetic implementation only. M2 is not reached: checked-in fixture/one-command start, persisted run records, executable runbook test, backup consistency hardening and logged dress rehearsal remain open. No M2 readiness is claimed.
 
-#111 retires the public role-string approval authorizer and restricts role-string PDP imports to the internal allowlist. #113 completes protected Principal-bound policy enforcement with `BoundPolicy`; the identity adapter remains synthetic-only. #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing decision audit events only (API, no CLI; unanchored-tail recovery blocks). #116 merges the first append-only outcome dependency-marker slice with explicit-edge propagation and Principal-gated lifecycle. #119 adds read-only sidecar-anchor verification before reconciliation classification and requires `--anchor` and `--chain-id`. Known limitations remain: no retention/erasure triggers, automatic report/run edge registration, marker/audit reconciliation or repair CLI; the anchor trust level is `local_sidecar`.
+#111 retires the public role-string approval authorizer and restricts role-string PDP imports to the internal allowlist. #113 completes protected Principal-bound policy enforcement with `BoundPolicy`; the identity adapter remains synthetic-only. #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing decision audit events only (API, no CLI; unanchored-tail recovery blocks). #116 merges the first append-only outcome dependency-marker slice with explicit-edge propagation and Principal-gated lifecycle. #119 adds read-only sidecar-anchor verification before reconciliation classification and requires `--anchor` and `--chain-id`. #120 adds local synthetic backup/verify/restore CLI commands; post-merge review found that backup does not hold the anchor lock across source verification and pair copying, and restore does not re-hash every restored file after copying. These are open hardening gaps, not an operator drill. Known limitations remain: no retention/erasure triggers, automatic report/run edge registration, marker/audit reconciliation or repair CLI; the anchor trust level is `local_sidecar`.
 
 #100/#104 provide read-only decision lifecycle detection with immutable source checks. #119 verifies the audit chain against the local sidecar before classification; it fails closed on non-`anchored_verified` status with stable blocked codes. Review found a possible time-of-check/time-of-use window because anchor verification closes its SQLite connection before reconciliation opens another connection to classify; do not claim concurrent-writer atomicity until that is hardened. Review of #116 also found that `advance_marker_as()` commits lifecycle state before `_audit()`, allowing an unaudited `resolved(valid)` or `superseded` state to persist and clear `blocking_markers()`; supersession also does not bind the replacement to the same decision/version/affected object. These are post-confirmation hardening findings, not a retraction of Claude's exact M1 confirmation. #115 remains API-only and repairs missing decision lifecycle events only. #102/#106 remain a separate read-only held-outcome list. #116's first marker slice is merged, but retention/erasure triggers, automatic report/run edge registration, CLI and marker/audit reconciliation are not included.
 
@@ -25,9 +25,9 @@ Claude's 09:05 IST log entry explicitly confirms M1 reached on main `83d0645b983
 python -m agora.cli pilot --workdir <new-empty-dir>
 ```
 
-Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was labelled synthetic, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on that SHA. ChatGPT did not execute the command or tests. #119 later merged on current main `30385885f16b3750a879ef7df25140fabe29c4ba`; its exact-head Actions run `44981680171` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was labelled synthetic, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on that SHA. ChatGPT did not execute the command or tests. #119 later merged on current main `527476bb4e0450050843dd23a2aa6d5417627ded`; its exact-head Actions run `44981680171` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-Assessment base: `30385885f16b3750a879ef7df25140fabe29c4ba`.
+Assessment base: `527476bb4e0450050843dd23a2aa6d5417627ded`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -67,6 +67,7 @@ Confirmed merged implementation PRs:
 - #111 — makes the role-string approval authorizer private and restricts PDP imports to the internal allowlist.
 - #116 — merges append-only outcome dependency markers with explicit-edge propagation and Principal-gated lifecycle; exact-head run `44980453453` passed 4/4. Retention/erasure triggers, auto edge registration, CLI and marker/audit reconciliation remain out of scope.
 - #119 — adds read-only sidecar-anchor verification before reconciliation classification and requires `--anchor` / `--chain-id`; exact-head run `44981680171` passed 4/4.
+- #120 — adds local synthetic backup, backup verification and restore with manifest checksums, chain/anchor verification and non-empty-target refusal; exact-head Actions run `44986367729` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Post-merge review found verify-to-copy concurrency gaps in backup and restore; operator drill and runbook test remain open.
 Exact-head GitHub Actions evidence:
 - #63 head `ef1f0ee430598c018a3cccd2ba2627a733f123f5`, run [44917009154](https://github.com/Post2Drive/Agora/actions/runs/44917009154): all four Ubuntu/Windows × Python 3.11/3.12 jobs passed.
 - #66 head `6e0b483d628e5b4317e2cd3296a0bf0604d403f6`, run [44912719682](https://github.com/Post2Drive/Agora/actions/runs/44912719682): all four matrix jobs passed.
@@ -94,7 +95,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Decision/audit reconciliation | **Done — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the chain against its sidecar before classification (CLI requires `--anchor` and `--chain-id`); #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing events only. Repair is API-only, has no CLI, excludes outcome/review rows and blocks unanchored-tail recovery. A concurrency TOCTOU review finding remains open. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI, partial M1 evidence** | #88 adds `agora pilot --workdir <new-empty-directory>` with per-stage results and first-denial stop; #94 keeps CLI pilot/data dispatch engine-import-free. It still does not persist the M2 run record or call `build_scenario_input()` / the engine. |
-| Integrated pilot readiness | **M1 Claude-confirmed; M2 not ready/authorised** | M1 was explicitly confirmed by Claude at 09:05 IST on main `83d0645`; current main adds #119 hardening. M2 fixture, run-record, backup/restore, tested-runbook and rehearsal requirements remain open, and M2 implementation awaits owner GO. |
+| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | M1 was explicitly confirmed by Claude at 09:05 IST on main `83d0645`; current main includes #119 reconciliation anchor verification and #120 backup/verify/restore CLI. M2 fixture/one-command start, run-record persistence, backup snapshot/restore-copy hardening, executable runbook test and logged rehearsal remain open. The owner has approved local synthetic M2 implementation; no milestone completion is claimed. |
 
 ## 4. Pull request status snapshot
 
@@ -143,7 +144,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #116 | First append-only outcome dependency-marker slice | Merged; exact-head CI run `44980453453` passed 4/4 |
 | #119 | Read-only sidecar-anchor verification before reconcile classification | Merged; exact-head CI run `44981680171` passed 4/4 |
 
-Assessment base is main `30385885f16b3750a879ef7df25140fabe29c4ba` after #119 merged. M1 is Claude-confirmed by the explicit 09:05 IST entry; #116 and #119 are merged. This documentation refresh is PR #117.
+Assessment base is main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. M1 remains Claude-confirmed by the exact 09:05 IST entry; #116, #119 and #120 are merged. #120 is an M2 component only, not M2 completion.
 
 ## 5. M1 exit gates — Claude confirmation recorded
 
@@ -165,15 +166,15 @@ Assessment base is main `30385885f16b3750a879ef7df25140fabe29c4ba` after #119 me
 - [x] The CLI module no longer imports the simulation engine for pilot/data dispatch; #94 lazy-loads it only in engine-dependent handlers and passes exact-head CI 4/4. Fresh-process coverage is for `--help`, not a complete `--workdir` invocation.
 - [x] Exact-head CI is green on the M1 implementation heads: #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`) and #119 (`44981680171`) each passed all four Ubuntu/Windows × Python 3.11/3.12 jobs; mutation proofs are recorded in the implementation PRs.
 - [x] Claude logged the exact M1 confirmation at 09:05 IST on 22 November 2026, naming main `83d0645b983365dddd9da07d4c1352e0b66e3d00`, the clean-checkout pilot command and the nine completed stages.
-- [ ] M2 implementation and any rehearsal still require the owner's separate GO. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval.
+- [ ] M2 exit criteria remain incomplete. The current owner instruction authorizes local synthetic M2 implementation; #120 is only a merged backup/verify/restore CLI component, not a completed operator drill. Scenario-input-to-engine wiring remains blocked until Claude's written approval and a separate owner approval naming that item.
 
 Passing these gates means only that a scoped synthetic rehearsal may be considered. It does not establish predictive validity, real demand, sales performance, production security or permission for external actions.
 
 ## 6. Documentation status
 
-M2 planning-only specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`: one-command start, fixture selection, plain-language audit/anchor verification, and backup/restore/tamper drills. These documents define future acceptance criteria only; no M2 execution or rehearsal is claimed.
+M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`: one-command start, fixture selection, plain-language audit/anchor verification, and backup/restore/tamper drills. #120 now implements the local backup/verify/restore CLI, but concurrent snapshot/restore-copy hardening, runbook-command tests and the logged rehearsal remain open. No M2 completion or rehearsal is claimed.
 
-This assessment is refreshed against main `30385885f16b3750a879ef7df25140fabe29c4ba` after #119 merged. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`) and #119 (`44981680171`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests or the pilot. M2 implementation remains pending owner GO.
+This assessment is refreshed against main `527476bb4e0450050843dd23a2aa6d5417627ded` after #120 merged. Exact-head CI for #113 (`44979668275`), #115 (`44980052093`), #116 (`44980453453`), #119 (`44981680171`) and #120 (`44986367729`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute tests, the pilot, backup, restore or a rehearsal. M2 implementation is owner-approved for local synthetic scope but remains incomplete.
 
 ## 7. Permanent safety boundaries
 
