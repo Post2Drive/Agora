@@ -53,7 +53,7 @@ Do not add any row that resembles a real customer, hospital, apartment, person, 
 - A changed fixture must change its content hash and therefore the recorded run identity.
 - Never log raw row values or sensitive payloads in the audit chain; log stable IDs, hashes and allow-listed event metadata only.
 
-## 5. Required tests (future implementation)
+## 5. Remaining hardening tests
 
 1. Clean-checkout test confirms all four exact fixture artefacts (manifest, CSV, schema and binding) are packaged and parseable.
 2. Golden-schema test proves required fields, types, enumerations and bounds.
