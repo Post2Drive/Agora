@@ -21,7 +21,11 @@ SECRET_NOTE = "customer-private-note-123"
 def approved_store(tmp_path, measures=None):
     decisions = DecisionRecordStore(tmp_path / "decisions.db")
     decisions.append(draft_record() | ({"outcome_measures": measures} if measures else {}))
-    proposed = propose(decisions, "decision-approval-001", 1, actor="analyst", now="2026-11-21T10:00:00Z")
+    from agora import protection
+    with pytest.MonkeyPatch.context() as mp:  # fixture setup only; protected tests keep the gate
+        mp.setattr(protection, "ANCHOR_REQUIRED", False)
+        proposed = propose(decisions, "decision-approval-001", 1, actor="analyst",
+                           now="2026-11-21T10:00:00Z")
     approved = approve(decisions, proposed.decision_id, proposed.version, **approve_args(proposed))
     return decisions, DecisionOutcomeStore(decisions), approved
 

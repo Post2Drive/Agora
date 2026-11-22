@@ -163,3 +163,76 @@ def test_enforce_policy_missing_policy_with_anchored_writer_is_denied_and_audite
 def test_enforce_policy_allow_path_unchanged(tmp_path):
     from agora.policy_enforcement import enforce_policy
     assert enforce_policy(_allow_policy, project=tmp_path, operation="import", resource={})["decision"] == "allow"
+
+
+# --- lifecycle entry points (propose/reject/expire/supersede) are anchored by default ---
+
+def _relaxed_proposed(tmp_path, *, review_date=None):
+    from agora import protection
+    from agora.decisions.approval import propose
+    from agora.decisions.store import DecisionRecordStore
+    from tests.test_decision_approval import draft_record
+    store = DecisionRecordStore(tmp_path / "life.db")
+    store.append(draft_record() | ({"review_date": review_date} if review_date else {}))
+    with pytest.MonkeyPatch.context() as mp:  # setup only
+        mp.setattr(protection, "ANCHOR_REQUIRED", False)
+        proposed = propose(store, "decision-approval-001", 1, actor="analyst",
+                           now="2026-11-21T10:00:00Z")
+    return store, proposed
+
+
+def _status(store):
+    return store.versions("decision-approval-001")[-1].status
+
+
+def test_lifecycle_propose_denied_without_anchored_writer_and_stores_nothing(tmp_path):
+    from agora.decisions.approval import propose
+    from agora.decisions.store import DecisionRecordStore
+    from tests.test_decision_approval import draft_record
+    store = DecisionRecordStore(tmp_path / "p.db")
+    store.append(draft_record())
+    plain = AuditChainStore(tmp_path / "plain.sqlite3")
+    for audit in (None, plain):
+        with pytest.raises(AnchorRequiredError):
+            propose(store, "decision-approval-001", 1, actor="analyst",
+                    now="2026-11-21T10:00:00Z", audit=audit)
+    assert _status(store) == "draft"
+    assert [e for e in store.approval_events("decision-approval-001")] == []
+    plain.close(); store.close()
+
+
+def test_lifecycle_reject_expire_supersede_denied_without_anchored_writer(tmp_path):
+    from agora.decisions.approval import expire, reject, supersede
+    store, p = _relaxed_proposed(tmp_path, review_date="2026-11-22")
+    plain = AuditChainStore(tmp_path / "plain.sqlite3")
+    for audit in (None, plain):
+        with pytest.raises(AnchorRequiredError):
+            reject(store, p.decision_id, p.version, actor="reviewer-1",
+                   now="2026-11-21T10:30:00Z", audit=audit)
+        with pytest.raises(AnchorRequiredError):
+            expire(store, p.decision_id, p.version, now="2026-11-30T00:00:00Z", audit=audit)
+        with pytest.raises(AnchorRequiredError):
+            supersede(store, p.decision_id, p.version, actor="analyst",
+                      replacement_fingerprint="sha256:" + "ab" * 32,
+                      now="2026-11-21T10:30:00Z", audit=audit)
+    assert _status(store) == "proposed"
+    assert len(store.versions(p.decision_id)) == 2  # no new version written
+    plain.close(); store.close()
+
+
+def test_lifecycle_anchored_writer_succeeds_and_is_audited(tmp_path):
+    from agora.audit_anchor import AnchorStore, bootstrap_anchor, open_anchored_audit
+    from agora.decisions.approval import propose
+    from agora.decisions.store import DecisionRecordStore
+    from tests.test_decision_approval import draft_record
+    chain = AuditChainStore(tmp_path / "c.sqlite3")
+    bootstrap_anchor(chain, AnchorStore(tmp_path / "a.jsonl", "c1"), performed_by="maint-1")
+    chain.close()
+    store = DecisionRecordStore(tmp_path / "ok.db")
+    store.append(draft_record())
+    with open_anchored_audit(tmp_path / "c.sqlite3", tmp_path / "a.jsonl", "c1") as w:
+        propose(store, "decision-approval-001", 1, actor="analyst",
+                now="2026-11-21T10:00:00Z", audit=w)
+        assert w.verify()["valid"] is True
+    assert _status(store) == "proposed"
+    store.close()
