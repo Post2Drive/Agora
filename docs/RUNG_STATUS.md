@@ -1,6 +1,6 @@
 # Agora Rung Status
 
-**Assessment base:** `main` at `776669cac7c30722726ed87813f677d6d6d89aec` (22 November 2026), including merged implementation PRs through #122 and documentation PR #121. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2 after the three primary hardening fixes merged in #122. #123 is the only open implementation PR and remains draft; exact-head CI passed 4/4, but run-record field coverage is incomplete. M2 remains incomplete and no rehearsal is claimed.
+**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026), including merged implementation PRs through #123 and documentation PR #121. Claude's exact 09:05 IST log entry confirms M1; the owner approved local synthetic M2 after #122. #123's run-record component is merged, but its provenance field coverage and loader validation remain incomplete. M2 remains incomplete and no rehearsal is claimed.
 
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
@@ -60,9 +60,9 @@ The following newer slices are confirmed merged on the assessed mainline:
 - **#120:** local synthetic `agora backup`, `agora backup verify` and `agora restore`; exact-head run `44986367729` passed 4/4. Review gaps remain: source verify-to-copy pair locking, synthetic project/fixture allowlisting, symlink rejection, manifest schema validation and post-copy hash verification of every restored file. No operator drill is claimed.
 - **#121:** documentation refresh merged at head `769de633b6d13c14d60a353da989b716443f0d12`; exact-head run `44990546024` passed 4/4.
 - **#122:** marker lifecycle/supersession hardening and reconcile lock merged at head `73c2d5db61db775602a18ad1d170bc010b39ebbf`; exact-head run `44989188092` passed 4/4.
-- **#123:** open draft run-record slice at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`; exact-head run `44990673166` passed 4/4. It records a CSV hash and basic IDs/stage results but does not yet carry the full fixture/schema/binding/manifest/ontology/policy provenance or validate the complete record schema.
+- **#123:** M2 pilot run-record first slice merged at head `1cfc69b3f56b2b98fd8e2eb68e52d69a8d276122`; exact-head run `44990673166` passed 4/4. It records the embedded CSV hash and basic IDs/stage results, but omits schema/binding/manifest/ontology/policy provenance and full record schema/hash validation.
 
-At the assessed main snapshot, implementation PRs through #122 and documentation PR #121 are merged on `776669cac7c30722726ed87813f677d6d6d89aec`. Claude's exact 09:05 IST entry confirms M1. The owner approved local synthetic M2 after #122; #123 is an open draft and does not yet satisfy the complete run-provenance contract. M2 remains incomplete and no rehearsal is claimed.
+At the assessed main snapshot, implementation PRs through #123 and documentation PR #121 are merged on `27269a0b939e966dc5eee72c915562e68a61ec67`. Claude's exact 09:05 IST entry confirms M1. The owner approved local synthetic M2 after #122; #123 supplies only an initial run-record component and the full provenance contract remains incomplete. M2 remains incomplete and no rehearsal is claimed.
 - **#66:** Windows audit-log lock fix merged; exact-head CI run 198 passed all four matrix jobs.
 
 Earlier merged foundations remain as recorded in the prior rung assessment: #23â€“#47 cover typed binding, ingestion/provenance, decisions, audit chain, PDP, approval, retention, report provenance and governed-pipeline tests.
@@ -76,7 +76,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 5. **Cross-store consistency:** #119 verifies the chain/sidecar before classification; #122 holds the anchor lock across verify/classify. The lock helper may create a `.lock` metadata file and the concurrency test uses a fixed sleep, so strict no-filesystem-write/read-only semantics and deterministic race proof remain to be clarified. #115 repairs missing decision events only; outcome/review and marker-audit reconciliation remain separate.
 6. **Purpose and retention:** #54 closes the binding-hook propagation gap by accepting and forwarding declared purpose/retention. Callers must supply those values; do not claim that every call site or all data paths have been migrated.
 7. **Enterprise controls:** OIDC, proven tenant isolation, external audit anchoring, independent/production backup targets, incident response and fleet deployment are not complete. #120 adds a local synthetic backup/verify/restore CLI, but its pair-snapshot, source allowlist/symlink, manifest validation and restore post-copy hashing gaps remain open.
-8. **Pilot boundary:** Claude confirmed M1 in the exact 09:05 IST log entry. #88 remains a local synthetic guided flow with embedded CSV/schema/binding. #123 proposes a run record but is unmerged and lacks required schema/binding/manifest/ontology/policy provenance. The owner approved local synthetic M2; #120 is a partial backup component only. No engine call, simulation, real data or external action is authorised; rehearsal remains unperformed.
+8. **Pilot boundary:** Claude confirmed M1 in the exact 09:05 IST log entry. #88 remains a local synthetic guided flow with embedded CSV/schema/binding. #123 is now merged and persists a run_record.json, but it lacks schema/binding/manifest/ontology/policy provenance and full loader validation. The owner approved local synthetic M2; #120 is a partial backup component only. No engine call, simulation, real data or external action is authorised; rehearsal remains unperformed.
 
 ## Evidence and interpretation rules
 
@@ -92,4 +92,4 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23â
 
 ## Process note
 
-This assessment is a documentation snapshot of main at `776669cac7c30722726ed87813f677d6d6d89aec`; implementation PRs through #122 and docs PR #121 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`) and open #123 (`44990673166`) passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
+This assessment is a documentation snapshot of main at `27269a0b939e966dc5eee72c915562e68a61ec67`; implementation PRs through #123 and docs PR #121 are merged. Exact-head CI for #116 (`44980453453`), #119 (`44981680171`), #120 (`44986367729`), #121 (`44990546024`), #122 (`44989188092`) and #123 (`44990673166`) passed 4/4. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
