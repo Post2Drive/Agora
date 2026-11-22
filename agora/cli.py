@@ -597,6 +597,9 @@ def main(argv=None) -> int:
     if raw_argv and raw_argv[0] == "reconcile":
         from .reconcile import main as reconcile_main
         return reconcile_main(raw_argv[1:])
+    if len(raw_argv) > 1 and raw_argv[0] == "outcomes" and raw_argv[1] == "held":
+        from .outcomes_held import main as held_main
+        return held_main(raw_argv[2:])
     if raw_argv and raw_argv[0] == "pilot":
         from .pilot import main as pilot_main
         return pilot_main(raw_argv[1:])
