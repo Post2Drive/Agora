@@ -22,7 +22,7 @@ Merged command surface and later UX:
 
 ```bash
 agora pilot list
-(fixture detail/show is a later UX slice; #125 does not implement it)
+# Fixture detail/show remains a later UX slice; #125 does not implement it.
 agora pilot start --fixture <fixture-id> --workdir <new-empty-directory>
 ```
 
