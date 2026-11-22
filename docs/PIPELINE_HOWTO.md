@@ -225,12 +225,15 @@ The following M2 gaps remain on main `969a040a497668740d20e1ace83841046639b2d6` 
 5. Harden #120 backup source-pair snapshot, verified synthetic allowlist/symlink rejection, manifest schema and restore post-copy hashes; then add the synthetic tamper drill, tested operator runbook commands and logged dress rehearsal.
 6. Scenario-input-to-engine integration remains separately blocked; do not edit `agora/sim/**` or run a simulation.
 
-## 12. Current M1 command and future operator work
+## 12. Current mainline pilot commands and future operator work
 
 The current merged local synthetic commands on main `969a040a497668740d20e1ace83841046639b2d6` are:
 
-```bash
+ ```bash
+agora pilot list
+agora pilot start --fixture synthetic-units-v1 --workdir ./tmp-agora-pilot
+# Legacy M1 path remains available:
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-This is the guided governance workflow from #88, not a simulation command and not an M2-complete installer/runbook. It uses a new empty work directory, embedded invented data, per-stage results and fail-closed stop behaviour. It must not be described as using a checked-in fixture set or persisting a run-provenance record. No command in this guide authorises execution during a documentation-only review.
+The fixture-selected `start` path from #125 is a merged M2 component, not an M2-complete installer/runbook. It verifies fixture bytes before store creation, but the manifest digest is not independently pinned, fixture paths follow symlinks, and the workdir guard accepts unrelated pre-existing files when the `synthetic-pilot` child is absent. The subprocess test runs from the source tree and does not prove clean package installation. The legacy M1 path uses the embedded fixture by default. Neither path invokes the simulation engine. No command in this guide authorises execution during a documentation-only review.
