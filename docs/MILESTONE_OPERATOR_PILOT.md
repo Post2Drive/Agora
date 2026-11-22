@@ -2,7 +2,7 @@
 
 **Status:** The owner has approved local synthetic M2 implementation. #122 merged the primary marker audit-order/supersession and reconcile-lock changes. #123's initial run-record implementation is now merged, but it is only partial and does not satisfy the complete provenance field/validation contract. This checklist is an acceptance contract, not a readiness declaration; M2 remains incomplete and no rehearsal is claimed.
 **Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
-**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; current main `776669cac7c30722726ed87813f677d6d6d89aec` includes #122 hardening and #121 documentation. The owner has approved local synthetic M2 after the primary hardening fixes; prohibited categories remain blocked.
+**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; current main `27269a0b939e966dc5eee72c915562e68a61ec67` includes #121 docs, #122 hardening and #123's initial run record. The owner has approved local synthetic M2; prohibited categories remain blocked.
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
 ## 1. Objective
@@ -47,7 +47,7 @@ Keep `VALIDATED_PREDICTION_ENABLED=False`. Do not infer owner approval from a dr
 
 ## 4. Required implementation order
 
-1. M1 was explicitly confirmed by Claude in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; current main `776669cac7c30722726ed87813f677d6d6d89aec` includes #121 docs and #122 hardening. #111/#113 close the public role-string approval and protected Principal-bound policy gaps; #115 adds missing-decision-event repair; #116/#122 provide marker lifecycle and supersession hardening. M2 is owner-approved for local synthetic implementation but remains incomplete.
+1. M1 was explicitly confirmed by Claude in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; current main `27269a0b939e966dc5eee72c915562e68a61ec67` includes #121 docs, #122 hardening and #123's initial run record. #111/#113 close the public role-string approval and protected Principal-bound policy gaps; #115 adds missing-decision-event repair; #116/#122 provide marker lifecycle and supersession hardening. M2 is owner-approved for local synthetic implementation but remains incomplete.
 2. Add and verify the synthetic fixture set using `docs/SYNTHETIC_PILOT_FIXTURE_SPEC.md`.
 3. The public policy/anchor bypasses are closed by #96/#97/#99/#109. Principal-bound policy gate is implemented by #113; #109 enforces anchored writers before decision-lifecycle mutation. Identity adapter remains synthetic-only. Do not introduce role-string or caller-controlled authority. Keep the trusted identity adapter synthetic-only and do not add credentials/connectors.
 4. Implement the local orchestrator and one-command guided stages without calling the simulation engine.
