@@ -99,16 +99,49 @@ def _audit(audit: AuditAppender | None, event_type: str, actor: str, decision_id
         raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
 
 
+def _same_event(stored: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
+    """Exact comparison of a committed (redacted, timestamped) chain event with the outbox payload."""
+    from agora.audit_chain import redact_event
+    a = {k: v for k, v in stored.items() if k != "recorded_at"}
+    b = {k: v for k, v in redact_event(payload).items() if k != "recorded_at"}
+    return json.dumps(a, sort_keys=True, separators=(",", ":")) == json.dumps(b, sort_keys=True, separators=(",", ":"))
+
+
+def _mark_done(store: DecisionOutcomeStore, event_id: str) -> None:
+    store.db.execute("INSERT OR IGNORE INTO marker_audit_done VALUES (?,?)", (event_id, _stamp(None)))
+    store.db.commit()
+
+
 def _deliver(store: DecisionOutcomeStore, audit: AuditAppender, event_id: str) -> None:
     row = store.db.execute("SELECT payload_json FROM marker_audit_outbox WHERE event_id=?", (event_id,)).fetchone()
     if row is None or store.db.execute("SELECT 1 FROM marker_audit_done WHERE event_id=?", (event_id,)).fetchone():
         return
+    payload = json.loads(row[0])
+    finder = getattr(audit, "find_event", None)
+
+    def _existing() -> bool:
+        """True if the chain already holds this event id with the identical payload; fail closed if it differs."""
+        if finder is None:
+            return False
+        found = finder(event_id)
+        if found is None:
+            return False
+        if not _same_event(found, payload):
+            raise MarkerError("audit chain holds a different event under this marker event id")
+        return True
+
     try:
-        audit.append(json.loads(row[0]))
+        if not _existing():
+            try:
+                audit.append(payload)
+            except Exception:
+                if not _existing():  # a concurrent or crashed earlier delivery may have committed it
+                    raise
+    except MarkerError:
+        raise
     except Exception as exc:
         raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
-    store.db.execute("INSERT INTO marker_audit_done VALUES (?,?)", (event_id, _stamp(None)))
-    store.db.commit()
+    _mark_done(store, event_id)
 
 
 def replay_pending_audits(store: DecisionOutcomeStore, audit: AuditAppender) -> int:

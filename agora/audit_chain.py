@@ -107,6 +107,11 @@ class AuditChainStore:
             raise
         return {"event_id": event_id, "previous_hash": previous, "event": safe, "event_hash": event_hash}
 
+    def find_event(self, event_id: str) -> dict[str, Any] | None:
+        """Read-only lookup of a committed event by id (stored, redacted form); None when absent."""
+        row = self.db.execute("SELECT event_json FROM audit_events WHERE event_id=?", (event_id,)).fetchone()
+        return None if row is None else json.loads(row[0])
+
     def verify(self) -> dict[str, Any]:
         previous, broken = self._state()
         if broken:

@@ -424,3 +424,78 @@ def test_without_audit_no_outbox_rows_and_behaviour_unchanged(tmp_path):
     store, approved, out = _disputed(tmp_path)
     _flag(store, approved, out)
     assert store.db.execute("SELECT COUNT(*) FROM marker_audit_outbox").fetchone()[0] == 0
+
+
+# ---- real-chain idempotent replay (M2) ----
+def _chain_count(a):
+    return a.chain.db.execute("SELECT COUNT(*) FROM audit_events WHERE event_id LIKE 'decision_marker_opened-%'").fetchone()[0]
+
+
+def test_crash_after_chain_append_before_done_replays_without_duplicate_on_real_chain(tmp_path, monkeypatch):
+    import agora.decisions.markers as mk
+    store, approved, out = _disputed(tmp_path)
+    a = _anchored(tmp_path)
+    real = mk._mark_done
+    monkeypatch.setattr(mk, "_mark_done", lambda *x: (_ for _ in ()).throw(OSError("crash before done")))
+    with pytest.raises(OSError):
+        _flag(store, approved, out, audit=a)
+    monkeypatch.setattr(mk, "_mark_done", real)
+    assert _chain_count(a) == 1
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
+    assert replay_pending_audits(store, a) == 1
+    assert replay_pending_audits(store, a) == 0
+    assert _chain_count(a) == 1 and a.verify()["valid"]
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 1
+
+
+def test_same_event_id_with_different_payload_fails_closed_and_stays_pending(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    eid, payload = store.db.execute("SELECT event_id,payload_json FROM marker_audit_outbox").fetchone()
+    forged = json.loads(payload)
+    forged["reason"] = "forged_reason"
+    a = _anchored(tmp_path)
+    a.append(forged)
+    with pytest.raises(MarkerError, match="different event"):
+        replay_pending_audits(store, a)
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
+    assert _chain_count(a) == 1
+
+
+def test_lost_ack_or_concurrent_delivery_is_treated_as_done(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    a = _anchored(tmp_path)
+
+    class Lossy:
+        find_event = None  # force the append path; a rival delivery commits first
+        def append(self, event):
+            a.append(event)
+            raise OSError("ack lost")
+        def find_event(self, i):
+            return a.find_event(i)
+    # first lookup sees nothing only if rival not yet committed; emulate by delaying visibility
+    seen = {"n": 0}
+    class Racy(Lossy):
+        def find_event(self, i):
+            seen["n"] += 1
+            return None if seen["n"] == 1 else a.find_event(i)
+    assert replay_pending_audits(store, Racy()) == 1
+    assert _chain_count(a) == 1
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 1
+
+
+def test_append_failure_without_committed_event_still_fails_and_stays_pending(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    a = _anchored(tmp_path)
+
+    class Down:
+        def append(self, event): raise OSError("down")
+        def find_event(self, i): return a.find_event(i)
+    with pytest.raises(MarkerError, match="could not be appended"):
+        replay_pending_audits(store, Down())
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
