@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. No M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document. M2 is still in progress in Claude's 12:58 IST brief. This proposal does not declare M2 or M3 reached.
 
-**Draft baseline:** main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026), including #135's workdir-ancestor symlink refusal and linked-fixture catalogue filtering. PR #136 is merged at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` passed 4/4. A `..`-through-symlink normalization regression and the source-pair snapshot lock/head comparison remain M2 gaps; other M2 gates remain open. M2 remains in progress; clean-install proof remains open.
+**Draft baseline:** main `fd888ab9cf158681a000699c071909d38a165024` (22 November 2026). #138 exact backup source/copy sequence/head comparison and manifest binding are merged (CI `45009045175`, 4/4); no writer-side lock and manifest re-read gap remain. #139 B13 is open at `2d3a0e7f`, CI `45011493565` 4/4, not merged. M2 remains incomplete; clean-install, full input_provenance and operator evidence remain open.
 
 ## 1. Purpose and boundary
 
@@ -22,7 +22,7 @@ M3 is not a production identity, connector, external action, prediction-approval
 
 ## 2. Live-main facts used by this proposal
 
-The following are code/document observations at main `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8`, including merged #135 workdir-ancestor/fixture-catalogue hardening and merged #136 backup path hardening; they are not claims that M3 behavior exists:
+The following are code/document observations at main `fd888ab9cf158681a000699c071909d38a165024`, including merged #135 workdir-ancestor/fixture-catalogue hardening and merged #136 backup path hardening; they are not claims that M3 behavior exists:
 
 - `agora/cli.py` keeps the simulation import lazy through `_simulation()`. The `run` command constructs `Simulation`, calls `prepare()`, then `run()`. The `pilot` and data-command dispatch paths are separate and must remain engine-import-free.
 - `agora/sim/engine.py` currently loads `scenario.yaml`, opens the run `Store`, and calculates `scenario_hash` from scenario configuration. On a first run, `prepare()` calls `population.build(self.sc)`; on resume it compares the stored scenario hash before loading `World`. It does not currently require a governed tabular input envelope.
