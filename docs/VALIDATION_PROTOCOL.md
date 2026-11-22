@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Draft baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only. M2 remains in progress; M3 is proposal-only. Validation runs are blocked until M2 is confirmed by Claude, M3 is built and confirmed, and this protocol is reviewed and committed before any run.
+**Draft baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026). #132's fixture manifest pin, direct fixture symlink/version and direct workdir-root symlink hardening are merged; M2 remains in progress and M3 is proposal-only. This protocol is not frozen/committed and no validation runs have occurred. Validation runs remain blocked until M2 is confirmed by Claude, M3 is built and confirmed, and this protocol is reviewed and committed before any run.
 
 ## 1. Purpose, scope and non-claims
 
