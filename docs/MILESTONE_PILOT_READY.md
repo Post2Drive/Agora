@@ -159,8 +159,10 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #134 | Direct backup/verify/restore root symlink and reparse-point refusal | Merged at head `47e9a7ec827ed5b5f097605d694263fe660fbb5a`; exact-head CI `44999538699` passed 4/4 |
 | #135 | Workdir-ancestor symlink refusal and fixture-catalogue link filtering | Merged at head `2db77c29451c0a9e38c90a148ea635ff143d5cac`; exact-head CI `45001811790` passed 4/4 |
 | #136 | Backup ancestor/pre-read/lstat-error refusal | Merged at head `b5d7b045d89a354fdef758feaa49adc23e8fa703`; exact-head CI `45006493190` passed 4/4 |
+| #138 | Backup copied-chain sequence/head comparison and manifest-head validation | Merged at head `49a8d0c331b7c56fb591832e5930825f6a53f22c`; exact-head CI `45009045175` passed 4/4; no writer-side lock and verify/restore manifest re-read remain |
+| #139 | B13 lexical `..` refusal in backup and pilot path walkers | Merged at head `2d3a0e7fa4b2d5821dc8126971a6499b23d012e2`; exact-head CI `45011493565` passed 4/4; pilot intermediate-ancestor lstat test remains |
 
-Assessment base is main `1719d4c552d22e88109cee7623b3b7146ee5ef39` after #133 and #136 merged. M1 remains Claude-confirmed. #135 closes workdir-ancestor symlink refusal and linked-fixture catalogue filtering; #136 closes backup ancestor/pre-read/lstat-error checks (CI `45006493190`, 4/4). The `..`-through-symlink normalization regression, clean-install proof, full run-record provenance/atomic publication, backup source-pair snapshot lock/head equality, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
+Assessment base is main `1719d4c552d22e88109cee7623b3b7146ee5ef39` after #133, #138 and #139 merged. M1 remains Claude-confirmed. #138 adds copied-chain sequence/head comparison and manifest binding; no writer-side lock and manifest re-read gap remain. #139 closes B13. Pilot intermediate-ancestor lstat-failure coverage, clean-install proof, full run-record provenance/atomic publication, tested runbook, marker/audit outbox and logged rehearsal remain open. M2 remains incomplete.
 
 ## 5. M1 exit gates — Claude confirmation recorded
 
