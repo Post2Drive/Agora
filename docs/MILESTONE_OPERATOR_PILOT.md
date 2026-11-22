@@ -1,7 +1,7 @@
 # M2 — Operator-Usable Synthetic Pilot
 
 **Status:** M2 scope approved by the owner; this checklist remains a planning contract, not an execution authorisation or readiness declaration.  
-**Assessment base:** `8376f4106d767383069e05c5fadc6583645aa297` (22 November 2026).
+**Assessment base:** `1ea27efb1dae9993a825a9a1a5388e0f5f82a20b` (22 November 2026).
 **Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
@@ -24,7 +24,7 @@ This milestone demonstrates governance and operator usability only. It does not 
 | Readable audit timeline | Operator can list the event sequence and see actor reference, operation, decision, stable resource IDs, timestamps and policy version without raw payloads. | Command-level test for ordering, redaction and deterministic output. |
 | Plain-language chain/anchor verification | Operator sees chain valid/invalid, anchor match/mismatch, last verified sequence and an actionable fail-closed explanation. | Tests for clean chain, truncated chain, modified event, missing anchor, mismatched anchor and coordinated local rollback limitation. |
 | Backup/restore and tamper drill | Documented local backup/restore preserves chain/anchor continuity; tampering is detected and protected operations stop. | Tests exercise backup, restore, missing/corrupt backup and tamper cases; rehearsal log records outcomes. |
-| Minimal reconciliation | **PARTIAL — read-only detector** | #100 provides a read-only `agora reconcile` detector for decision lifecycle/approval rows with chain verification and deterministic classifications; source metadata validation and partial-open cleanup remain incomplete. It does not verify the anchor, cover outcome/review rows, persist a queue or repair gaps. |
+| Minimal reconciliation | **PARTIAL — hardened read-only detector** | #100 provides a read-only `agora reconcile` detector for decision lifecycle/approval rows; #104 validates immutable source metadata, expected audit operation/exact resource IDs and partial-open cleanup. It still does not verify the anchor, cover outcome/review rows, persist a queue or repair gaps. |
 | Held-outcome listing | **PARTIAL — read-only list exists** | #102 adds `agora outcomes held --decisions <db>` for disputed, never-reviewed, invalid-history and orphan-review cases, with opaque IDs/stable reason codes and exit 0/1/2. It does not inspect source-hash changes, create dependency markers or propagate holds through dependent artifacts. |
 | Run records | Persist and verify the immutable envelope defined by `docs/RUN_PROVENANCE_SPEC.md`; do not call the simulation engine. | Tests assert exact import ID, fixture/schema/binding/manifest hashes, ontology and policy fingerprints, repository SHA and synthetic/exploratory label. The operator-specific field mapping is specified in `docs/PILOT_RUN_RECORD_FIELDS.md`. |
 | Operator runbook | Every command and expected output/stop condition in `docs/OPERATOR_RUNBOOK.md` is exercised by an automated test. | Test loads or validates the runbook command inventory and executes each safe local synthetic command. |
@@ -43,7 +43,7 @@ Keep `VALIDATED_PREDICTION_ENABLED=False`. Do not infer owner approval from a dr
 
 ## 4. Required implementation order
 
-1. Complete and confirm M1 using `docs/MILESTONE_PILOT_READY.md`; #92 retires public outcome-role exports, #94 closes the CLI engine-import boundary, #96 removes public policy/anchor opt-out kwargs, #97 removes the legacy approval env switch/unanchored fallback, #99 closes direct policy-helper bypasses, #100 adds the read-only decision/audit detector (source-metadata and partial-open hardening still queued), and #102 adds the read-only held-outcome list. Outcome dependency markers/manual-recovery evidence and the remaining M1 exit gates remain open.
+1. Complete and confirm M1 using `docs/MILESTONE_PILOT_READY.md`; #92 retires public outcome-role exports, #94 closes the CLI engine-import boundary, #96 removes public policy/anchor opt-out kwargs, #97 removes the legacy approval env switch/unanchored fallback, #99 closes direct policy-helper bypasses, #100 adds the read-only decision/audit detector, #104 completes its source-metadata and partial-open hardening, and #102 adds the read-only held-outcome list. Outcome dependency markers/manual-recovery evidence and the remaining M1 exit gates remain open.
 2. Add and verify the synthetic fixture set using `docs/SYNTHETIC_PILOT_FIXTURE_SPEC.md`.
 3. The direct policy/anchor bypasses are closed by #96/#97/#99. Complete the remaining principal-first identity/call-site migration and prove that every low-level lifecycle service supplies an anchored writer; do not introduce role-string or caller-controlled authority. Keep the trusted identity adapter synthetic-only and do not add credentials/connectors.
 4. Implement the local orchestrator and one-command guided stages without calling the simulation engine.
