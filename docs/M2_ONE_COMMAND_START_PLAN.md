@@ -1,7 +1,7 @@
 # M2 One-Command Start — Planning Specification
 
-**Status:** The basic fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 at head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`; exact-head CI `44993280261` passed 4/4. The clean-install/start acceptance remains partial because the subprocess test runs from the source tree, not an installed clean checkout.
-**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `969a040a497668740d20e1ace83841046639b2d6`; #123/#125's run record remains partial.
+**Status:** Fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 (head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`, exact-head CI `44993280261`, 4/4). #130 refuses non-empty workdirs; #132 pins the fixture manifest and rejects direct fixture/workdir-root symlinks and empty versions; #135 rejects workdir symlink ancestors and filters linked fixture directories; #139 rejects lexical `..` in backup/pilot path walkers (exact-head CI `45011493565`, 4/4). #144 closes clean-install/start acceptance with an isolated-venv install and installed CLI list/start test (head 38884bc8; exact-head CI 45015043801, 4/4).
+**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`; #123/#125/#130's run record remains partial.
 **Boundary:** Offline/local synthetic fixtures and temporary local stores only.
 
 ## 1. Operator outcome
@@ -14,7 +14,7 @@ The current M1 entry point is:
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Main now includes `agora pilot list` and `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125). The start command verifies per-file hashes before creating stores, but does not prove package installation from a clean checkout. Its workdir guard checks for an existing project child, not every pre-existing file in the requested workdir.
+Main includes `agora pilot list` and fixture-selected `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125), non-empty-workdir refusal (#130), pinned fixture manifest/direct-path checks (#132), workdir-ancestor and linked-fixture filtering (#135), and lexical `..` refusal in pilot/backup path walkers (#139). #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 
 ## 2. Merged command surface and remaining acceptance contract
 
@@ -46,7 +46,7 @@ The command should:
 ## 4. Acceptance evidence
 
 - Clean-checkout subprocess test executes the documented command.
-- Tests assert stage order, fixture hashes, immutable run record, denial stop and no engine import; add a clean-install test, a pre-existing non-empty workdir sentinel test, manifest-plus-payload tamper mutation and symlink escape mutations.
+- Tests assert stage order, fixture hashes, immutable run record, denial stop and no engine import; retain the merged #144 clean-install test, a pre-existing non-empty workdir sentinel test, manifest-plus-payload tamper mutation and symlink escape mutations.
 - Offline test proves no network request or external connector is attempted.
 - Windows and Ubuntu supported runtime matrix passes on the exact implementation head.
 - Runbook command inventory matches the tested command and output.

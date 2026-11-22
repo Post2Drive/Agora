@@ -2,7 +2,7 @@
 
 **Status:** Planning template only; no rehearsal has been run. Local synthetic M2 implementation is owner-approved. This document does not authorise real data, simulation, study changes, connectors, credentials or external write-back.
 
-**Drafting baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). #127 backup hardening and #130 strict run-record loader/non-empty-workdir guard are merged. #130 does not reject symlinked empty workdir roots.
+**Drafting baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #141's command-inventory test is merged (exact-head CI `45012531745`, 4/4), but it does not test this runbook or constitute a rehearsal. #142 is merged (CI `45013670475`, 4/4) but strict provenance validation and failure-atomic publication remain incomplete; this is not rehearsal evidence.
 
 ## 1. Objective
 
@@ -14,10 +14,10 @@ Demonstrate that an operator can start a fresh local synthetic pilot from the pi
 - [ ] Exact-head GitHub Actions matrix is green on Ubuntu/Windows and Python 3.11/3.12.
 - [ ] The automated test executes every applicable row in `M2_RUNBOOK_COMMAND_INVENTORY.md`.
 - [ ] Fixture ID `synthetic-units-v1`, independently pinned manifest digest and payload hashes are verified; symlinked fixture directory/manifest/payload paths and empty fixture versions are rejected.
-- [ ] Workdir root is non-symlink and truly empty; #130's non-empty guard is merged and clean-checkout installation/start is proven.
-- [ ] Fixture symlink, truly-empty-workdir and clean-checkout installation gates are closed.
+- [ ] Workdir root is non-symlink and truly empty; #130's non-empty guard, #132 direct-root refusal, #135 ancestor refusal and #139 lexical `..` refusal are merged. Clean-checkout installation/start is not yet proven.
+- [ ] Fixture symlink and truly-empty-workdir gates: #132/#135 cover fixture directory/manifest/payload/schema/binding symlinks, linked catalogue entries and workdir-root/ancestor links. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
 - [ ] Run-record provenance validation and failure-atomic publication are complete; both engine/prediction flags are false.
-- [ ] #127 backup hardening is merged and tested; root project/backup/restore-target symlinks are rejected and source-pair snapshot locking/head equality is proven.
+- [ ] #127/#134/#136/#138/#139 backup hardening is merged; path refusal, copied-chain sequence/head comparison and manifest-head verification are on main. #138 is detection-only without a shared writer lock, and verify/restore re-read the manifest after validation. Single-read manifest validation, deterministic writer proof, command-test coverage and the logged tamper drill still require evidence.
 - [ ] Reconciliation and held-outcome commands and their clean/blocked outcomes are tested.
 - [ ] A disposable temporary workspace is available; no user project or existing study will be reused.
 - [ ] The owner has explicitly approved this specific rehearsal window and scope. Stop if approval is absent or ambiguous.
