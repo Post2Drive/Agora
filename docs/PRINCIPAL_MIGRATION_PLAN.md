@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
+**Assessment base:** `main` at `41137618f04cf44c111acfaff565663b25eb5fe3` (22 November 2026).
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -161,14 +161,14 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026)
+## Current migration status — main `41137618f04cf44c111acfaff565663b25eb5fe3` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. Role-string PDP compatibility functions remain only as internal allowlisted compatibility surfaces after #111; protected callbacks require Principal-bound `BoundPolicy` after #113. The adapter remains synthetic-only.
 - **#80/#84/#89/#96:** `approve_as()` is principal-native, ignores caller-supplied policy resource fields, and no longer accepts a public `require_anchored` opt-out kwarg.
 - **#82/#97:** legacy role-string `approve()` remains in source but the environment switch is removed; only the test-only `LEGACY_APPROVE_ENABLED` module flag enables it.
 - **#70/#86/#89/#92/#96:** public outcome writes route through `record_outcome_as()` / `review_outcome_as()`; #92 retires role-string exports and #96 removes public anchor opt-out kwargs. Private helpers still accept optional audit internally.
-- **#88:** `agora pilot --workdir <new-empty-directory>` runs a local synthetic sequence with explicit policy/anchor arguments, per-stage results, first-denial stop, audit verification and synthetic-labelled report. It does not persist the M2 run-record envelope or call `build_scenario_input()` / the simulation engine. Exact-head CI run `44945307064` passed 4/4.
+- **#88/#123:** `agora pilot --workdir <new-empty-directory>` remains the merged M1 guided synthetic path. #123 adds an initial immutable run_record.json, but it does not persist or validate the complete RUN_PROVENANCE_SPEC.md envelope. #125 proposes a checked-in fixture and `agora pilot list/start` on an open PR; that fixture is not on main and its manifest-pinning, symlink and workdir checks need hardening.
 - **#89:** default-True policy/anchor parameters passed exact-head CI run `44948055801` (4/4).
 - **#92:** public role-string outcome exports retired; merged at `a191b587`, exact-head CI run `44950576945` passed 4/4.
 - **#94:** `agora.cli` lazy-loads `.sim.engine` only inside simulation-dependent handlers; fresh-process tests cover CLI import and pilot help dispatch. Exact-head CI run `44955653075` passed 4/4.
