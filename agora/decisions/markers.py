@@ -39,6 +39,9 @@ _TRANSITIONS = {
 _SEVERITY = {"outcome_disputed": "high", "outcome_corrected": "high", "source_hash_mismatch": "high"}
 
 
+_REASON_RE = re.compile(r"[a-z][a-z0-9_]{2,63}")
+
+
 class MarkerError(ValueError):
     """Raised when a marker operation violates the specification."""
 
@@ -87,7 +90,7 @@ def _audit(audit: AuditAppender | None, event_type: str, actor: str, decision_id
     try:
         audit.append(event)
     except Exception as exc:
-        raise MarkerError("marker change was stored but its audit event could not be appended") from exc
+        raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
 
 
 def _fingerprint(fields: Mapping[str, Any]) -> str:
@@ -290,6 +293,7 @@ def advance_marker_as(
     store: DecisionOutcomeStore, marker_id: str, new_state: str, *, principal: Principal | None,
     expected_fingerprint: str, expected_event_seq: int, disposition: str | None = None,
     evidence_ref: Mapping[str, Any] | None = None, replacement_marker_id: str | None = None,
+    supersession_reason: str | None = None,
     audit: AuditAppender | None = None, now: datetime | str | None = None,
 ) -> dict[str, Any]:
     """Move a marker through its lifecycle; resolution needs a disposition and exact evidence."""
@@ -318,20 +322,27 @@ def advance_marker_as(
     if new_state == "superseded":
         if not replacement_marker_id or replacement_marker_id == marker_id:
             raise MarkerError("supersession requires a different replacement marker")
-        marker_view(store, replacement_marker_id)
-    elif replacement_marker_id:
-        raise MarkerError("replacement applies only to supersession")
+        repl = marker_view(store, replacement_marker_id)
+        if any(repl[k] != marker[k] for k in ("decision_id", "decision_version", "affected_type", "affected_ref")):
+            raise MarkerError("replacement marker must cover the same decision version and affected object")
+        if not isinstance(supersession_reason, str) or not _REASON_RE.fullmatch(supersession_reason):
+            raise MarkerError("supersession requires a bounded reason code")
+        evidence_json = _canonical({"supersession_reason": supersession_reason})
+    elif replacement_marker_id or supersession_reason:
+        raise MarkerError("replacement and reason apply only to supersession")
     seq = marker["event_seq"] + 1
     try:
         store.db.execute("INSERT INTO outcome_marker_events VALUES (?,?,?,?,?,?,?,?,?)",
                          (marker_id, seq, marker["state"], new_state, actor, _stamp(now), disposition,
                           evidence_json, replacement_marker_id))
+        # Audit BEFORE commit: a failed audit append rolls the transition back, so a hold can never be
+        # lifted (resolved-valid / superseded) without its durable audit event.
+        _audit(audit, f"decision_marker_{new_state}", actor, marker["decision_id"], marker["decision_version"],
+               marker_id, marker["fingerprint"], disposition or marker["reason_code"])
         store.db.commit()
     except Exception:
         store.db.rollback()
         raise
-    _audit(audit, f"decision_marker_{new_state}", actor, marker["decision_id"], marker["decision_version"],
-           marker_id, marker["fingerprint"], disposition or marker["reason_code"])
     return marker_view(store, marker_id)
 
 

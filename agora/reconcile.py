@@ -82,7 +82,19 @@ def reconcile(decisions_db: str | Path, audit_db: str | Path, *, anchor_path: st
     Nothing is classified unless the chain verifies AND matches its sidecar anchor
     (``anchored_verified``), checked read-only: no bootstrap, writes or repair.
     """
-    from .audit_anchor import verify_anchored_readonly
+    from .audit_anchor import AnchorError, AnchorStore, verify_anchored_readonly
+    # One anchor lock spans verification AND classification: appenders hold the same lock for
+    # verify -> append -> anchor, so a concurrent append cannot slip between the two phases.
+    with ExitStack() as lock_stack:
+        if Path(audit_db).is_file() and Path(anchor_path).parent.is_dir():
+            try:
+                lock_stack.enter_context(AnchorStore(anchor_path, chain_id).lock())
+            except (AnchorError, OSError) as exc:
+                raise ReconcileBlocked("ANCHOR_INVALID") from exc
+        return _reconcile_locked(decisions_db, audit_db, anchor_path, chain_id, verify_anchored_readonly)
+
+
+def _reconcile_locked(decisions_db, audit_db, anchor_path, chain_id, verify_anchored_readonly) -> dict[str, Any]:
     if Path(audit_db).is_file():  # a missing store falls through to STORE_NOT_FOUND below
         try:
             verdict = verify_anchored_readonly(audit_db, anchor_path, chain_id)

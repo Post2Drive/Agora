@@ -376,3 +376,40 @@ def test_anchor_verification_opens_audit_read_only(tmp_path, monkeypatch):
     monkeypatch.setattr(sqlite3, "connect", spy)
     _run(tmp_path, anchor=False)
     assert uris and all("mode=ro" in u for u in uris)
+
+
+def test_concurrent_append_is_blocked_between_verification_and_classification(tmp_path, monkeypatch):
+    """A writer racing the two phases must wait for the anchor lock; the verdict covers one snapshot."""
+    import threading
+    import time
+    from agora.audit_anchor import AnchoredAuditChain, AnchorStore
+    store, audit = _setup(tmp_path)
+    audit.close()
+    _anchor(tmp_path)
+    done = threading.Event()
+
+    def _append():
+        chain = AuditChainStore(tmp_path / "audit.sqlite3")  # sqlite objects are per-thread
+        anchored = AnchoredAuditChain(chain, AnchorStore(tmp_path / "anchor.jsonl", "c1"))
+        anchored.append({"event_id": "late-1", "event_type": "decision_approved", "subject_id": "x",
+                         "resource_ids": ["d", "version-1"]})
+        done.set()
+
+    worker = threading.Thread(target=_append, daemon=True)
+    real_ro, state = rc._ro, {"started": False}
+
+    def racing_ro(path):
+        if not state["started"]:  # first classification read: verification has already passed
+            state["started"] = True
+            worker.start()
+            time.sleep(0.5)
+            state["finished_early"] = done.is_set()
+        return real_ro(path)
+
+    monkeypatch.setattr(rc, "_ro", racing_ro)
+    report = rc.reconcile(tmp_path / "decisions.db", tmp_path / "audit.sqlite3",
+                          anchor_path=tmp_path / "anchor.jsonl", chain_id="c1")
+    assert state["started"] and state["finished_early"] is False
+    worker.join(timeout=20)
+    assert done.is_set()  # the append proceeds only after reconciliation released the lock
+    assert report is not None
