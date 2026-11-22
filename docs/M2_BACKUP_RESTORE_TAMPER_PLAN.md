@@ -1,7 +1,7 @@
 # M2 Backup, Restore and Tamper Drills — Planning Specification
 
-**Status:** Planning only. No backup, restore, tamper drill or rehearsal has been run or authorised by this document.
-**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. Temporary local synthetic stores only; M2 implementation and any rehearsal remain pending the owner's separate GO.
+**Status:** Local synthetic backup/verify/restore CLI is implemented by merged PR #120; this plan remains the safety/hardening and operator-drill specification. No operator tamper drill or rehearsal has been run.
+**Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. The current owner instruction approves local synthetic M2 implementation. Temporary local synthetic stores only; this does not authorise simulation, real data, credentials, connectors, write-back or any protected study mutation.
 
 ## 1. Backup consistency contract
 
@@ -18,7 +18,21 @@ A backup manifest should record:
 
 Never include event payload values, personal data, credentials or secrets in the manifest.
 
-## 2. Restore procedure to design
+## 2. Restore procedure — CLI component merged; hardening pending
+
+Merged command surface (#120; exact-head Actions run `44986367729` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs):
+
+```bash
+agora backup --project <project-dir> --dest <new-empty-backup-dir>
+agora backup verify --backup <backup-dir>
+agora restore --backup <backup-dir> --target <new-empty-target-dir>
+```
+
+The current implementation verifies the source chain/anchor before copying, snapshots SQLite files with SQLite's backup API, writes per-file SHA-256 values to `BACKUP_MANIFEST.json`, verifies manifest membership/hashes and the backup chain/anchor before restore, refuses non-empty targets, and verifies the restored chain/anchor.
+
+Post-merge review found two races that must be fixed before operator reliance:
+- `backup()` does not hold the same `AnchorStore.lock()` across source verification and copying the audit SQLite/anchor pair. An anchored append can interleave after the source verdict or between the DB and anchor copies; the function can return success with an inconsistent pair.
+- `restore()` verifies the backup, then copies files, but only verifies the restored chain/anchor afterward. It does not re-hash every restored file against the manifest after the copy; a non-audit file changed after pre-verification can be restored without detection.
 
 1. Stop all writers and preserve the current pair unchanged.
 2. Verify the backup manifest and both component hashes.
@@ -42,6 +56,8 @@ Planned synthetic-only cases:
 - Restore a chain from backup with a different anchor: mismatch must be detected.
 - Restore a mutually consistent older chain+anchor pair: document that a local sidecar cannot detect coordinated rollback by an actor able to rewrite both files. This is a known trust limitation, not a passing security control.
 - Simulate an unanchored tail: protected appends and repair must stop; preserve both stores.
+- Inject an anchored writer between source verification and backup pair copy: the backup must block or hold the shared anchor lock until a consistent pair is captured.
+- Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
 
 ## 4. Acceptance evidence
 
@@ -49,6 +65,8 @@ Planned synthetic-only cases:
 - Each tamper case asserts a stable blocked/error status and no silent repair.
 - Restore tests verify exact hashes, chain ID, sequence and head.
 - Failure tests prove original stores and backup bytes remain unchanged.
+- Backup concurrency tests prove the same `AnchorStore.lock()` spans source verification and audit DB/anchor snapshot; removing the lock must fail the test.
+- Restore tests re-hash every staged restored file against the manifest after copy and verify the chain/anchor before publishing the target; removing post-copy hash verification must fail the test.
 - A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
 
 ## 5. Explicit non-goals
