@@ -33,7 +33,7 @@ The merged #127/#134 patches change the prior #120 behavior as follows:
 - Symlinks in the source/backup tree and unsafe manifest-relative paths are refused with `UNSAFE_PATH`.
 - The manifest validator requires version 1, `synthetic_only is True`, a nonblank chain ID and a safe relative-path-to-lowercase-SHA256 mapping; malformed manifests block with `BACKUP_MANIFEST_INVALID`.
 - After copying the source files, backup re-verifies the copied chain/anchor; a changed or invalid pair blocks with `SNAPSHOT_CHANGED` and removes the incomplete destination.
-- #134 checks direct project/destination/backup-root/data/manifest/restore-target components for symlink or Windows reparse-point paths. Open PR #136 adds ancestor walking, nested pre-read refusal and fail-closed lstat handling, but it is not merged (exact-head CI `45006493190`, 1/4 complete). Its `_is_link()` first calls `os.path.abspath()`, which can normalize away a symlink component before a following `..`; reject `..` or inspect the original path components and add a no-outside-read/write regression.
+- #134 checks direct project/destination/backup-root/data/manifest/restore-target components for symlink or Windows reparse-point paths. Open PR #136 adds ancestor walking, nested pre-read refusal and fail-closed lstat handling, but it is not merged (exact-head CI `45006493190`, 4/4 passed). Its `_is_link()` first calls `os.path.abspath()`, which can normalize away a symlink component before a following `..`; reject `..` or inspect the original path components and add a no-outside-read/write regression.
 - `backup()` does not hold one shared `AnchorStore.lock()` across initial verification and the audit DB/anchor pair snapshot, and the post-copy check compares verifier status rather than a captured sequence/head. Add a shared-lock or equivalent snapshot protocol and prove exact chain ID, sequence and head equality.
 - Restore re-hashes every copied file against the manifest before success; a mismatch blocks with `RESTORED_NOT_INTACT`.
 
@@ -76,7 +76,7 @@ Planned synthetic-only cases:
 - Each tamper case asserts a stable blocked/error status and no silent repair.
 - Restore tests verify exact hashes, chain ID, sequence and head.
 - Failure tests prove original stores and backup bytes remain unchanged.
-- #127 CI/mutation evidence covers the synthetic gate, in-tree path refusal, manifest schema, copied chain/anchor re-verification and restored-file re-hashing; #134's exact-head CI `44999538699` and #135's `45001811790` passed 4/4. PR #136 is open with exact-head CI `45006493190` at 1/4 complete; its `..` path-normalization regression and source-pair lock/head-equality proofs remain required.
+- #127 CI/mutation evidence covers the synthetic gate, in-tree path refusal, manifest schema, copied chain/anchor re-verification and restored-file re-hashing; #134's exact-head CI `44999538699` and #135's `45001811790` passed 4/4. PR #136 is open with exact-head CI `45006493190` at 4/4 passed; its `..` path-normalization regression and source-pair lock/head-equality proofs remain required.
 - The current synthetic gate is the `run_record.json` `data_class=synthetic` check; this is not equivalent to a separately pinned fixture-hash allowlist for every file in a project. Keep the scope distinction explicit.
 - The automated runbook command test must exercise backup/verify/restore and each stable refusal code in temporary synthetic directories.
 - A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
