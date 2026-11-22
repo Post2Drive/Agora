@@ -61,21 +61,27 @@ Queue transitions are append-only status events; never overwrite the detection r
 
 ## 5. Gap detection — read-only chain-and-anchor detector on main (#100/#104/#119)
 
-PR #100 adds `agora reconcile`; #119 changes the command contract to `agora reconcile --decisions <db> --audit <db> --anchor <file> --chain-id <id>` and `reconcile(decisions_db, audit_db, *, anchor_path, chain_id)`. It verifies the chain against the local sidecar using a read-only SQLite connection before opening the decision and audit stores for classification. No bootstrap, write or repair occurs during detection.
+PR #100 adds `agora reconcile`; #104 hardens source-transition and audit-event matching; #119 changes the command contract to:
 
-The merged detector now:
+```bash
+agora reconcile --decisions <db> --audit <db> --anchor <file> --chain-id <id>
+```
 
-1. Calls `verify_anchored_readonly()` and proceeds only when status is `anchored_verified`. Missing/malformed/wrong-chain anchors, chain-integrity failures, truncation, mismatch, unanchored tail and unreadable stores fail closed with stable blocked codes; CLI exits 2 and emits no classifications.
-2. Reopens the stores read-only for source/audit classification. Review finding: because the anchor-check connection is closed before the classification connection is opened, a concurrent writer could append between those steps. Until a shared anchor lock or consistent read snapshot covers both phases, do not claim atomicity against concurrent writers.
-3. Verifies the complete audit hash chain with `verify_rows()` before classifying. An invalid chain raises `CHAIN_INVALID`; the CLI exits 2 and emits no classifications.
-2. Checks decision-record version continuity and compares each transition row's `decision_fingerprint` with the fingerprint stored for the same decision/version.
-3. Matches lifecycle audit events by decision ID and exact `version-N` in `resource_ids`, expected `decision_<transition>` event type, fingerprint and actor/subject ID.
-4. Classifies source transitions as `matched`, `missing`, `conflict` or `source_invalid`; lists orphan lifecycle audit events separately.
-5. Emits deterministic JSON findings followed by a summary. Exit codes are 0 for no detected gaps, 1 for listed gaps, and 2 when blocked by a missing/unreadable store or invalid chain.
+The Python signature is `reconcile(decisions_db, audit_db, *, anchor_path, chain_id)`. It verifies the audit chain against the local sidecar read-only before classifying decision lifecycle/approval transitions. It proceeds only when `verify_anchored_readonly()` returns `anchored_verified`; missing/malformed/wrong-chain anchors, chain-integrity failure, truncation, anchor mismatch, unanchored tail and unreadable stores fail closed with stable blocked codes and no classifications. No bootstrap, repair or write occurs during detection.
 
-**Hardening now present in main (#104):** source transition/status/actor/method/timestamp are cross-checked against immutable `decision_records.payload_json`; audit operation and exact two-element `resource_ids` are validated; partial-open connections are closed safely. The detector does not itself verify the sidecar anchor. Merged #115 adds `agora.reconcile_repair.apply_repairs()` as a separate API requiring an approver Principal, anchored writer, clean anchor and exact audit head reviewed by the caller. It repairs only `missing` findings; conflicts, invalid sources, orphans and other non-repairable findings block the whole operation. It adds no CLI, outcome/review reconciliation or recovery from an unanchored tail.
+After the anchor check, the current implementation opens a second read-only connection for source/audit classification. **Review finding:** the verification connection is closed before the classification connection is opened. A concurrent writer could append an unanchored tail between those phases, so the earlier anchor verdict may not describe the rows subsequently classified. Do not claim concurrent-writer atomicity until a shared anchor lock or one consistent read snapshot covers verification and classification. Add a deterministic regression test that injects a chain append between the two phases and proves reconciliation blocks without classifying.
 
-PR #100 exact-head Actions run `44963254416` and PR #104 exact-head Actions run `44968039923` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #104 adds tests for transition/status, actor, method and timestamp mismatches against the immutable payload, wrong audit operation, extra resource IDs and partial-open connection cleanup. PR #102 separately adds the read-only held-outcome list; #106 makes connection-open failures return `STORE_UNREADABLE` / exit 2. Neither is reconciliation of outcome rows against the audit chain.
+The detector also:
+
+1. Verifies the complete audit hash chain with `verify_rows()`; invalid chains raise `CHAIN_INVALID` and CLI exits 2.
+2. Checks decision-record version continuity and compares each transition row's fingerprint with the immutable record for the same decision/version.
+3. Matches lifecycle audit events by decision ID, exact `version-N` resource ID, expected `decision_<transition>` event type, fingerprint and actor/subject ID.
+4. Classifies source transitions as `matched`, `missing`, `conflict` or `source_invalid`, and lists orphan lifecycle events separately.
+5. Emits deterministic JSON findings. Exit codes are 0 (no detected gaps), 1 (gaps listed) and 2 (blocked, no classifications).
+
+#104 cross-checks source transition/status/actor/method/timestamp against immutable `decision_records.payload_json`, validates audit operation and exact resource IDs, and closes partial-open connections safely. #115 adds a separate API-only repair for missing decision events; it requires an approver Principal, anchored writer, clean anchor and exact audit head. #102/#106 remain a separate read-only held-outcome list. Neither #115 nor #102/#106 reconciles outcome/review or marker audit rows.
+
+PR #100 exact-head Actions run `44963254416`, #104 run `44968039923`, #115 run `44980052093` and #119 run `44981680171` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. These CI results do not close the TOCTOU review finding above.
 
 ## 6. Idempotent repair protocol
 
@@ -181,7 +187,7 @@ The implementation test suite must show named tests fail if a mutation:
 ## 12. Rollout gates and non-goals
 
 1. Add immutable correlation metadata to new decision transition records; define how legacy transitions are classified when correlation data is absent.
-2. Implemented minimally by #100 and hardened by #104: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Immutable source metadata, audit operation/resource IDs and partial-open connection cleanup are now checked. Stable correlation, anchor verification, outcome/review coverage and queue/repair remain separate gaps. #102/#106 provide a separate read-only held-outcome list with fail-closed connection-open handling, not cross-store reconciliation.
+2. Implemented by #100/#104 and anchor-hardened by #119: the read-only `agora reconcile` detector verifies the chain and local sidecar before classifying decision lifecycle/approval transitions. #115 adds a separate API-only repair for missing decision events. Stable correlation IDs, a durable queue, outcome/review and marker-audit reconciliation remain gaps; the #119 verify/read TOCTOU window needs a shared lock or consistent snapshot. #102/#106 provide a separate read-only held-outcome list, not cross-store reconciliation.
 3. Implement the append-only queue and independent review workflow.
 4. Add idempotent repair behind explicit configuration and approval.
 5. Prove crash/retry/concurrency behaviour and run mutation tests in a clean checkout.

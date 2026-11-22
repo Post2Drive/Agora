@@ -139,10 +139,15 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #106 | Held-list connection-open failure hardening | Merged; exact-head CI run `44970435296` passed 4/4 |
 | #107 | Read-only audit timeline and chain-vs-anchor verification CLI | Merged; exact-head CI run `44972864246` passed 4/4 |
 | #109 | Pre-mutation anchored-writer guards for decision lifecycle transitions | Merged; exact-head CI run `44975437439` passed 4/4 |
+| #111 | Role-string approval authorizer made private; PDP imports restricted to internal allowlist | Merged |
+| #113 | Principal-bound `BoundPolicy` enforcement | Merged; exact-head CI run `44979668275` passed 4/4 |
+| #115 | Approver-authorised, anchored, exact-head missing-decision-event repair API | Merged; exact-head CI run `44980052093` passed 4/4 |
+| #116 | First append-only outcome dependency-marker slice | Merged; exact-head CI run `44980453453` passed 4/4 |
+| #119 | Read-only sidecar-anchor verification before reconcile classification | Merged; exact-head CI run `44981680171` passed 4/4 |
 
 Assessment base is main `30385885f16b3750a879ef7df25140fabe29c4ba` after #119 merged. M1 is Claude-confirmed by the explicit 09:05 IST entry; #116 and #119 are merged. This documentation refresh is PR #117.
 
-## 5. Required exit gates before the milestone can be declared reached
+## 5. M1 exit gates — Claude confirmation recorded
 
 - [x] Principal migration plan, outcome-marker specification and pilot-readiness checklist merged (#59–#61).
 - [x] Audit-anchor wiring plan merged (#64); it remains a plan, not implementation.

@@ -25,7 +25,7 @@ This guide documents the available components and their boundaries. It does not 
 | Anchored audit chain | **AVAILABLE — local-sidecar API; protected entry points guarded** | #63/#71/#74/#75/#89/#96/#97 provide writer, factory, append wiring and protected Principal wrappers; #99 hardens policy-denial writes and #109 guards `propose()`/`reject()`/`expire()`/`supersede()` before mutation when `ANCHOR_REQUIRED=True`. Optional annotations do not permit `None` or plain writers on protected paths. Trust is `local_sidecar`. |
 | Audit timeline and chain/anchor verification | **AVAILABLE — read-only CLI (#107)** | `agora audit timeline` verifies the hash chain and lists one decision's stored transitions/related audit events; `agora audit verify` compares the chain with its local sidecar and states the trust limitation. Neither writes or repairs. |
 | Observed outcome recording/review | **AVAILABLE — Principal public routes; protected public wrappers** | #92 retires public role-string exports and #96 removes public `require_anchored=False` kwargs. Private helper audit can still be omitted internally; this is not a public caller bypass. |
-| Outcome dependency review markers | **PARTIAL — first implementation in review (#116)** | Open PR #116 proposes append-only marker/edge/event records, explicit-edge transitive propagation, idempotent marker creation and Principal-gated lifecycle. Not merged on this base; retention/erasure triggers, automatic report/run edge registration, CLI and marker/audit reconciliation remain outside this slice. #102/#106 remain the read-only held-outcome list. |
+| Outcome dependency review markers | **PARTIAL — first slice merged (#116)** | Append-only marker/edge/event records, explicit-edge propagation, idempotent marker creation and Principal-gated lifecycle are merged. Retention/erasure triggers, automatic report/run edge registration, CLI and marker/audit reconciliation remain open. #102/#106 remain the separate read-only held-outcome list. |
 | Decision/audit reconciliation | **DONE — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the chain against its sidecar before classification and requires `--anchor` / `--chain-id`; #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing events only. Repair has no CLI, excludes outcome/review rows and blocks unanchored-tail recovery. A concurrent-writer TOCTOU review finding remains open. |
 | M2 run record | **NOT AVAILABLE in the pilot** | `agora/pilot.py` returns an in-memory `PilotResult`; it does not persist/verify the immutable `RUN_PROVENANCE_SPEC.md` envelope. |
 | Simulated-labelled report | **AVAILABLE — separate exploratory/mock path** | Existing standalone engine/report CLI path can produce exploratory/mock reports. It is not connected to the scenario-input package or the decision/outcome workflow. |
@@ -193,13 +193,13 @@ agora report ./engine-smoke --mock
 
 Inspect the demo template first and replace it only with a small approved synthetic scenario appropriate to the rehearsal. Preserve run ID, scenario hash, backend/mode and report provenance. The report is exploratory/simulated output only. It does not consume the Step C package and does not validate demand, sales, causal effects or predictions.
 
-## 11. Remaining work before M1/M2 readiness
+## 11. Remaining work for M2 operator readiness
 
-The following gaps remain after the #88 guided pilot, the #100/#104 read-only reconciliation detector and the #102/#106 held-outcome list:
+The following M2 gaps remain after Claude's M1 confirmation and the merged #88 pilot, #100/#104/#119 reconciliation detector, #102/#106 held-outcome list and #116 first marker slice:
 
 1. Extend #116 markers with retention/erasure triggers, automatic report/run edge registration and marker/audit reconciliation; keep the current explicit-edge and synthetic-only limits visible.
 2. Harden #119's possible verification/classification TOCTOU window, add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows. Keep unanchored-tail recovery fail-closed. 
-3. Persist and verify the immutable operator run record in `docs/PILOT_RUN_RECORD_FIELDS.md` / `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
+3. Persist and verify the immutable operator run record in `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
 4. Add the checked-in synthetic fixture set; #88 currently embeds its CSV/schema/binding in Python, and the proposed fixture paths remain absent on main.
 5. Add backup/restore and tamper drills, tested operator runbook commands, and a separately approved/logged dress rehearsal; #107 has already added the read-only timeline and chain-vs-anchor verification CLI components.
 6. Scenario-input-to-engine integration remains separately blocked; do not edit `agora/sim/**` or run a simulation.

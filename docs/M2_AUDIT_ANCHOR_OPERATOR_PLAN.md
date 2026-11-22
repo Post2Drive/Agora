@@ -39,7 +39,7 @@ Do not expose event payloads, personal values, free-text notes, secrets or crede
 
 ## 4. Repair boundary
 
-If #115 merges, document the actual API signature and role requirements from main before proposing an operator invocation. It currently proposes `apply_repairs()` only, requires an approver Principal, anchored writer, clean anchor and exact audit head, and repairs missing decision audit events only. It has no CLI. Conflicts, invalid sources, orphan events, broken chains and unanchored tails must block. Outcome/review reconciliation is separate.
+#115 is merged as `agora.reconcile_repair.apply_repairs(decisions_db, audit, *, principal, project_id, expected_audit_head)`. It requires an approver Principal, anchored writer, clean anchor and exact audit head; it repairs missing decision audit events only. It has no CLI. Conflicts, invalid sources, orphan events, broken chains and unanchored tails block. Outcome/review reconciliation is separate.
 
 Review note: #119 currently verifies the anchor, closes that SQLite connection, then opens a separate connection for classification. A concurrent append between these phases could invalidate the earlier anchor verdict; require a shared anchor lock or consistent snapshot before claiming concurrent-writer safety.
 
