@@ -11,3 +11,4 @@
 *.db   binary
 *.zip  binary
 *.png  binary
+agora/pilot_fixtures/** -text
