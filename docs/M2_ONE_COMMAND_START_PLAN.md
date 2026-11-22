@@ -1,7 +1,7 @@
 # M2 One-Command Start — Planning Specification
 
 **Status:** The basic fixture-selected `agora pilot start` and `agora pilot list` are merged in #125 at head `914d570ce62c5d9c1157ec0470d9b948ff17dfc9`; exact-head CI `44993280261` passed 4/4. The clean-install/start acceptance remains partial because the subprocess test runs from the source tree, not an installed clean checkout.
-**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `969a040a497668740d20e1ace83841046639b2d6`; #123/#125's run record remains partial.
+**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST AI Collaboration Log entry. The owner approved local synthetic M2 after #122 closed the primary hardening sequence. Main is `fd888ab9cf158681a000699c071909d38a165024`; #123/#125's run record remains partial. #132 pins the fixture manifest and direct path checks; #135 closes ordinary workdir-ancestor/fixture-catalogue links; B13 remains pending in open #139.
 **Boundary:** Offline/local synthetic fixtures and temporary local stores only.
 
 ## 1. Operator outcome
@@ -14,7 +14,7 @@ The current M1 entry point is:
 agora pilot --workdir ./tmp-agora-pilot
 ```
 
-Main now includes `agora pilot list` and `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125). The start command verifies per-file hashes before creating stores, but does not prove package installation from a clean checkout. Its workdir guard checks for an existing project child, not every pre-existing file in the requested workdir.
+Main now includes `agora pilot list` and fixture-selected `agora pilot start` (#125); #130 refuses non-empty workdirs; #132 pins the fixture manifest and rejects direct fixture/workdir-root symlinks and empty versions; #135 refuses workdir symlink ancestors and filters linked fixture directories. B13 lexical `..` refusal is pending in #139 (CI 4/4), not main. Clean-install proof remains open.
 
 ## 2. Merged command surface and remaining acceptance contract
 
