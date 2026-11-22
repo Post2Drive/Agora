@@ -88,18 +88,20 @@ The first implementation slice remains synthetic-fixture-only. OIDC, real creden
 
 ### Stage 3 — migrate shared policy enforcement and data-boundary callers
 
-**Current implementation on main:** #78/#79/#89/#96 provide Principal-bound policy plumbing and remove caller opt-out kwargs from the three protected data-boundary entry points. #97 removes the legacy approval env switch and unanchored `audit=None` fallback. #99 removes the direct `require_policy` override and validates supplied denial writers with `require_anchored()`. #109 adds pre-mutation anchored-writer guards to `propose()`, `reject()`, `expire()` and `supersede()` when `ANCHOR_REQUIRED=True`; optional signature annotations do not permit missing/plain writers on the protected path. The principal-aware PDP/call-site migration is still not complete: `PolicyCallable` is an ordinary `(operation, resource)` callable; `enforce_policy()` accepts any callable and does not prove it is bound to an adapter-issued Principal. `principal_policy()` currently returns an ordinary closure, so a caller-supplied always-allow callback can pass the protected presence check. Treat this as an M1 fail-closed gap until the protected contract is Principal-bound and validated, and role-string compatibility APIs are excluded from governed paths.
+**Current implementation on main:** #111 restricts role-string PDP/permission imports to the internal allowlist and makes the legacy role-string approval authorizer private. #113 adds `BoundPolicy`; `principal_policy()` returns that typed capability, and protected `enforce_policy()` requires it under `PRINCIPAL_BOUND_REQUIRED=True`, rejects arbitrary callables and re-evaluates the bound Principal on every call. #96/#97/#99 preserve required-policy and anchored-denial defaults; #109 guards the remaining decision-lifecycle mutations with an anchored writer. This closes the M1 protected Principal-bound policy gate. The only identity adapter remains `SyntheticFixtureAdapter`; no OIDC or production identity provider is claimed.
 
-1. Replace the current operation/resource-only PolicyCallable contract with a principal-aware contract. The callback must receive the exact Principal used by the request and call the principal-native PDP.
-2. Make enforce_policy validate the principal and preserve the current safe denial audit behaviour.
-3. Distinguish genuinely ungoverned legacy/test calls from governed operations. A protected import, binding or scenario-input operation must not become a no-op because policy=None was passed.
-4. Migrate the policy call sites in agora/tabular.py, agora/ontology/binding.py and agora/scenario_inputs.py to pass an adapter-issued principal.
-5. Keep evaluation before source bytes or snapshot databases are read. Do not weaken the existing early-denial tests.
-6. Preserve explicit purpose/retention propagation at the binding hook (#54); the principal migration must not drop those resource fields.
+**M1 acceptance evidence:** #113 exact-head Actions run `44979668275` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Its mutation proofs reject a skipped BoundPolicy check, a forged `is_principal_bound` result, a disabled default, a skipped Principal re-check and a passing `None` policy. #111 makes the role-string approval authorizer private and limits direct PDP imports to the internal allowlist.
 
-**Acceptance tests:** each boundary passes the same principal through the enforcement callback; absent principal and absent required policy deny before source/database reads; wrong project/tenant denies; policy exceptions deny and produce only safe audit metadata; public/internal synthetic fixtures continue to work under explicit test configuration.
+1. `principal_policy(principal, required_role=...)` returns a `BoundPolicy` carrying the Principal; callers do not supply authority through resource fields or role strings.
+2. Protected `enforce_policy()` accepts only `BoundPolicy`; missing policy, raw callables, invalid issuers, expired principals, wrong scope and insufficient role/assurance deny.
+3. Preserve evaluation before source bytes or snapshot databases are read in `agora/tabular.py`, `agora/ontology/binding.py` and `agora/scenario_inputs.py`.
+4. Preserve explicit purpose/retention propagation at the binding hook (#54).
+5. Keep legacy `approve()` disabled except through the test-only `LEGACY_APPROVE_ENABLED` flag; keep role-string PDP compatibility functions internal and allowlisted by #111.
+6. Treat the synthetic fixture adapter as test/pilot identity only. Production identity, OIDC and credentials are not implemented or authorised.
 
-**Mutation proofs:** remove principal validation, allow policy=None on a protected path, or move enforcement after the source read; the corresponding fail-closed/early-denial test must fail.
+**Acceptance:** the merged #111/#113 implementation and exact-head CI close the M1 policy-binding gate; the identity trust boundary remains synthetic-only.
+
+**Mutation proofs:** the #113 PR records five caught mutations covering the BoundPolicy gate, default-on flag, Principal re-check and missing-policy denial. The #111 PR records import-allowlist and private-export mutations. Do not re-open this as an unimplemented M1 gate; any production identity integration is separate future scope.
 
 ### Stage 4 — migrate outcome recording and review
 
