@@ -2,7 +2,7 @@
 
 **Status:** Plan only. This is the requested end-to-end test outline; no full-potential test has been run. M2 remains in progress and M3 is proposal-only. The plan does not declare either milestone reached.
 
-**Baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only. The plan assumes the current mainline components and the M2 documentation in the open consolidated draft PR #129; it must be reconciled to exact merged main before execution.
+**Baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026). The implementation facts below were checked against current main after #132 merged. The M2 documentation consolidated in #129 is now on main; #132's fixture manifest/symlink/version/direct workdir-root hardening is also merged. Workdir-ancestor symlink coverage and clean-install proof remain open and must be closed before the relevant test area can pass.
 
 ## 1. Objective and limits
 
