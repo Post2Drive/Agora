@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
 **Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), sidecar-verified reconciliation (#119), local backup/verify/restore CLI (#120), and post-M1 marker/supersession/reconcile-lock hardening (#122) are merged. The local-sidecar trust boundary and operational recovery limitations remain. Review still finds a cross-store marker commit-failure gap and #120 backup/restore consistency/scope gaps. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `776669cac7c30722726ed87813f677d6d6d89aec` (22 November 2026).
+**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
