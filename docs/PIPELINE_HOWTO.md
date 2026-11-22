@@ -74,7 +74,7 @@ Expected local artefacts include `data/tabular.sqlite3` and an immutable import 
 
 ## 5. Step B — validate and materialize the ontology binding
 
-**Status: AVAILABLE — Python API; governance is partial**
+**Status: AVAILABLE — Python API; protected Principal-bound policy gate implemented (#113); synthetic identity only**
 
 The available API surface is:
 
@@ -100,7 +100,7 @@ instances = materialize_instances(
 )
 ```
 
-Use the exact committed snapshot ID and a reviewed, versioned ontology pack/binding. Supply the policy callable; do not omit it for this governed path. The policy callback contract is operation/resource-only; `enforce_policy()` accepts any callable and does not validate that it is the `principal_policy()` closure or otherwise bound to an adapter-issued Principal. This is not yet principal-first end-to-end governance; do not treat a custom allow-returning callback as trusted policy. Explicitly pass purpose and retention. Keep the fixture public/internal synthetic only.
+Use the exact committed snapshot ID and a reviewed, versioned ontology pack/binding. Supply a `BoundPolicy` returned by `principal_policy()`; protected `enforce_policy()` requires this typed capability under `PRINCIPAL_BOUND_REQUIRED=True`, rejects raw callables and re-evaluates the bound Principal on each call. #111 restricts role-string PDP imports to the internal allowlist and makes the role-string approval authorizer private; #113 closes the M1 protected policy-provenance gate. Explicitly pass purpose and retention. The only adapter remains `SyntheticFixtureAdapter`, which is synthetic-fixture-only and is not production authentication.
 
 The result is an in-memory list of provenance-rich instances. This step does not persist a pipeline run or connect to the simulation engine.
 
@@ -128,14 +128,17 @@ Use exact immutable IDs and a policy callable. The package contains a manifest, 
 
 ## 7. Step D — create a decision and use the principal approval slice
 
-**Status: AVAILABLE — Python APIs; partial migration**
+**Status: AVAILABLE — Python APIs; synthetic Principal path; no production identity provider**
 
 The decision schema/store and lifecycle are Python APIs; there is no single decision-record CLI workflow. The principal slice on main provides:
 
 - `agora.principal.Principal` — immutable principal value;
 - `SyntheticFixtureAdapter` — test-only adapter that refuses production mode and issues principals from predeclared fixture keys;
 - `decide_principal()` — principal-based PDP decision;
+- `BoundPolicy` / `principal_policy()` — typed policy capability re-evaluated against the bound Principal on every call;
 - `agora.decisions.approval.approve_as()` — approval entry point with no caller-supplied role parameter.
+
+#111 restricts role-string PDP/permission imports to the internal allowlist and makes the legacy role-string approval authorizer private. #113 makes protected `enforce_policy()` reject raw callables. This closes the M1 protected Principal-bound policy gate; the adapter remains synthetic-only.
 
 For a synthetic-only rehearsal, define fixture identities in code/configuration controlled by the test harness (not request fields), issue a predeclared approver fixture, and call `approve_as(store, decision_id, expected_version, principal=approver_principal, expected_fingerprint=..., expected_scope=..., expected_evidence_refs=..., audit=...)` after a separate proposer and reviewer have prepared/reviewed the exact proposal.
 
@@ -149,24 +152,25 @@ Main contains the local append-only hash chain from #38/#47 and the merged local
 
 The anchor is a separate local JSONL sidecar with owner-only creation permissions and fsync on append. Its reported trust level is `local_sidecar`: it detects chain truncation/rollback only while the anchor survives independently. It does not protect against an attacker who can rewrite both local files, and it is not an external or independently hosted anchor. PR #63's exact-head Actions run 44917009154 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. The Linux 3-process mutation test did not detect removal of the lock, so that particular lock-coverage proof remains a stated limitation.
 
-**Integration status on main after #99:**
+**Integration status on main after #119:**
 
 - #96 removes the `require_anchored` opt-out kwargs from `approve_as()`, `record_outcome_as()` and `review_outcome_as()`; public callers cannot pass `False`. #92 retires the public role-string outcome exports.
 - #92 removes public `record_outcome()` / `review_outcome()` exports. `record_outcome_as()` / `review_outcome_as()` are the public routes; #96 removes their public `require_anchored=False` opt-out kwargs.
 - `approve()` remains default-deny; #97 removes the environment switch and permits enablement only through the test-only `agora.protection.LEGACY_APPROVE_ENABLED` flag.
 - #99 removes the direct `require_policy` override. When `ANCHOR_REQUIRED=True`, `enforce_policy()` requires `require_anchored(audit)` for denial writes and rejects `None`, plain `AuditChainStore` and duck-typed non-anchored writers; #99 exact-head CI run `44960946006` passed 4/4.
 - #109 adds the same pre-mutation guard to `propose()`, `reject()`, `expire()` and `supersede()`; exact-head CI run `44975437439` passed all four matrix jobs.
+- #111 makes the role-string approval authorizer private and restricts direct PDP imports to the internal allowlist; #113 requires `BoundPolicy` for protected `enforce_policy()` and re-checks the bound Principal (exact-head CI `44979668275`, 4/4).
 - #107 adds `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` and `agora audit verify --audit <db> --anchor <file> --chain-id <id>`. Timeline verifies the hash chain before listing the selected decision; verify compares the chain with the local anchor. Timeline does not check the anchor itself; neither command repairs data.
 
 ## 9. Step F — record and review an observed outcome
 
-**Status: AVAILABLE — Python API; principal migration partial**
+**Status: AVAILABLE — Principal public routes; synthetic identity only**
 
 The #53 implementation provides `DecisionOutcomeStore` and append-only outcome/review storage. After #92, the public write routes are `record_outcome_as()` / `review_outcome_as()`; the role-string `_record_outcome()` / `_review_outcome()` helpers are private implementation details. The path requires an approved decision version, exact declared measure, measurement window, exact source reference with a content hash and `provenance_class="observed"`. The reviewer must differ from the recorder; corrections append a new record.
 
 There is no separate outcome CLI. PR #70 adds Principal-gated wrappers; #86 ignores caller-supplied resource data; #89 defaults their anchor check on; #92 retires public role-string outcome exports; #96 removes public `require_anchored=False` kwargs. The public wrapper gate is not bypassable through that keyword, although private helper audit remains optional internally.
 
-#116's first append-only marker slice is merged: disputed/corrected/source-hash triggers, explicit-edge propagation, Principal-gated lifecycle and blocking-marker lookup. It does not include retention/erasure triggers, automatic report/run edge registration, a CLI or marker/audit reconciliation. #102/#106 still provide the separate read-only held-outcome list. #100/#104 plus #119 provide decision lifecycle detection with sidecar verification; #115 is the separate API-only missing-event repair.
+#116's first append-only marker slice is merged: disputed/corrected/source-hash triggers, explicit-edge propagation, Principal-gated lifecycle and blocking-marker lookup. It does not include retention/erasure triggers, automatic report/run edge registration, a CLI or marker/audit reconciliation. Code review found that `advance_marker_as()` commits the lifecycle event before `_audit()`; an audit failure can therefore persist `resolved(valid)` or `superseded` without its required audit event, and `blocking_markers()` no longer blocks those states. Supersession also checks only that a different marker exists, not that it matches the same decision/version/affected object, and no reason is persisted. Treat both as hardening blockers before operator reliance. #102/#106 still provide the separate read-only held-outcome list. #100/#104 plus #119 provide decision lifecycle detection with sidecar verification; #115 is the separate API-only missing-event repair.
 ### Read-only decision/audit reconciliation detector (#100)
 
 The available command is:
@@ -197,7 +201,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 The following M2 gaps remain after Claude's M1 confirmation and the merged #88 pilot, #100/#104/#119 reconciliation detector, #102/#106 held-outcome list and #116 first marker slice:
 
-1. Extend #116 markers with retention/erasure triggers, automatic report/run edge registration and marker/audit reconciliation; keep the current explicit-edge and synthetic-only limits visible.
+1. Harden #116 lifecycle transitions first: audit failure must leave the prior marker state blocking, and supersession must bind to the same decision/version/affected object with a bounded persisted reason. Then add retention/erasure triggers, automatic report/run edge registration and marker/audit reconciliation; keep explicit-edge and synthetic-only limits visible.
 2. Harden #119's possible verification/classification TOCTOU window, add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows. Keep unanchored-tail recovery fail-closed. 
 3. Persist and verify the immutable operator run record in `docs/RUN_PROVENANCE_SPEC.md`; #88 currently returns an in-memory `PilotResult` only.
 4. Add the checked-in synthetic fixture set; #88 currently embeds its CSV/schema/binding in Python, and the proposed fixture paths remain absent on main.
