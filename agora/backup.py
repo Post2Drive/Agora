@@ -140,6 +140,11 @@ def _read_manifest(root: Path) -> tuple[dict[str, str], str]:
     return files, chain_id
 
 
+def _head(verdict: dict[str, Any]) -> tuple[Any, Any]:
+    """Exact chain head (sequence, hash) from a verifier verdict; compared, never inferred."""
+    return verdict.get("sequence"), verdict.get("head_hash")
+
+
 def _check_dest(dest: Path) -> None:
     if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
         raise BackupBlocked("DEST_NOT_EMPTY")
@@ -193,10 +198,13 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
         _copy_tree(project, dest / "data", rels)
         copied = _files(dest / "data")
         after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
-        if not after.get("valid") or after.get("status") != verdict["status"]:
+        if (not after.get("valid") or after.get("status") != verdict["status"]
+                or _head(after) != _head(verdict)):
             raise BackupBlocked("SNAPSHOT_CHANGED", after.get("status"))
+        seq, head_hash = _head(after)
         manifest = {"manifest_version": 1, "synthetic_only": True, "chain_id": chain_id,
-                    "audit_status": verdict["status"], "files": {r: _sha(dest / "data" / r) for r in copied}}
+                    "audit_status": verdict["status"], "chain_sequence": seq, "chain_head_hash": head_hash,
+                    "files": {r: _sha(dest / "data" / r) for r in copied}}
         (dest / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     except BaseException:
         _cleanup(dest, existed)
@@ -222,6 +230,13 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     verdict = verify_anchored_readonly(data / CHAIN_REL, data / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("BACKUP_NOT_INTACT", verdict.get("status"))
+    try:
+        manifest = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise BackupBlocked("BACKUP_MANIFEST_MISSING") from None
+    seq, head_hash = manifest.get("chain_sequence"), manifest.get("chain_head_hash")
+    if (seq, head_hash) != _head(verdict):
+        raise BackupBlocked("BACKUP_NOT_INTACT", "manifest_head_mismatch")
     return {"files": len(listed), "audit_status": verdict["status"], "chain_id": chain_id}
 
 
