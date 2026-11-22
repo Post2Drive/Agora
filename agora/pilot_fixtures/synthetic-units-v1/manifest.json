@@ -1,0 +1,11 @@
+{
+  "data_class": "synthetic",
+  "files": {
+    "binding.json": "sha256:26ce5a25c9057015f482e181a4d958d0124c024987bba8474be212c38987d9f9",
+    "schema.json": "sha256:ecb46b903dcda2de9fec9595be90eea4cdd91d87f465519723313ecda4eeb42f",
+    "units.csv": "sha256:69c649f1a11594ca9ece08e2b1cf63992471350cf8f3dfbb052fa812559913e5"
+  },
+  "fixture_id": "synthetic-units-v1",
+  "fixture_version": "1.0.0",
+  "synthetic_only": true
+}

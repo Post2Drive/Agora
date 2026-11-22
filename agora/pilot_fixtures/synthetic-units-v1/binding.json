@@ -1,0 +1,23 @@
+{
+  "binding_id": "sp.unit.v1",
+  "binding_version": "1.0.0",
+  "column_map": {
+    "region": "sp:Unit.region",
+    "unit_id": "sp:Unit.id",
+    "weekly_visits": "sp:Unit.visits"
+  },
+  "dataset_id": "synthetic_pilot_units",
+  "identity": {
+    "primary_key_column": "unit_id",
+    "strategy": "record_key"
+  },
+  "object_type_id": "sp:Unit",
+  "object_type_version": "1.0.0",
+  "property_sensitivity": {
+    "sp:Unit.id": "internal",
+    "sp:Unit.region": "internal",
+    "sp:Unit.visits": "internal"
+  },
+  "schema_id": "synthetic-pilot-units",
+  "schema_version": "1.0.0"
+}

@@ -29,6 +29,7 @@ include = ["agora*"]
 [tool.setuptools.package-data]
 "agora.web" = ["static/*"]
 "agora.examples" = ["*/*.yaml"]
+"agora.pilot_fixtures" = ["*/*.csv", "*/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

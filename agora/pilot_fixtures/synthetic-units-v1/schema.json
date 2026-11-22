@@ -1,0 +1,26 @@
+{
+  "columns": [
+    {
+      "name": "unit_id",
+      "nullable": false,
+      "primary_key": true,
+      "sensitivity": "internal",
+      "type": "string"
+    },
+    {
+      "name": "region",
+      "nullable": false,
+      "sensitivity": "internal",
+      "type": "string"
+    },
+    {
+      "name": "weekly_visits",
+      "nullable": false,
+      "sensitivity": "internal",
+      "type": "integer"
+    }
+  ],
+  "dataset_name": "synthetic_pilot_units",
+  "schema_id": "synthetic-pilot-units",
+  "schema_version": "1.0.0"
+}
