@@ -243,6 +243,22 @@ def _write_report(project: Path, ctx: Mapping[str, Any]) -> Path:
     return out
 
 
+def _linked_component(path: Path) -> bool:
+    """True if the workdir or ANY existing ancestor is a symlink/reparse point (fail closed on lstat errors)."""
+    import os
+    cur = Path(os.path.abspath(path))
+    for p in (cur, *cur.parents):
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+        if p.is_symlink() or (getattr(st, "st_file_attributes", 0) & 0x400):
+            return True
+    return False
+
+
 class UnsafeWorkdir(Exception):
     """Work directory root is a symlink (or reparse point): refused before any write."""
 
@@ -254,7 +270,7 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
     base = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
     fixture = load_fixture(fixture_id)  # verified before any store/dir is created; raises FixtureError
     project = Path(workdir) / PROJECT_ID
-    if Path(workdir).is_symlink():
+    if _linked_component(Path(workdir)):
         raise UnsafeWorkdir(str(workdir))
     if Path(workdir).exists() and (not Path(workdir).is_dir() or any(Path(workdir).iterdir())):
         raise FileExistsError(f"{workdir} is not an empty directory; use a new empty work directory")

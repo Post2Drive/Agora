@@ -224,3 +224,50 @@ def test_symlinked_empty_workdir_refused_and_outside_untouched(tmp_path):
     r = _cli("start", "--fixture", "synthetic-units-v1", "--workdir", str(link), cwd=Path(__file__).resolve().parents[1])
     assert r.returncode == 2 and "WORKDIR_UNSAFE_PATH" in r.stdout
     assert list(outside.iterdir()) == []
+
+
+def _mklink(link, target):
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+
+
+def test_workdir_under_symlinked_ancestor_refused_nothing_written_outside(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    _mklink(alias, outside)
+    from agora.pilot import UnsafeWorkdir
+    for wd in (alias / "new_run", alias / "a" / "b"):  # non-existent child under linked ancestor
+        with pytest.raises(UnsafeWorkdir):
+            run_pilot(wd)
+    assert list(outside.iterdir()) == []
+    r = _cli("start", "--fixture", "synthetic-units-v1", "--workdir", str(alias / "x"),
+             cwd=Path(__file__).resolve().parents[1])
+    assert r.returncode == 2 and "WORKDIR_UNSAFE_PATH" in r.stdout
+    assert list(outside.iterdir()) == []
+
+
+def test_list_fixtures_omits_symlinked_directories(tmp_path, monkeypatch):
+    root = _use_copy(tmp_path, monkeypatch)
+    moved = tmp_path / "elsewhere"
+    (root / "synthetic-units-v1").rename(moved)
+    _mklink(root / "synthetic-units-v1", moved)
+    assert "synthetic-units-v1" not in pf.list_fixtures(root)
+
+
+@pytest.mark.parametrize("name", ["schema.json", "binding.json"])
+def test_symlinked_schema_and_binding_refused(tmp_path, monkeypatch, name):
+    root = _use_copy(tmp_path, monkeypatch)
+    d = root / "synthetic-units-v1"
+    moved = tmp_path / ("moved_" + name)
+    moved.write_bytes((d / name).read_bytes())
+    (d / name).unlink()
+    try:
+        (d / name).symlink_to(moved)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    with pytest.raises(pf.FixtureError) as e:
+        pf.load_fixture("synthetic-units-v1")
+    assert e.value.code == "FX_UNSAFE_PATH"
