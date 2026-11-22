@@ -2,7 +2,7 @@
 
 **Status:** Proposal only. No M3 implementation, simulation, calibration, backtest, forecast or engine run is authorised by this document. M2 is still in progress in Claude's 12:58 IST brief. This proposal does not declare M2 or M3 reached.
 
-**Draft baseline:** main `15a92c56fdac14bb6266eec4acbd15b528d4b035` (22 November 2026), including #132's checked-in fixture manifest pin, direct fixture symlink/version and direct workdir-root symlink hardening. M2 remains in progress; workdir-ancestor symlink coverage and clean-install proof remain open.
+**Draft baseline:** main `c123a426928e2df90bfdea27819b087610825472` (22 November 2026), including #132's fixture/workdir hardening and #134's direct backup/restore root symlink/reparse-point refusal; backup ancestor/pre-read path checks and source-pair snapshot locking remain M2 gaps. M2 remains in progress; workdir-ancestor symlink coverage and clean-install proof remain open.
 
 ## 1. Purpose and boundary
 
@@ -22,7 +22,7 @@ M3 is not a production identity, connector, external action, prediction-approval
 
 ## 2. Live-main facts used by this proposal
 
-The following are code/document observations at main `15a92c56fdac14bb6266eec4acbd15b528d4b035`, including merged #132 fixture/workdir hardening; they are not claims that M3 behavior exists:
+The following are code/document observations at main `c123a426928e2df90bfdea27819b087610825472`, including merged #132 fixture/workdir and #134 direct backup-root hardening; they are not claims that M3 behavior exists:
 
 - `agora/cli.py` keeps the simulation import lazy through `_simulation()`. The `run` command constructs `Simulation`, calls `prepare()`, then `run()`. The `pilot` and data-command dispatch paths are separate and must remain engine-import-free.
 - `agora/sim/engine.py` currently loads `scenario.yaml`, opens the run `Store`, and calculates `scenario_hash` from scenario configuration. On a first run, `prepare()` calls `population.build(self.sc)`; on resume it compares the stored scenario hash before loading `World`. It does not currently require a governed tabular input envelope.
