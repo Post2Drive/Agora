@@ -2,7 +2,7 @@
 
 **Status:** Plan only. This is the requested end-to-end test outline; no full-potential test has been run. M2 remains in progress and M3 is proposal-only. The plan does not declare either milestone reached.
 
-**Baseline:** main `c123a426928e2df90bfdea27819b087610825472` (22 November 2026). The implementation facts below were checked against current main after #134 merged. The M2 documentation consolidated in #129 is on main; #132 fixture/workdir hardening and #134 direct backup/restore root symlink/reparse-point refusal are merged. Workdir-ancestor and backup parent/pre-read symlink checks, backup snapshot-lock/head equality and clean-install proof remain open.
+**Baseline:** main `c01098d8f815b1e76b12296f41e887d5f6dd87d0` (22 November 2026). The implementation facts below were checked against current main after #135 merged. The M2 documentation consolidated in #133 is on main; #132 fixture/workdir hardening, #134 direct backup/restore root symlink/reparse-point refusal and #135 workdir-ancestor/fixture-catalogue hardening are merged. PR #136 backup ancestor/pre-read/lstat-error checks remain open and not mainline (exact-head CI `45006493190`, 1/4 complete); a `..`-through-symlink normalization regression, backup snapshot-lock/head equality and clean-install proof remain open.
 
 ## 1. Objective and limits
 
