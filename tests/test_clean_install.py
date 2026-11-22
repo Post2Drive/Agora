@@ -87,21 +87,34 @@ def test_installed_cli_pilot_list_and_start(installed):
     r = _run(installed, [cli, "pilot", "start", "--fixture", FIXTURE, "--workdir", str(wd)])
     assert r.returncode == 0, r.stdout + r.stderr
     assert "synthetic" in r.stdout.lower()
-    assert any(wd.rglob("*.json")), "no run record written"
-    for rec in wd.rglob("*.json"):
-        try:
-            data = json.loads(rec.read_text(encoding="utf-8"))
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            assert data.get("engine_invoked", False) is False
-            assert data.get("validated_prediction_enabled", False) is False
+    records = list(wd.rglob("run_record.json"))
+    assert len(records) == 1, "exactly one run_record.json expected, got %r" % records
+    data = json.loads(records[0].read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    assert data["engine_invoked"] is False
+    assert data["validated_prediction_enabled"] is False
 
 
 def test_start_does_not_import_sim_engine(installed):
     wd = installed["base"] / "work2"
     code = ("import sys;from agora.pilot import main;"
             "rc=main(['start','--fixture','%s','--workdir',r'%s']);"
+            "print(rc, any(m=='agora.sim' or m.startswith('agora.sim.') for m in sys.modules))"
+            % (FIXTURE, wd))
+    r = _run(installed, [installed["py"], "-c", code])
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip().splitlines()[-1] == "0 False"
+
+
+def test_console_script_entry_does_not_import_sim_engine(installed):
+    """Same check via the installed console-script entry point (agora.cli:main), not agora.pilot.main."""
+    wd = installed["base"] / "work3"
+    code = ("import sys;from importlib.metadata import entry_points;"
+            "ep=[e for e in entry_points(group='console_scripts') if e.name=='agora'][0];"
+            "assert ep.value=='agora.cli:main',ep.value;"
+            "sys.argv=['agora','pilot','start','--fixture','%s','--workdir',r'%s'];"
+            "rc=0\n"
+            "try:\n ep.load()()\nexcept SystemExit as e:\n rc=e.code or 0\n"
             "print(rc, any(m=='agora.sim' or m.startswith('agora.sim.') for m in sys.modules))"
             % (FIXTURE, wd))
     r = _run(installed, [installed["py"], "-c", code])
