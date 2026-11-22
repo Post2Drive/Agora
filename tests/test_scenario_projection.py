@@ -11,12 +11,14 @@ from agora.scenario import Scenario
 from agora.scenario_projection import ProjectionError, project_segments
 
 S, A = "x:seg", "x:act"
-MAP = {"segment_property": S, "numeric": {"activity": A}, "personas": {"a": "Alpha", "b": "Beta"}}
+FIELDS = ["stance_mean", "stance_sd", "stubbornness", "activity", "influence", "openness"]
+MAP = {"segment_property": S, "numeric": {f: A for f in FIELDS}, "personas": {"a": "Alpha", "b": "Beta"}}
+GOOD_HASH = "sha256:" + "ab" * 32
 
 
 def _pkg(rows=None):
     rows = rows or [("a", 0.2), ("a", 0.4), ("b", 0.5), ("b", 0.7)]
-    return {"manifest": {"scenario_hash": "sha256:abc"}, "validated_prediction_enabled": False,
+    return {"manifest": {"scenario_hash": GOOD_HASH}, "validated_prediction_enabled": False,
             "instances": [{"row_id": i, "property_values": {S: s, A: v}, "property_sensitivity": {S: "public", A: "public"}}
                           for i, (s, v) in enumerate(rows)]}
 
@@ -52,7 +54,7 @@ def test_base_scenario_not_mutated():
 
 
 @pytest.mark.parametrize("mutate", [
-    lambda p, m: m["numeric"].update(bogus=A),                      # unmapped field
+    lambda p, m: m["numeric"].update(bogus=A),                      # unknown field
     lambda p, m: m.update(extra=1),                                 # unknown mapping key
     lambda p, m: m["personas"].pop("b"),                            # missing persona
     lambda p, m: p["instances"][0]["property_values"].update({A: 5.0}),  # out of bounds mean
@@ -67,6 +69,17 @@ def test_base_scenario_not_mutated():
     lambda p, m: p.update(validated_prediction_enabled=True),
     lambda p, m: p["manifest"].pop("scenario_hash"),
     lambda p, m: p.update(instances=[]),
+    lambda p, m: m["numeric"].pop("openness"),                      # partial map
+    lambda p, m: m.update(numeric={}),                              # empty map
+    lambda p, m: [i.pop("property_sensitivity") for i in p["instances"]],  # absent metadata
+    lambda p, m: p["instances"][0].update(property_sensitivity=[]),  # non-mapping metadata
+    lambda p, m: p["instances"][0]["property_sensitivity"].pop(A),   # absent classification
+    lambda p, m: p["instances"][0]["property_sensitivity"].update({A: "unknown"}),
+    lambda p, m: p["instances"][0]["property_sensitivity"].update({A: None}),
+    lambda p, m: p["instances"][0].update(property_values=[]),
+    lambda p, m: p["manifest"].update(scenario_hash="sha256:abc"),   # truthy but malformed
+    lambda p, m: p["manifest"].update(scenario_hash=123),
+    lambda p, m: p["manifest"].update(scenario_hash="sha256:" + "AB" * 32),
 ])
 def test_rejects(mutate):
     p, m = _pkg(), copy.deepcopy(MAP)

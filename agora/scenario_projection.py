@@ -10,6 +10,7 @@ import dataclasses
 import hashlib
 import json
 import math
+import re
 from typing import Any, Mapping
 
 from .scenario import Scenario, Segment
@@ -24,12 +25,17 @@ _BOUNDS = {
     "stance_mean": (-1.0, 1.0), "stance_sd": (0.0, 1.0), "stubbornness": (0.0, 1.0),
     "activity": (0.0, 1.0), "influence": (0.0, 10.0), "openness": (0.0, 1.0),
 }
-_BLOCKED = {"personal", "sensitive"}
+_ALLOWED_SENSITIVITY = {"public", "internal"}  # explicit allow-list; anything else is refused
+_HASH_RE = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def _hash(value: Any) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _valid_hash(value: Any) -> bool:
+    return isinstance(value, str) and _HASH_RE.fullmatch(value) is not None
 
 
 def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], base: Scenario) -> tuple[Scenario, dict[str, Any]]:
@@ -38,7 +44,7 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
         raise ProjectionError("package must be a scenario-input package with validated_prediction_enabled False")
     manifest = package.get("manifest")
     instances = package.get("instances")
-    if not isinstance(manifest, Mapping) or not manifest.get("scenario_hash") or not isinstance(instances, list) or not instances:
+    if not isinstance(manifest, Mapping) or not _valid_hash(manifest.get("scenario_hash")) or not isinstance(instances, list) or not instances:
         raise ProjectionError("package has no manifest hash or no rows")
     if not isinstance(mapping, Mapping) or set(mapping) - {"segment_property", "numeric", "personas"}:
         raise ProjectionError("mapping has unknown keys")
@@ -47,9 +53,8 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
     personas = mapping.get("personas")
     if not isinstance(seg_prop, str) or not isinstance(numeric, Mapping) or not isinstance(personas, Mapping):
         raise ProjectionError("mapping needs segment_property, numeric and personas")
-    unknown = set(numeric) - set(_BOUNDS)
-    if unknown:
-        raise ProjectionError(f"unmapped segment field(s): {sorted(unknown)}")
+    if set(numeric) != set(_BOUNDS):
+        raise ProjectionError(f"numeric must map exactly the segment fields {sorted(_BOUNDS)}")
     used = {seg_prop, *numeric.values()}
     if any(not isinstance(p, str) or not p for p in used):
         raise ProjectionError("mapping property ids must be non-empty text")
@@ -59,12 +64,14 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
         if not isinstance(inst, Mapping):
             raise ProjectionError("row is not an object")
         values = inst.get("property_values", {})
-        sens = inst.get("property_sensitivity", {})
+        sens = inst.get("property_sensitivity")
+        if not isinstance(values, Mapping) or not isinstance(sens, Mapping):
+            raise ProjectionError("row needs property_values and property_sensitivity objects")
         for pid in used:
             if pid not in values:
                 raise ProjectionError(f"row is missing mapped property {pid}")
-            if sens.get(pid) in _BLOCKED:
-                raise ProjectionError(f"property {pid} is {sens.get(pid)}; not projectable")
+            if sens.get(pid) not in _ALLOWED_SENSITIVITY:
+                raise ProjectionError(f"property {pid} has missing or non-projectable sensitivity")
             v = values[pid]
             if v is None or v == "[REDACTED]":
                 raise ProjectionError(f"property {pid} is null or redacted")
@@ -109,7 +116,8 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
             "segment share = row count / total rows",
             "numeric fields = arithmetic mean of the mapped property within the segment",
             "personas are declared by the mapping, not inferred",
-            "unmapped segment fields keep Segment defaults",
+            "every segment numeric field is explicitly mapped; none keeps a default",
+            "only public/internal classified properties are projected (allow-list)",
         ],
         "validated_prediction_enabled": False,
     }
