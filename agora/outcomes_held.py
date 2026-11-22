@@ -26,7 +26,10 @@ class HeldBlocked(Exception):
 def _ro(path: Path) -> sqlite3.Connection:
     if not path.is_file():
         raise HeldBlocked("STORE_NOT_FOUND")
-    return sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        return sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        raise HeldBlocked("STORE_UNREADABLE") from None
 
 
 def _history_state(reviews: list[tuple]) -> str | None:

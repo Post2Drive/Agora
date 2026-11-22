@@ -112,3 +112,19 @@ def test_no_engine_import():
                         "import sys, agora.outcomes_held; print('agora.sim.engine' in sys.modules)"],
                        capture_output=True, text=True, timeout=120)
     assert r.stdout.strip() == "False"
+
+
+def test_open_time_error_blocks_with_exit_2(tmp_path, monkeypatch, capsys):
+    p = tmp_path / "d.db"
+    sqlite3.connect(p).close()
+
+    def boom(*a, **k):
+        raise sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(oh.sqlite3, "connect", boom)
+    with pytest.raises(oh.HeldBlocked) as ei:
+        oh.held_outcomes(p)
+    assert ei.value.code == "STORE_UNREADABLE"
+    assert oh.main(["--decisions", str(p)]) == 2
+    err = capsys.readouterr().err
+    assert "HELD_BLOCKED: STORE_UNREADABLE" in err and "unable to open" not in err
