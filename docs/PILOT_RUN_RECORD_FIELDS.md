@@ -1,7 +1,7 @@
 # Operator Pilot Run-Record Field Map
 
-**Status:** Documentation specification only; no implementation or durable operator run record is created here. PR #88 returns an in-memory `PilotResult` and does not persist this envelope.  
-**Assessment base:** `914e28e24c5f49b45173e595d21e02308a827c0f` (22 November 2026)  
+**Status:** Documentation specification only. #123 persists an initial immutable `run_record.json`; #125 adds fixture ID/version/manifest/file hashes to that record. The merged implementation still does not satisfy the complete RUN_PROVENANCE_SPEC.md envelope, strict loader validation or failure-atomic persistence.
+**Assessment base:** `969a040a497668740d20e1ace83841046639b2d6` (22 November 2026)
 **Parent contract:** `docs/RUN_PROVENANCE_SPEC.md`  
 **Execution boundary:** No simulation-engine call, no `agora/sim/**` changes, no real data, credentials, connectors or write-back.
 
