@@ -298,3 +298,58 @@ def test_cycles_in_edges_terminate(tmp_path):
     _edge(store, approved, "report", "A", "decision", "B")
     _edge(store, approved, "decision", "B", "report", "A")  # cycle back
     assert {m["affected_ref"] for m in _flag(store, approved, out)} == {root, "A", "B"}
+
+
+class _BrokenAudit:
+    def append(self, event):
+        raise OSError("down")
+
+
+def _clone_marker(store, m, suffix="dup"):
+    """A second marker on the SAME decision version and affected object (distinct id and key)."""
+    row = list(store.db.execute("SELECT * FROM outcome_markers WHERE marker_id=?", (m["marker_id"],)).fetchone())
+    row[0], row[1] = f"marker-{suffix}", f"key-{suffix}"
+    store.db.execute("INSERT INTO outcome_markers VALUES (" + ",".join("?" * len(row)) + ")", row)
+    store.db.execute("INSERT INTO outcome_marker_events VALUES (?,?,?,?,?,?,?,?,?)",
+                     (f"marker-{suffix}", 1, "none", "open", "x", NOW, None, None, None))
+    store.db.commit()
+    return marker_view(store, f"marker-{suffix}")
+
+
+@pytest.mark.parametrize("path", ["acknowledged", "resolved_valid", "superseded"])
+def test_broken_audit_leaves_prior_blocking_state_and_no_event(tmp_path, path):
+    store, approved, out, m = _lifecycle_ready(tmp_path)
+    repl = _clone_marker(store, m)
+    if path == "resolved_valid":
+        _adv(store, m, "acknowledged")
+        _adv(store, m, "under_review")
+    before = marker_view(store, m["marker_id"])
+    kw = {"acknowledged": {}, "resolved_valid": {"disposition": "valid", "evidence_ref": EVIDENCE},
+          "superseded": {"replacement_marker_id": repl["marker_id"], "supersession_reason": "replaced_by_clone"}}[path]
+    state = "resolved" if path == "resolved_valid" else path
+    with pytest.raises(MarkerError, match="audit event could not be appended"):
+        _adv(store, m, state, audit=_BrokenAudit(), **kw)
+    after = marker_view(store, m["marker_id"])
+    assert (after["state"], after["event_seq"]) == (before["state"], before["event_seq"])
+    assert blocking_markers(store, m["affected_type"], m["affected_ref"])
+
+
+def test_supersession_replacement_must_match_scope_and_carry_a_reason(tmp_path):
+    store, approved, out, m = _lifecycle_ready(tmp_path)
+    root = outcome_ref(approved.decision_id, approved.version, out["outcome_id"])
+    _edge(store, approved, "outcome", root, "report", "A")
+    other = [x for x in _flag(store, approved, out) if x["affected_ref"] == "A"][0]
+    with pytest.raises(MarkerError, match="same decision version and affected object"):
+        _adv(store, m, "superseded", replacement_marker_id=other["marker_id"], supersession_reason="wrong_target")
+    twin = _clone_marker(store, m)
+    for bad in (None, "", "Bad Reason", "x" * 80):
+        with pytest.raises(MarkerError, match="bounded reason"):
+            _adv(store, m, "superseded", replacement_marker_id=twin["marker_id"], supersession_reason=bad)
+    with pytest.raises(MarkerError, match="only to supersession"):
+        _adv(store, m, "acknowledged", supersession_reason="stray_reason")
+    done = _adv(store, m, "superseded", replacement_marker_id=twin["marker_id"],
+                supersession_reason="replaced_by_twin")
+    assert done["state"] == "superseded"
+    ev = store.db.execute("SELECT evidence_json FROM outcome_marker_events WHERE marker_id=? ORDER BY seq DESC",
+                          (m["marker_id"],)).fetchone()[0]
+    assert json.loads(ev) == {"supersession_reason": "replaced_by_twin"}
