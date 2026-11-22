@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 import subprocess
 import uuid
@@ -168,13 +169,45 @@ def _write_run_record(project: Path, *, status: str, started: datetime, steps: l
     return out
 
 
+_SHA = re.compile(r"^sha256:[0-9a-f]{64}$")
+_REQUIRED = {
+    "record_version": int, "run_id": str, "run_kind": str, "repository_sha": str, "mode": str,
+    "data_class": str, "engine_invoked": bool, "validated_prediction_enabled": bool,
+    "started_at": str, "completed_at": str, "status": str, "fixture_hashes": dict,
+    "imported": dict, "bound": dict, "decided": dict, "outcome_refs": list, "audit_ref": dict,
+    "stage_results": list,
+}
+
+
 def load_run_record(project: str | Path) -> dict[str, Any]:
-    """Read a run record; fail closed on unknown version or an engine/prediction claim."""
+    """Read a run record; fail closed on unknown version, missing/mistyped fields,
+    non-synthetic data, malformed hashes or an engine/prediction claim."""
     rec = json.loads((Path(project) / RUN_RECORD_NAME).read_text(encoding="utf-8"))
-    if rec.get("record_version") != RUN_RECORD_VERSION:
+    if not isinstance(rec, dict):
+        raise ValueError("run record is not an object")
+    if rec.get("record_version") != RUN_RECORD_VERSION or isinstance(rec.get("record_version"), bool):
         raise ValueError(f"unsupported run record version: {rec.get('record_version')!r}")
     if rec.get("engine_invoked") is not False or rec.get("validated_prediction_enabled") is not False:
         raise ValueError("run record claims engine use or validated prediction")
+    for key, typ in _REQUIRED.items():
+        if key not in rec or not isinstance(rec[key], typ) or (typ is int and isinstance(rec[key], bool)):
+            raise ValueError(f"run record field missing or wrong type: {key}")
+    if rec["data_class"] != "synthetic":
+        raise ValueError("run record is not marked synthetic")
+    if not rec["fixture_hashes"]:
+        raise ValueError("run record has no fixture hashes")
+    hashes = list(rec["fixture_hashes"].values())
+    fx = rec.get("fixture")
+    if fx is not None:
+        if not isinstance(fx, dict):
+            raise ValueError("run record fixture block malformed")
+        hashes += list(fx.get("file_hashes", {}).values()) + [fx.get("manifest_hash")]
+    if not hashes or any(not isinstance(h, str) or not _SHA.match(h if h.startswith("sha256:") else "sha256:" + h)
+                         for h in hashes):
+        raise ValueError("run record contains a malformed hash")
+    for st in rec["stage_results"]:
+        if not isinstance(st, dict) or not {"step", "result"} <= set(st):
+            raise ValueError("run record stage result malformed")
     return rec
 
 
@@ -217,8 +250,8 @@ def run_pilot(workdir: str | Path, *, now: datetime | None = None,
     base = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
     fixture = load_fixture(fixture_id)  # verified before any store/dir is created; raises FixtureError
     project = Path(workdir) / PROJECT_ID
-    if project.exists():
-        raise FileExistsError(f"{project} already exists; use a new empty work directory")
+    if Path(workdir).exists() and (not Path(workdir).is_dir() or any(Path(workdir).iterdir())):
+        raise FileExistsError(f"{workdir} is not an empty directory; use a new empty work directory")
     project.mkdir(parents=True)
     adapter = SyntheticFixtureAdapter(identities or default_identities(base))
     started = base

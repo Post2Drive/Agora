@@ -150,3 +150,40 @@ def test_run_record_is_never_overwritten_and_load_fails_closed(tmp_path):
         path.write_text(json.dumps({**good, **patch}))
         with _p.raises(ValueError):
             load_run_record(project)
+
+
+def test_loader_rejects_missing_mistyped_nonsynthetic_and_bad_hash(tmp_path):
+    import pytest as _p
+    from agora.pilot import load_run_record
+    run_pilot(tmp_path, now=NOW)
+    project = tmp_path / PROJECT_ID
+    path = project / "run_record.json"
+    good = json.loads(path.read_text())
+    load_run_record(project)  # a good record loads
+    bad = [{"data_class": "real"}, {"run_id": 5}, {"stage_results": [{"step": "x"}]},
+           {"fixture_hashes": {"a.csv": "sha256:xyz"}}, {"fixture_hashes": {}},
+           {"record_version": True}]
+    for patch in bad:
+        path.write_text(json.dumps({**good, **patch}))
+        with _p.raises(ValueError):
+            load_run_record(project)
+    for key in ("audit_ref", "imported", "status"):
+        broken = {k: v for k, v in good.items() if k != key}
+        path.write_text(json.dumps(broken))
+        with _p.raises(ValueError):
+            load_run_record(project)
+    path.write_text("[]")
+    with _p.raises(ValueError):
+        load_run_record(project)
+
+
+def test_nonempty_workdir_is_refused_and_left_untouched(tmp_path):
+    import pytest as _p
+    (tmp_path / "unrelated.txt").write_text("keep")
+    with _p.raises(FileExistsError):
+        run_pilot(tmp_path, now=NOW)
+    assert [p.name for p in tmp_path.iterdir()] == ["unrelated.txt"]
+    f = tmp_path.parent / (tmp_path.name + "-file")
+    f.write_text("x")
+    with _p.raises(FileExistsError):
+        run_pilot(f, now=NOW)
