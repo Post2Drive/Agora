@@ -2,12 +2,12 @@
 
 **Status:** Claude-confirmed M1 code-complete; this is not M2 operator-pilot or production authorisation  
 **Assessment date:** 22 November 2026  
-**Main base:** `e64df1e5b8060d1684ed71ddee1412a5c664b566`
+**Main base:** `70e561bf7309911ac86bed9f19be957ade73b338`
 **Scope:** Local synthetic-data governance pipeline only
 
 ## 1. Executive assessment
 
-Assessment base is main `e64df1e5b8060d1684ed71ddee1412a5c664b566` after #126 and #127 merged. Claude's exact 09:05 IST log entry confirms M1. #127 is merged at `a4ac0cbdd3efd69da1ace090fa0a4dedc1a6d9a3`; exact-head Actions run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs and adds the synthetic run-record gate, symlink/unsafe-path refusal, manifest schema validation, copied chain/anchor re-verification and post-copy restore hashing. #125's fixture/list/start remains partially hardened: manifest digest is not independently pinned, fixture directory/manifest/payload symlinks are followed, empty fixture versions are accepted, and clean-checkout installation is unproven. #130 is still an open PR (head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`; exact-head CI run `44995421141` was in progress at this assessment) adding strict run-record loading and a non-empty-workdir guard; it is not on main. M2 remains incomplete: full RUN_PROVENANCE_SPEC provenance, failure-atomic run-record publication, fixture hardening, executable runbook tests, marker/audit outbox recovery and logged rehearsal remain open.
+Assessment base is main `70e561bf7309911ac86bed9f19be957ade73b338` after #130 merged. Claude's exact 09:05 IST log entry confirms M1. #127 is merged at `a4ac0cbdd3efd69da1ace090fa0a4dedc1a6d9a3` (exact-head CI `44994798420`, 4/4). #130 is merged at head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd` (exact-head CI `44995421141`, 4/4) and adds required-field/type checks, synthetic-only/false-engine guards, SHA-256 shape checks and refusal of non-empty workdirs. The loader still permits missing/empty fixture metadata, `repository_sha="unknown"`, arbitrary status/mode strings and malformed nested file-hash maps; it does not validate the full `input_provenance` envelope or publish the run record atomically. #125 fixture manifest pinning, fixture symlink/version checks, workdir-root symlink rejection and clean-checkout installation proof remain open. M2 remains incomplete.
 
 #111 retires the public role-string approval authorizer and restricts role-string PDP imports to the internal allowlist. #113 completes protected Principal-bound policy enforcement with `BoundPolicy`; identity remains synthetic-only. #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing decision audit events only (API, no CLI; unanchored-tail recovery blocks). #116/#122 provide explicit-edge outcome markers and primary audit-order/supersession hardening, but a marker-store commit failure after a successful audit append can still leave an orphan audit event; marker/audit reconciliation is not implemented. #119/#122 hold the anchor lock across reconciliation verification/classification; the lock helper may create a `.lock` metadata file and the concurrency test still uses a timing sleep. #120/#127 harden local backup/verify/restore, but project/backup/target root symlink rejection and a shared source-pair snapshot lock/head check remain follow-ups. #125 adds the checked-in fixture/list/start component; manifest digest pinning, fixture symlink/version checks and clean-install proof remain open. Anchor trust remains `local_sidecar`.
 
@@ -25,9 +25,9 @@ Claude's 09:05 IST log entry explicitly confirms M1 reached on main `83d0645b983
 python -m agora.cli pilot --workdir <new-empty-dir>
 ```
 
-Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on the confirmation SHA; ChatGPT did not execute the command or tests. #122/#123/#124/#125 are merged on current main `e64df1e5b8060d1684ed71ddee1412a5c664b566`; #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`) and #125 (`44993280261`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Claude reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`. The audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reports 747 local tests passed on the confirmation SHA; ChatGPT did not execute the command or tests. #122/#123/#124/#125 are merged on current main `70e561bf7309911ac86bed9f19be957ade73b338`; #122 (`44989188092`), #123 (`44990673166`), #124 (`44991628960`) and #125 (`44993280261`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
-Assessment base: `e64df1e5b8060d1684ed71ddee1412a5c664b566`.
+Assessment base: `70e561bf7309911ac86bed9f19be957ade73b338`.
 
 Confirmed merged documentation PRs:
 - #59 — principal call-site migration plan.
@@ -95,7 +95,7 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | Decision/audit reconciliation | **Done — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar and #122 holds the same anchor lock across verification/classification. #115 remains API-only, approver-authorised and exact-head-bound for missing decision events. The lock helper opens a sidecar file with `a+b`, which may create a metadata file; the concurrency test uses a fixed sleep rather than a deterministic handshake. Repair excludes outcome/review rows and unanchored-tail recovery remains blocked. |
 | Simulated-labelled report | **Available — separate exploratory/mock path** | Existing report CLI path; not connected to the scenario-input/decision/outcome workflow. |
 | Single callable end-to-end pipeline | **Available — guided synthetic CLI plus M2 fixture/start and partial run record** | #88 provides the nine-stage first-denial-stop workflow; #94 keeps pilot/data dispatch engine-import-free. #125 adds `agora pilot list/start` with the checked-in fixture. #130 proposes strict run-record loading and a non-empty-workdir guard but remains open, not main. Full RUN_PROVENANCE_SPEC fields, failure-atomic publication, fixture manifest pinning, symlink/version hardening and clean-install proof remain open. |
-| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | Main `e64df1e5b8060d1684ed71ddee1412a5c664b566` includes #122, #123, #125 and #127. #127 hardens backup/restore, while #125 fixture/start still needs independent manifest pinning, symlink/version checks and clean-install proof. #130 is open and cannot be counted as mainline; full run-record provenance/atomic publication, tested runbook, marker/audit outbox and logged rehearsal remain open. |
+| Integrated pilot readiness | **M1 Claude-confirmed; M2 incomplete** | Main `70e561bf7309911ac86bed9f19be957ade73b338` includes #122, #123, #125 and #127. #127 hardens backup/restore, while #125 fixture/start still needs independent manifest pinning, symlink/version checks and clean-install proof. #130 is open and cannot be counted as mainline; full run-record provenance/atomic publication, tested runbook, marker/audit outbox and logged rehearsal remain open. |
 
 ## 4. Pull request status snapshot
 
@@ -153,9 +153,9 @@ These are exact-head GitHub Actions results, not local test runs. PR #77's docum
 | #127 | M2 backup/restore hardening | Merged at `a4ac0cbdd3efd69da1ace090fa0a4dedc1a6d9a3`; exact-head CI `44994798420` passed 4/4 |
 | #128 | M2 runbook inventory and rehearsal plan | Closed as superseded; both docs consolidated into #129 |
 | #129 | Consolidated M1/M2 documentation, runbook, command inventory and rehearsal plan | Draft/open; exact-head CI pending after this refresh |
-| #130 | Strict run-record loader and non-empty-workdir guard | Open; head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`; exact-head CI `44995421141` in progress at this assessment; not on main |
+| #130 | Strict run-record loader and non-empty-workdir guard | Merged at `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`; exact-head CI `44995421141` passed 4/4. Loader is partial against RUN_PROVENANCE_SPEC; atomic publish and full provenance remain open |
 
-Assessment base is main `e64df1e5b8060d1684ed71ddee1412a5c664b566` after #127 merged. M1 remains Claude-confirmed. #127 backup hardening is merged; #125 fixture/list/start is on main but its manifest/symlink/version/clean-install gates remain open. #130 strict loader/workdir changes are still in review. M2 remains incomplete.
+Assessment base is main `70e561bf7309911ac86bed9f19be957ade73b338` after #127 merged. M1 remains Claude-confirmed. #127 backup hardening is merged; #125 fixture/list/start is on main but its manifest/symlink/version/clean-install gates remain open. #130 strict loader/workdir changes are still in review. M2 remains incomplete.
 
 ## 5. M1 exit gates — Claude confirmation recorded
 
@@ -183,9 +183,9 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 ## 6. Documentation status
 
-M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`, including the operator runbook, command inventory, backup/tamper plan and rehearsal plan. #127 backup hardening is merged; root-path symlink and snapshot-lock follow-ups remain. #130 is open, not main, and only partially strengthens run-record loading/workdir checks. Full provenance, failure-atomic publication, fixture manifest pinning/symlink/version hardening, runbook-command tests, marker/audit outbox recovery and the separately approved rehearsal remain open; no M2 completion is claimed.
+M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`, including the operator runbook, command inventory, backup/tamper plan and rehearsal plan. #127 backup hardening is merged; root-path symlink and snapshot-lock follow-ups remain. #130 is merged on main, and only partially strengthens run-record loading/workdir checks. Full provenance, failure-atomic publication, fixture manifest pinning/symlink/version hardening, runbook-command tests, marker/audit outbox recovery and the separately approved rehearsal remain open; no M2 completion is claimed.
 
-This assessment is refreshed against main `e64df1e5b8060d1684ed71ddee1412a5c664b566`. Exact-head CI for #127 (`44994798420`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. #130 exact-head CI (`44995421141`) was in progress on its open PR head and is not mainline evidence. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
+This assessment is refreshed against main `70e561bf7309911ac86bed9f19be957ade73b338`. Exact-head CI for #127 (`44994798420`) and #130 (`44995421141`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
 
 ## 7. Permanent safety boundaries
 
