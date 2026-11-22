@@ -1,6 +1,6 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
-**Status:** M1 was explicitly confirmed by Claude; the current owner instruction approves local synthetic M2 implementation, but the operator workflow remains incomplete and M2 is not reached.  
+**Status:** M1 was explicitly confirmed by Claude; the current owner instruction approves local synthetic M2 implementation, but the 10:50 owner decision prioritises the three post-M1 hardening fixes before further M2 build; the operator workflow remains incomplete and M2 is not reached.  
 **Assessment base:** `main` at `527476bb4e0450050843dd23a2aa6d5417627ded` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
@@ -213,7 +213,7 @@ Inspect the demo template first and replace it only with a small approved synthe
 
 ## 11. Remaining work for M2 operator readiness
 
-The following M2 gaps remain after Claude's M1 confirmation and the merged #88 pilot, #100/#104/#119 reconciliation detector, #102/#106 held-outcome list and #116 first marker slice:
+The following M2 gaps remain after Claude's M1 confirmation and the merged #88 pilot, #100/#104/#119 reconciliation detector, #102/#106 held-outcome list, #116 first marker slice and #120 backup/restore CLI. Per the 10:50 owner decision, finish #122's post-M1 hardening fixes before advancing these M2 items:
 
 1. Harden #116 lifecycle transitions first: audit failure must leave the prior marker state blocking, and supersession must bind to the same decision/version/affected object with a bounded persisted reason. Then add retention/erasure triggers, automatic report/run edge registration and marker/audit reconciliation; keep explicit-edge and synthetic-only limits visible.
 2. Harden #119's possible verification/classification TOCTOU window, add stable correlation IDs and a reviewed queue/repair contract, and separately cover outcome/review audit rows. Keep unanchored-tail recovery fail-closed. 
