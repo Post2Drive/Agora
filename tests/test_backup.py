@@ -467,3 +467,93 @@ def test_nested_symlinked_chain_or_anchor_refused_before_any_read(project, tmp_p
     assert e.value.code == "UNSAFE_PATH"
     assert read == []
     assert not (tmp_path / "bk").exists()
+
+
+# ---- M2: source writer lock and single-read manifest ------------------------------------------
+
+def _append_event(project, event_id="late-1"):
+    from agora.audit_anchor import open_anchored_audit
+    from agora.backup import DEFAULT_CHAIN_ID
+    with open_anchored_audit(project / CHAIN_REL, project / ANCHOR_REL, DEFAULT_CHAIN_ID) as audit:
+        audit.append({"event_id": event_id, "event_type": "t", "subject_id": "u",
+                      "operation": "import", "decision": "allow"})
+
+
+def test_real_writer_cannot_append_while_backup_holds_the_snapshot(project, tmp_path, monkeypatch):
+    import threading
+    import agora.backup as mod
+    real = mod._copy_tree
+    state = {}
+
+    def copy_with_writer(src, dst, rels):
+        t = threading.Thread(target=_append_event, args=(project,))
+        t.start()
+        t.join(timeout=1.5)  # a real anchored writer must block on the same lock
+        state["blocked"] = t.is_alive()
+        state["thread"] = t
+        real(src, dst, rels)
+    monkeypatch.setattr(mod, "_copy_tree", copy_with_writer)
+    before = mod.verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, mod.DEFAULT_CHAIN_ID)
+    res = backup(project, tmp_path / "bk")
+    state["thread"].join(timeout=20)
+    assert state["blocked"] is True, "writer was not excluded while the snapshot was taken"
+    assert not state["thread"].is_alive()
+    info = verify_backup(tmp_path / "bk")  # snapshot is intact and holds the PRE-append head
+    manifest = json.loads((tmp_path / "bk" / MANIFEST).read_text())
+    assert (manifest["chain_sequence"], manifest["chain_head_hash"]) == (before["sequence"], before["head_hash"])
+    after = mod.verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, mod.DEFAULT_CHAIN_ID)
+    assert after["sequence"] == before["sequence"] + 1  # the writer ran only AFTER the backup finished
+    assert res["audit_status"] == info["audit_status"] == "anchored_verified"
+
+
+def test_backup_blocks_while_another_writer_holds_the_lock(project, tmp_path):
+    import threading
+    from agora.audit_anchor import AnchorStore
+    from agora.backup import DEFAULT_CHAIN_ID
+    out = {}
+
+    def run():
+        out["res"] = backup(project, tmp_path / "bk")
+    with AnchorStore(project / ANCHOR_REL, DEFAULT_CHAIN_ID).lock():
+        t = threading.Thread(target=run)
+        t.start()
+        t.join(timeout=1.5)
+        assert t.is_alive(), "backup did not wait for the writer lock"
+        assert not (tmp_path / "bk" / MANIFEST).exists()
+    t.join(timeout=20)
+    assert out["res"]["audit_status"] == "anchored_verified"
+
+
+def test_backup_data_does_not_contain_the_lock_file(project, tmp_path):
+    _append_event(project)  # creates the sidecar lock file
+    assert (project / (ANCHOR_REL + ".lock")).exists()
+    backup(project, tmp_path / "bk")
+    assert not (tmp_path / "bk" / "data" / (ANCHOR_REL + ".lock")).exists()
+    verify_backup(tmp_path / "bk")
+
+
+def _count_manifest_reads(monkeypatch):
+    from pathlib import Path
+    reads = []
+    real = Path.read_text
+
+    def spy(self, *a, **k):
+        if self.name == MANIFEST:
+            reads.append(str(self))
+        return real(self, *a, **k)
+    monkeypatch.setattr(Path, "read_text", spy)
+    return reads
+
+
+def test_verify_reads_the_manifest_exactly_once(project, tmp_path, monkeypatch):
+    backup(project, tmp_path / "bk")
+    reads = _count_manifest_reads(monkeypatch)
+    verify_backup(tmp_path / "bk")
+    assert len(reads) == 1
+
+
+def test_restore_reads_the_manifest_exactly_once(project, tmp_path, monkeypatch):
+    backup(project, tmp_path / "bk")
+    reads = _count_manifest_reads(monkeypatch)
+    restore(tmp_path / "bk", tmp_path / "out")
+    assert len(reads) == 1
