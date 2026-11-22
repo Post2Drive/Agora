@@ -18,7 +18,7 @@ This guide documents the available components and their boundaries. It does not 
 |---|---|---|
 | Synthetic CSV import | **AVAILABLE — CLI** | `agora data import-csv`, snapshot listing/show/rejected-row commands; immutable local snapshot and manifest. |
 | Ontology binding | **AVAILABLE — Python API, protected boundary** | `load_binding`, `validate_binding`, `materialize_instances`; #96 removes the public opt-out kwarg and #99 hardens direct policy enforcement with anchored denial writes. |
-| Shared policy enforcement | **AVAILABLE — protected by default** | #96 removes public opt-out kwargs; #97 removes the unanchored fallback; #99 removes the direct helper override and requires an anchored writer for protected denials. |
+| Shared policy enforcement | **PARTIAL — required hook and anchored denial; Principal binding not enforced** | #96 removes public opt-out kwargs; #97 removes the unanchored fallback; #99 requires an anchored writer for protected denials; #109 adds pre-mutation lifecycle guards. However, `enforce_policy()` accepts any callable, so a caller-supplied always-allow hook can satisfy the current presence check. Principal-bound policy validation and role-string compatibility retirement remain M1 work. |
 | Scenario-input package | **AVAILABLE — Python API, disconnected** | `build_scenario_input` builds a provenance-rich package from an exact import ID. It is not consumed by `agora/sim/engine.py`. |
 | Decision record and proposal | **AVAILABLE — Python API** | Decision schema/store and lifecycle APIs. |
 | Principal-based approval | **AVAILABLE — partial synthetic migration** | #80/#84/#89/#96 make `approve_as()` Principal-native with stored-decision-derived policy input and no public anchor opt-out kwarg. #97 removes the legacy env switch; only the test-only `LEGACY_APPROVE_ENABLED` flag remains. |
@@ -100,7 +100,7 @@ instances = materialize_instances(
 )
 ```
 
-Use the exact committed snapshot ID and a reviewed, versioned ontology pack/binding. Supply the policy callable; do not omit it for this governed path. The policy callback contract is still legacy role-string based, so this is not yet principal-first end-to-end governance. Explicitly pass purpose and retention. Keep the fixture public/internal synthetic only.
+Use the exact committed snapshot ID and a reviewed, versioned ontology pack/binding. Supply the policy callable; do not omit it for this governed path. The policy callback contract is operation/resource-only; `enforce_policy()` accepts any callable and does not validate that it is the `principal_policy()` closure or otherwise bound to an adapter-issued Principal. This is not yet principal-first end-to-end governance; do not treat a custom allow-returning callback as trusted policy. Explicitly pass purpose and retention. Keep the fixture public/internal synthetic only.
 
 The result is an in-memory list of provenance-rich instances. This step does not persist a pipeline run or connect to the simulation engine.
 
