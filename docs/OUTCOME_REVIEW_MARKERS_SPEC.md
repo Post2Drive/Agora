@@ -1,7 +1,7 @@
 # Outcome Dependency Review Markers Specification
 
 **Status:** Partial implementation; #116 adds the first append-only marker slice and #122 hardens audit-append failure rollback plus same-decision/version/object supersession with a bounded persisted reason. The broader specification remains incomplete: retention/erasure triggers, automatic report/run edge registration, CLI and marker/audit reconciliation are not implemented. #102/#106 remain a separate read-only held-outcome list.
-**Assessment base:** main at `776669cac7c30722726ed87813f677d6d6d89aec` (22 November 2026).
+**Assessment base:** `main` at `27269a0b939e966dc5eee72c915562e68a61ec67` (22 November 2026).
 **Related implementation:** append-only decision outcomes/reviews (#53), read-only held-outcome listing (#102/#106), first append-only dependency-marker slice (#116) and lifecycle/supersession hardening (#122); assessment base main `776669cac7c30722726ed87813f677d6d6d89aec`
 **Related specification:** decision/audit reconciliation (#57), with read-only detector/hardening in #100/#104 and the merged missing-decision-audit repair API in #115 (not outcome/review reconciliation)
 
