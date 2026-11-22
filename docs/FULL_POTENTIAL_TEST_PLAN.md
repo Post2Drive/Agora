@@ -2,7 +2,7 @@
 
 **Status:** Plan only. This is the requested end-to-end test outline; no full-potential test has been run. M2 remains in progress and M3 is proposal-only. The plan does not declare either milestone reached.
 
-**Baseline:** main `70e561bf7309911ac86bed9f19be957ade73b338` (22 November 2026). The plan assumes the current mainline components and the M2 documentation in the open consolidated draft PR #129; it must be reconciled to exact merged main before execution.
+**Baseline:** main `02b67566586b107727f0b64dbafdc16a5772d390` (22 November 2026). The implementation facts below were inspected at parent main `70e561bf7309911ac86bed9f19be957ade73b338`; the intervening #129 merge is documentation-only. The plan assumes the current mainline components and the M2 documentation in the open consolidated draft PR #129; it must be reconciled to exact merged main before execution.
 
 ## 1. Objective and limits
 
