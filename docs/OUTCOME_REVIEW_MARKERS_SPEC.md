@@ -1,9 +1,9 @@
 # Outcome Dependency Review Markers Specification
 
-**Status:** Design specification only; no marker store, propagation worker or automatic downstream flagging is implemented. PRs #102/#106 add a read-only held-outcome list and fail-closed connection-open error handling only.
-**Assessment base:** main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026)  
-**Related implementation:** append-only decision outcomes/reviews (#53) and read-only held-outcome listing / connection-open hardening (#102/#106); assessment base main `9031dba2e318f43b64a0b9155e3f44ee65155cdf`
-**Related specification:** decision/audit reconciliation (#57), with the read-only detector in #100 and immutable source-metadata/connection hardening in #104
+**Status:** Partial implementation; the first append-only marker slice is merged in #116. This specification remains the broader target; retention/erasure triggers, automatic report/run edge registration, CLI and marker/audit reconciliation are not implemented. #102/#106 remain a separate read-only held-outcome list.
+**Assessment base:** main at `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026)  
+**Related implementation:** append-only decision outcomes/reviews (#53), read-only held-outcome listing (#102/#106), and first append-only dependency-marker slice (#116); assessment base main `30385885f16b3750a879ef7df25140fabe29c4ba`
+**Related specification:** decision/audit reconciliation (#57), with read-only detector/hardening in #100/#104 and the merged missing-decision-audit repair API in #115 (not outcome/review reconciliation)
 
 ## 1. Purpose
 
@@ -15,15 +15,9 @@ The marker system must preserve the original outcome and all historical decision
 
 ## 2. Current baseline and gap
 
-Main includes the append-only outcome and review stores from PR #53:
+Main includes the append-only outcome and review stores from PR #53, the read-only held-outcome list (#102/#106), and the first append-only dependency-marker implementation (#116). #116 adds marker, edge and event tables protected against UPDATE/DELETE; explicit-edge transitive, cycle-safe propagation; idempotent marker creation; Principal-gated edge registration and marker lifecycle; and blocking-marker lookup. Disputed, corrected and source-hash-mismatch triggers are supported. Resolution binds to a marker fingerprint, event-history head, bounded disposition and exact source evidence reference.
 
-- decision_outcomes records link an outcome to an exact decision ID/version and outcome ID.
-- decision_outcome_reviews records append-only reviewed/disputed transitions.
-- record_outcome() accepts only an approved decision version, a declared measure, observed provenance, a measurement window and an exact source reference.
-- review_outcome() requires a reviewer distinct from the recorder and records reviewed/disputed state changes.
-- Outcome audit events use allow-listed metadata.
-
-The current implementation does not create dependency review markers or propagate a disputed/corrected outcome to dependent reports or later decisions. PR #102 adds `agora outcomes held --decisions <db>`, which lists outcomes that are disputed, never reviewed, have invalid review history, or have a review row without an outcome; #106 normalizes connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. It remains read-only, emits opaque IDs/stable reason codes and does not create markers, inspect source-hash changes or traverse dependency edges. PRs #100/#104 implement only decision lifecycle/approval audit reconciliation; they do not reconcile outcome/review rows. This specification must not claim marker or propagation capability already exists.
+The implementation remains partial: retention/erasure triggers, automatic report/run edge registration, a CLI, and marker/audit reconciliation are not present. Edges are explicitly registered; absent edges produce root-level markers rather than heuristic propagation. The held-outcome CLI (#102/#106) remains separate and read-only. Decision lifecycle reconciliation (#100/#104/#119) and missing-event repair (#115) do not reconcile outcome/review or marker audit rows. This specification describes the broader target and must not imply that the remaining features exist.
 
 ## 3. Trigger events
 
@@ -147,7 +141,7 @@ Never include observed_value, unit, notes, raw source content, personal data, cr
 
 Marker storage and the audit chain may be separate SQLite stores. Do not claim a cross-store atomic transaction. If marker persistence succeeds but its audit append fails, or vice versa, surface a durable pending/reconciliation state and fail closed for protected reliance. Use a stable idempotency key so retry cannot create duplicate markers.
 
-The reconciliation specification in merged PR #57 and the minimal detector in #100, hardened by #104, scope themselves to decision lifecycle/approval audit gaps. #102/#106 list held outcome/review states from the decision store (with connection-open errors failing closed) but do not reconcile those rows against the audit chain. Marker/outcome reconciliation requires an explicit extension or separate approved design. No queue, worker or automatic repair is claimed here.
+The reconciliation specification and #100/#104/#119 detector scope themselves to decision lifecycle/approval audit gaps; #115 repairs only missing decision lifecycle events through an API. #102/#106 list held outcome/review states from the decision store but do not reconcile those rows against the audit chain. Marker/outcome reconciliation requires an explicit extension or separate approved design. No marker queue, worker or automatic repair is claimed here.
 
 ## 10. Retention and erasure
 
@@ -189,6 +183,6 @@ A marker is not a reason to retain raw personal data indefinitely. Backup expiry
 
 ## 13. Implementation and rollout gates
 
-This is a specification only. Implementation requires a separate owner-approved task after the principal boundary and audit/reconciliation design are reviewed. The first implementation should use synthetic fixtures and temporary local stores, prove append-only behaviour and dependency traversal, and avoid network access or external services.
+The first implementation slice is merged in #116 and was included in Claude's explicit M1 confirmation. Remaining specification work requires a separately owner-approved M2 task: retention/erasure triggers, automatic report/run edge registration, CLI, marker/audit reconciliation and operator evidence. Use synthetic fixtures and temporary local stores only; no network access or external services.
 
 No simulation, calibration, backtest, forecast, study mutation, real data, credentials, network connector, external write-back or change to agora/sim/** is authorised by this document. Keep VALIDATED_PREDICTION_ENABLED=False.

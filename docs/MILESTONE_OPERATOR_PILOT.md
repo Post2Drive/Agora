@@ -1,8 +1,8 @@
 # M2 — Operator-Usable Synthetic Pilot
 
-**Status:** M2 scope approved by the owner; this checklist remains a planning contract, not an execution authorisation or readiness declaration.  
-**Assessment base:** `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026).
-**Prerequisite:** M1 PILOT-READY must first be confirmed by Claude in the AI Collaboration Log.  
+**Status:** M2 scope is retained as a planning contract; implementation and rehearsal still require the owner's separate GO. This checklist is not execution authorisation or a readiness declaration.  
+**Assessment base:** `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026).
+**Prerequisite:** Claude explicitly confirmed M1 in the 09:05 IST log entry on main `83d0645b983365dddd9da07d4d1352e0b66e3d00`; #119 is subsequently merged on current main `30385885f16b3750a879ef7df25140fabe29c4ba`. M2 implementation remains pending the owner's separate GO.  
 **Operating boundary:** Local synthetic data and local stores only; no simulation-engine call.
 
 ## 1. Objective
@@ -19,18 +19,22 @@ This milestone demonstrates governance and operator usability only. It does not 
 | Checked-in synthetic dataset | Fixture, schema and binding are checked in, pinned and invented; exact IDs and content hashes are recorded. | Fixture paths, schema validation, immutable import/manifest IDs and fixture hashes verified by tests. See `docs/SYNTHETIC_PILOT_FIXTURE_SPEC.md`. |
 | Guided end-to-end run | Local orchestrator reports each stage, immutable IDs and result; a denied gate stops before the next protected read or write. | Test executes the command and asserts stage order, results, denial codes and absence of later state changes. |
 | CLI import boundary | Pilot/data dispatch must not import the simulation engine; engine imports belong only in simulation commands. | Fresh-process tests prove `import agora.cli` and pilot dispatch do not load `agora.sim.engine`; #94 provides the import/help-dispatch proof, with a full `--workdir` subprocess assertion still desirable. |
-| Policy and anchor checks by default | **PARTIAL — protected lifecycle entry points now guarded** | #96 removes public opt-outs, #97 removes the unanchored fallback and legacy approval env switch, and #99 removes the direct `require_policy` override and validates denial writers with `require_anchored()`. #109 guards `propose()`, `reject()`, `expire()` and `supersede()` before state mutation when `ANCHOR_REQUIRED=True`; their optional audit annotations do not permit missing/plain writers on the protected path. Principal-first PDP/permission migration and the `local_sidecar` trust limitation remain. |
-| Legacy path retirement | **PARTIAL — public outcome roles retired; legacy approval test-only** | #92 retires public role-string outcome exports; #96 removes public Principal-wrapper anchor opt-outs. #97 removes the legacy approval env switch; only the test-only `LEGACY_APPROVE_ENABLED` module flag remains. |
+| Policy and anchor checks by default | **DONE for protected paths; identity remains synthetic-only** | #113 adds `BoundPolicy` and protected `PRINCIPAL_BOUND_REQUIRED=True`, rejecting raw callables; #111 restricts role-string PDP imports to the internal allowlist and makes the public role-string approval authorizer private. #96/#97/#99/#109 retain protected defaults and anchored-writer guards. Identity remains synthetic-only; anchor trust remains `local_sidecar`. |
+| Legacy path retirement | **PARTIAL — public routes retired/allowlisted; test-only legacy approval remains** | #92 retires public role-string outcome exports; #111 makes the role-string approval authorizer private and restricts PDP imports to the internal allowlist; #96 removes public Principal-wrapper anchor opt-outs. #97 removes the legacy approval env switch; only the test-only `LEGACY_APPROVE_ENABLED` module flag remains. |
 | Readable audit timeline | Operator can list the event sequence and see actor reference, operation, decision, stable resource IDs, timestamps and policy version without raw payloads. | **IMPLEMENTED COMPONENT — #107** adds `agora audit timeline --decisions <db> --audit <db> --decision-id <id>`; merged tests cover selected-decision filtering, ordering, redaction and read-only behaviour. Runbook-command execution test remains outstanding. |
 | Plain-language chain/anchor verification | Operator sees chain valid/invalid, anchor match/mismatch, last verified sequence and an actionable fail-closed explanation. | **IMPLEMENTED COMPONENT — #107** adds `agora audit verify --audit <db> --anchor <file> --chain-id <id>` with plain-language verdicts and a `local_sidecar` trust note; tests cover intact, tampered, truncated, missing-anchor and wrong-chain cases. Coordinated rollback of both local files remains an explicit undetectable trust limitation; runbook-command execution test remains outstanding. |
 | Backup/restore and tamper drill | Documented local backup/restore preserves chain/anchor continuity; tampering is detected and protected operations stop. | Tests exercise backup, restore, missing/corrupt backup and tamper cases; rehearsal log records outcomes. |
-| Minimal reconciliation | **PARTIAL — hardened read-only detector** | #100 provides a read-only `agora reconcile` detector for decision lifecycle/approval rows; #104 validates immutable source metadata, expected audit operation/exact resource IDs and partial-open cleanup. It still does not verify the anchor, cover outcome/review rows, persist a queue or repair gaps. |
-| Held-outcome listing | **PARTIAL — read-only list exists** | #102 adds `agora outcomes held --decisions <db>` for disputed, never-reviewed, invalid-history and orphan-review cases, with opaque IDs/stable reason codes and exit 0/1/2; #106 normalizes connection-open SQLite errors to `STORE_UNREADABLE` / exit 2. It does not inspect source-hash changes, create dependency markers or propagate holds through dependent artifacts. |
-| Run records | Persist and verify the immutable envelope defined by `docs/RUN_PROVENANCE_SPEC.md`; do not call the simulation engine. | Tests assert exact import ID, fixture/schema/binding/manifest hashes, ontology and policy fingerprints, repository SHA and synthetic/exploratory label. The operator-specific field mapping is specified in `docs/PILOT_RUN_RECORD_FIELDS.md`. |
+| Minimal reconciliation | **DONE — anchored read-only detector plus API repair** | #100/#104 detect decision lifecycle gaps; #119 verifies the sidecar anchor before classification and requires `--anchor` / `--chain-id`; #115 adds approver-authorised, anchored, exact-head, idempotent repair for missing events only. Repair is API-only, has no CLI, excludes outcome/review rows and blocks unanchored-tail recovery. A TOCTOU review finding remains open. |
+| Held-outcome listing | **PARTIAL — read-only list plus first marker slice** | #102/#106 provide `agora outcomes held --decisions <db>` with opaque IDs/stable reason codes and fail-closed connection errors. #116 adds marker creation/propagation for disputed, corrected and source-hash-mismatch triggers over explicit edges; retention/erasure triggers, automatic report/run edges, CLI and marker/audit reconciliation remain open. |
+| Run records | Persist and verify the immutable envelope defined by `docs/RUN_PROVENANCE_SPEC.md`; do not call the simulation engine. | Tests assert exact import ID, fixture/schema/binding/manifest hashes, ontology and policy fingerprints, repository SHA and synthetic/exploratory label. The operator-specific field mapping is specified in `docs/RUN_PROVENANCE_SPEC.md`. |
 | Operator runbook | Every command and expected output/stop condition in `docs/OPERATOR_RUNBOOK.md` is exercised by an automated test. | Test loads or validates the runbook command inventory and executes each safe local synthetic command. |
 | Logged dress rehearsal | A separately owner-approved local synthetic rehearsal records command, SHA, fixture hashes, stage results, denial stops, audit verification, backup/restore/tamper outcomes and operator sign-off. | Verified Notion log entry with exact evidence and Claude's milestone confirmation. |
 
-## 3. Explicit non-goals and blocked work
+## 3. M2 authorisation gate
+
+M1 is Claude-confirmed, but the Notion log says M2 implementation starts only on the owner's separate GO. Until that GO is recorded, this file remains a planning contract: do not start the installer/fixture implementation, backup/restore drills, operator runbook execution or dress rehearsal. Planning-only design work does not authorise code execution or rehearsal.
+
+## 4. Explicit non-goals and blocked work
 
 The following are prohibited in M1 and M2 unless Claude gives written approval and the owner separately gives explicit approval naming the exact item:
 
@@ -43,11 +47,11 @@ Keep `VALIDATED_PREDICTION_ENABLED=False`. Do not infer owner approval from a dr
 
 ## 4. Required implementation order
 
-1. Complete and confirm M1 using `docs/MILESTONE_PILOT_READY.md`; #92 retires public outcome-role exports, #94 closes the CLI engine-import boundary, #96 removes public policy/anchor opt-out kwargs, #97 removes the legacy approval env switch/unanchored fallback, #99 closes direct policy-helper bypasses, #100 adds the read-only decision/audit detector; #104 hardens immutable source-metadata checks and partial-open cleanup; #102 adds the read-only held-outcome list; #106 makes held-list connection-open failures fail closed; #107 adds read-only audit timeline and chain/anchor verification components; and #109 closes the remaining decision-lifecycle pre-mutation anchor bypass. Outcome dependency markers/manual-recovery evidence and the remaining M1 exit gates remain open.
+1. Complete and confirm M1 using `docs/MILESTONE_PILOT_READY.md`; #92 retires public outcome-role exports, #94 closes the CLI engine-import boundary, #96 removes public policy/anchor opt-out kwargs, #97 removes the legacy approval env switch/unanchored fallback, #99 closes direct policy-helper bypasses, #100 adds the read-only decision/audit detector; #104 hardens immutable source-metadata checks and partial-open cleanup; #102 adds the read-only held-outcome list; #106 makes held-list connection-open failures fail closed; #107 adds read-only audit timeline and chain/anchor verification components; and #109 closes the remaining decision-lifecycle pre-mutation anchor bypass. Outcome dependency markers remain in review in #116; the M1 evidence run is reported by Claude. M1 is not yet declared reached.
 2. Add and verify the synthetic fixture set using `docs/SYNTHETIC_PILOT_FIXTURE_SPEC.md`.
-3. The public policy/anchor bypasses are closed by #96/#97/#99/#109. Complete the remaining principal-first identity/call-site migration; #109 enforces the anchored writer at the decision-lifecycle entry points before mutation. Do not introduce role-string or caller-controlled authority. Keep the trusted identity adapter synthetic-only and do not add credentials/connectors.
+3. The public policy/anchor bypasses are closed by #96/#97/#99/#109. Principal-bound policy gate is implemented by #113; #109 enforces anchored writers before decision-lifecycle mutation. Identity adapter remains synthetic-only. Do not introduce role-string or caller-controlled authority. Keep the trusted identity adapter synthetic-only and do not add credentials/connectors.
 4. Implement the local orchestrator and one-command guided stages without calling the simulation engine.
-5. Complete run-record persistence using `docs/PILOT_RUN_RECORD_FIELDS.md`, reconciliation gaps and outcome dependency markers. The audit timeline and chain/anchor verification CLI components are merged in #107; operator-runbook test coverage remains outstanding.
+5. Complete run-record persistence using `docs/RUN_PROVENANCE_SPEC.md`, use the #115 repair API only through reviewed code paths, and complete outcome dependency markers (first slice #116 is in review). The audit timeline and chain/anchor verification CLI components are merged in #107; operator-runbook test coverage remains outstanding.
 6. Add backup/restore and tamper tests; make the operator runbook command inventory executable by tests.
 7. Obtain separate owner approval for the local synthetic dress rehearsal; record the rehearsal and exact evidence in Notion.
 
@@ -56,3 +60,12 @@ The sequence is a planning dependency, not permission to modify code. Claude own
 ## 5. Confirmation rule
 
 Only Claude's exact confirmation entry in the AI Collaboration Log may state that M2 is reached. The entry must cite main SHA, merged PRs, exact-head CI, the tested one-command workflow, fixture and run-record hashes, audit verification, reconciliation/held-outcome evidence, backup/restore/tamper results, runbook test and the logged dress rehearsal. ChatGPT must not declare M2 reached.
+
+## 6. M2 planning specifications
+
+The following companion documents define the operator workflow for later implementation. They are plans only; none authorises execution or rehearsal:
+
+- [One-command start plan](M2_ONE_COMMAND_START_PLAN.md)
+- [Synthetic fixture selection plan](M2_FIXTURE_SELECTION_PLAN.md)
+- [Plain-language audit and anchor verification plan](M2_AUDIT_ANCHOR_OPERATOR_PLAN.md)
+- [Backup, restore and tamper-drill plan](M2_BACKUP_RESTORE_TAMPER_PLAN.md)

@@ -1,7 +1,7 @@
 # Audit Anchor Wiring Plan
 
-**Status:** Stage A/D writer plumbing (#71), Stage B/C append wiring (#74/#75), Principal-native approval (#80/#84), guided pilot (#88), default-on policy/anchor defaults (#89), public outcome API retirement (#92), CLI lazy-engine-import isolation (#94), public wrapper opt-out removal (#96), legacy approval/unanchored-denial hardening (#97), direct policy-helper hardening (#99), read-only decision/audit detector and source-integrity/connection hardening (#100/#104), and read-only held-outcome listing plus connection-open failure hardening (#102/#106), read-only audit timeline/chain-vs-anchor verification commands (#107), and pre-mutation decision-lifecycle anchor guards (#109) are merged. The local-sidecar trust and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
-**Assessment base:** `main` at `9031dba2e318f43b64a0b9155e3f44ee65155cdf` (22 November 2026).
+**Status:** Stage A/D writer plumbing (#71), lifecycle/outcome append wiring (#74/#75), protected Principal-bound policy (#113), role-string importer allowlist/private approval authorizer (#111), missing-decision-event repair API (#115), first append-only outcome dependency-marker slice (#116), read-only audit timeline/verify (#107), and read-only sidecar-anchor verification inside reconciliation (#119) are merged. The local-sidecar trust boundary, marker/audit reconciliation gaps and operational recovery limitations remain. This is a wiring plan, not deployment or rehearsal approval.
+**Assessment base:** `main` at `30385885f16b3750a879ef7df25140fabe29c4ba` (22 November 2026).
 **Specification:** `docs/AUDIT_ANCHOR_SPEC.md`, merged PR #52  
 **Implementation evidence:** PR #63 (local-sidecar primitive), #71 (writer factory and policy/data-boundary wiring), #74 (lifecycle/outcome append wiring) and #75 (structural `AuditAppender` protocol). Exact-head Actions runs #71 (`44926109220`), #74 (`44928837108`) and #75 (`44929428177`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `9031dba2e318f43b64a0b9155e3f44ee65155cdf`, after PRs #94–#109 merged.
+The following inventory was checked against main at `30385885f16b3750a879ef7df25140fabe29c4ba`, after #116 and #119 merged. Claude's explicit 09:05 IST log entry confirms M1; M2 implementation remains pending owner GO.
 
 ### 2.1 Audit primitives
 
@@ -46,7 +46,7 @@ The outcome or review row is committed to the decision store before the shared a
 
 ### 2.4 Policy-denial audit and data-boundary callers
 
-`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires `require_anchored()` for protected policy-denial writes; `None`, a plain `AuditChainStore` and duck-typed non-anchored writers are refused when `ANCHOR_REQUIRED=True`. This proves policy presence and denial-audit anchoring, not policy provenance: `enforce_policy()` accepts any caller-supplied `(operation, resource)` callable, and `principal_policy()` currently returns an ordinary closure. A custom allow-returning callable can pass the presence check. Principal-bound policy validation remains an M1 gate. Preserve the fail-closed denial behavior and policy-before-source-read ordering.
+`agora/policy_enforcement.py::enforce_policy()` has no caller-controlled `require_policy` override. #99 requires an anchored writer for protected denials. #113 adds `PRINCIPAL_BOUND_REQUIRED=True` and accepts `BoundPolicy` from `principal_policy()` while rejecting raw callables; each call re-evaluates the bound Principal. #113 completes the protected Principal-bound callback gate; `BoundPolicy` rechecks the Principal at each invocation. Identity remains synthetic-only. Preserve fail-closed denial behaviour and policy-before-source-read ordering.
 
 The shared `enforce_policy()` boundary is called by:
 
@@ -88,7 +88,7 @@ Pass the anchored writer through the existing `audit` parameter for `propose`, `
 - Preserve each existing event type, event ID, resource IDs, reason code and policy version.
 - Enforce the anchored-writer requirement at each protected lifecycle entry point before state reads or writes. #109 adds this guard to `propose()`, `reject()`, `expire()` and `supersede()`; retain tests for missing/plain writers and no state change. Tests may inject a fake appender only to prove bounded failure paths.
 - Preserve the current failure semantics: the decision transition may already be committed when chain/anchor append fails. Surface that partial state explicitly; do not attempt to roll back or rewrite the decision record.
-- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. It still does not verify the sidecar anchor, persist a queue or repair gaps; #102/#106's held-outcome list is separate; #106 only normalizes connection-open errors and does not reconcile outcomes with the audit chain.
+- Do not claim that the decision store and audit chain are one transaction. PR #100 adds a read-only decision lifecycle/approval detector; #104 validates immutable source transition metadata, expected audit operation and exact resource IDs, and closes connections on partial open. #119 now verifies the sidecar anchor read-only before classification and requires `--anchor` and `--chain-id`; #115 remains a separate API-only repair for missing decision lifecycle events. The detector still has no stable correlation queue, outcome/review reconciliation or unanchored-tail recovery; #102/#106's held-outcome list remains separate.
 
 **Acceptance:** every protected lifecycle transition produces an anchored event; missing writer is denied in protected mode; anchor failure raises and identifies the committed transition/event for reconciliation; proposer/reviewer/approver separation and exact-version checks remain unchanged.
 
@@ -215,7 +215,7 @@ Mutation proofs must fail if the implementation skips pre-append verification, a
 
 **Read-only audit CLI (#107): IMPLEMENTED.** `agora audit timeline --decisions <db> --audit <db> --decision-id <id>` verifies the hash chain before listing one decision's stored transitions and related audit events. `agora audit verify --audit <db> --anchor <file> --chain-id <id>` compares the chain with the local anchor and prints a plain-language verdict plus the `local_sidecar` trust limitation. Timeline does not compare the anchor itself; run verify separately. Both commands are read-only and do not repair stores.
 
-**Remaining acceptance gates:** extend reconciliation itself with sidecar-anchor verification, stable correlation and a reviewed queue/repair or approved manual recovery procedure; cover outcome/review rows separately. #102 supplies a read-only held-outcome list and #106 normalizes connection-open failures to blocked exit 2; dependency markers/propagation remain unimplemented. Add default-path runtime tests for binding/scenario-input and `approve_as()` no-mutation denial; add backup/restore and tamper drills. #94 closes the module-level CLI import boundary, although its fresh-process pilot dispatch test exercises `--help` rather than a complete `--workdir` invocation. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
+**Remaining acceptance gates:** add stable correlation IDs and a reviewed queue/repair contract; cover outcome/review audit rows and marker/audit reconciliation separately; retain the explicit block on unanchored-tail recovery. #116 implements the first marker slice, but retention/erasure triggers and automatic report/run edge registration remain open. Review found a possible TOCTOU window in #119: anchor verification closes its read-only connection before reconciliation opens a second connection to classify, so a concurrent unanchored append could occur between the checks. Harden with a shared anchor lock and/or one consistent read snapshot, then add a mutation/concurrency regression test. Add backup/restore and tamper drills and executable runbook tests. Preserve the committed-but-unanchored partial-failure state and `local_sidecar` trust limitation.
 ## 11. Permanent safety boundaries
 
 - No changes to `agora/sim/**`; scenario-input-to-engine wiring remains separately blocked pending Claude's written approval and separate owner approval.
