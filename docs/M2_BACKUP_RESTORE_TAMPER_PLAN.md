@@ -61,7 +61,7 @@ Planned synthetic-only cases:
 - Restore a chain from backup with a different anchor: mismatch must be detected.
 - Restore a mutually consistent older chain+anchor pair: document that a local sidecar cannot detect coordinated rollback by an actor able to rewrite both files. This is a known trust limitation, not a passing security control.
 - Simulate an unanchored tail: protected appends and repair must stop; preserve both stores.
-- Inject an anchored writer between source verification and backup pair copy: the backup must block or hold the shared anchor lock until a consistent pair is captured.
+- Inject an anchored writer between source verification and backup pair copy: the backup must hold the same `AnchorStore.lock()` across verification and copy, or compare captured chain ID/sequence/head and block/retry on any change; comparing only a generic verifier status is insufficient.
 - Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
 - Point backup at an unmarked/non-synthetic project: expect `SOURCE_NOT_SYNTHETIC` and no destination.
 - Place a symlink inside the source or backup tree, or use an unsafe relative manifest path: expect `UNSAFE_PATH` and no outside-target read/copy.
