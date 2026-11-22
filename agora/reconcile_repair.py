@@ -58,7 +58,8 @@ def apply_repairs(
         raise RepairRefused("STALE_AUDIT_HEAD")
 
     try:
-        report = reconcile(decisions_db, audit.chain.path)
+        report = reconcile(decisions_db, audit.chain.path, anchor_path=audit.anchors.path,
+                           chain_id=audit.anchors.chain_id)
     except ReconcileBlocked as exc:
         raise RepairRefused(f"RECONCILE_BLOCKED:{exc.code}") from exc
     blockers = [f for f in report["findings"] if f["status"] != "missing"]

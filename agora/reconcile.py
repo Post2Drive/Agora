@@ -68,8 +68,28 @@ def _source_problem(transition: str, actor: str, method: str, occurred_at: str,
     return None
 
 
-def reconcile(decisions_db: str | Path, audit_db: str | Path) -> dict[str, Any]:
-    """Return a deterministic report. Raises ReconcileBlocked when it cannot proceed."""
+_ANCHOR_BLOCK = {
+    "chain_integrity_failure": "CHAIN_INVALID", "anchor_invalid": "ANCHOR_INVALID",
+    "truncation_detected": "ANCHOR_TRUNCATION", "anchor_mismatch": "ANCHOR_MISMATCH",
+    "unanchored_tail": "ANCHOR_UNANCHORED_TAIL", "store_unreadable": "STORE_UNREADABLE",
+}
+
+
+def reconcile(decisions_db: str | Path, audit_db: str | Path, *, anchor_path: str | Path,
+              chain_id: str) -> dict[str, Any]:
+    """Return a deterministic report. Raises ReconcileBlocked when it cannot proceed.
+
+    Nothing is classified unless the chain verifies AND matches its sidecar anchor
+    (``anchored_verified``), checked read-only: no bootstrap, writes or repair.
+    """
+    from .audit_anchor import verify_anchored_readonly
+    if Path(audit_db).is_file():  # a missing store falls through to STORE_NOT_FOUND below
+        try:
+            verdict = verify_anchored_readonly(audit_db, anchor_path, chain_id)
+        except Exception as exc:  # fail closed on anything unexpected
+            raise ReconcileBlocked("ANCHOR_INVALID") from exc
+        if verdict.get("status") != "anchored_verified":
+            raise ReconcileBlocked(_ANCHOR_BLOCK.get(str(verdict.get("status")), "ANCHOR_INVALID"))
     try:
         with ExitStack() as stack:
             audit = stack.enter_context(closing(_ro(Path(audit_db))))
@@ -168,9 +188,11 @@ def main(argv: list[str] | None = None) -> int:
                                  description="Read-only: list decisions with missing or mismatched audit records.")
     ap.add_argument("--decisions", required=True, help="decision store SQLite file")
     ap.add_argument("--audit", required=True, help="audit chain SQLite file")
+    ap.add_argument("--anchor", required=True, help="sidecar anchor history file for the audit chain")
+    ap.add_argument("--chain-id", required=True, help="chain id the anchor was bootstrapped with")
     args = ap.parse_args(argv)
     try:
-        report = reconcile(args.decisions, args.audit)
+        report = reconcile(args.decisions, args.audit, anchor_path=args.anchor, chain_id=args.chain_id)
     except ReconcileBlocked as exc:
         print(f"RECONCILE_BLOCKED: {exc.code}. No decision was classified; nothing was changed.",
               file=sys.stderr)
