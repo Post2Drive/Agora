@@ -1,6 +1,6 @@
 # Callable Synthetic Governed Pipeline — Current-State How-To
 
-**Status:** M1 was explicitly confirmed by Claude. The owner approved local synthetic M2; #127/#134 backup/restore hardening, #130 partial strict-loader/non-empty-workdir checks, #132 fixture/direct-workdir-root hardening and #135 workdir-ancestor/fixture-catalogue symlink hardening are merged. Merged PR #136 adds backup ancestor/pre-read/lstat-error guards but remains open (exact-head CI `45006493190`, 4/4 passed); `..`-through-symlink normalization still needs a regression. The operator workflow remains incomplete and M2 is not reached.
+**Status:** M1 was explicitly confirmed by Claude. The owner approved local synthetic M2; #127/#134 backup/restore hardening, #130 partial strict-loader/non-empty-workdir checks, #132 fixture/direct-workdir-root hardening and #135 workdir-ancestor/fixture-catalogue symlink hardening are merged. PR #136 is merged (exact-head CI `45006493190`, 4/4) and adds backup ancestor/pre-read/lstat-error guards; `..`-through-symlink normalization still needs a regression. The operator workflow remains incomplete and M2 is not reached.
 **Assessment base:** `main` at `85c0ecad8106fe1b24f1d4a5daf6fe33aa236ea8` (22 November 2026).
 **Scope:** Local synthetic data and local stores only; merged mainline capabilities only
 
@@ -58,7 +58,7 @@ agora backup verify --backup <backup-dir>
 agora restore --backup <backup-dir> --target <new-empty-target-dir>
 ```
 
-The backup command checks the source chain against its sidecar, requires `run_record.json` with `data_class=synthetic`, rejects in-tree symlinks/unsafe paths, validates the manifest, re-verifies the copied chain/anchor and re-hashes every restored file. #134 rejects direct project, destination, backup-root/data/manifest and restore-target symlink/reparse-point paths (`UNSAFE_PATH`; exact-head CI `44999538699`, 4/4). Merged PR #136 adds ancestor-component, nested pre-read and fail-closed lstat guards but remains unmerged (CI `45006493190`, 4/4 passed); review found that `os.path.abspath()` can normalize `..` across a symlink before the ancestor walk. Add a deterministic `..`-through-symlink test. Source-pair lock plus exact chain ID/sequence/head equality remain open. Runbook test and tamper drill remain outstanding.
+The backup command checks the source chain against its sidecar, requires `run_record.json` with `data_class=synthetic`, rejects in-tree symlinks/unsafe paths, validates the manifest, re-verifies the copied chain/anchor and re-hashes every restored file. #134 rejects direct project, destination, backup-root/data/manifest and restore-target symlink/reparse-point paths (`UNSAFE_PATH`; exact-head CI `44999538699`, 4/4). PR #136 is merged (CI `45006493190`, 4/4) and adds ancestor-component, nested pre-read and fail-closed lstat guards; review found that `os.path.abspath()` can normalize `..` across a symlink before the ancestor walk. Add a deterministic `..`-through-symlink test. Source-pair lock plus exact chain ID/sequence/head equality remain open. Runbook test and tamper drill remain outstanding.
 
 ## 3. Preconditions and fixture rules
 
