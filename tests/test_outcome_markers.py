@@ -9,7 +9,7 @@ from agora.audit_anchor import AnchorStore, AnchoredAuditChain, bootstrap_anchor
 from agora.audit_chain import AuditChainStore
 from agora.decisions.markers import (
     MarkerError, advance_marker_as, blocking_markers, flag_corrected_outcome_as, flag_disputed_outcome_as,
-    flag_source_hash_mismatch_as, marker_view, outcome_ref, register_dependency_as, source_ref,
+    flag_source_hash_mismatch_as, marker_view, outcome_ref, register_dependency_as, replay_pending_audits, source_ref,
 )
 from agora.decisions.outcomes import OutcomePermissionError, record_outcome_as, review_outcome_as
 from agora.principal import SyntheticFixtureAdapter
@@ -353,3 +353,74 @@ def test_supersession_replacement_must_match_scope_and_carry_a_reason(tmp_path):
     ev = store.db.execute("SELECT evidence_json FROM outcome_marker_events WHERE marker_id=? ORDER BY seq DESC",
                           (m["marker_id"],)).fetchone()[0]
     assert json.loads(ev) == {"supersession_reason": "replaced_by_twin"}
+
+
+class _FlakyAudit:
+    """Fails the first ``fail`` appends, then records events."""
+    def __init__(self, fail=1):
+        self.fail, self.events = fail, []
+
+    def append(self, event):
+        if self.fail:
+            self.fail -= 1
+            raise OSError("down")
+        self.events.append(dict(event))
+
+
+def test_open_audit_failure_persists_outbox_and_marker_stays_blocking(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    a = _FlakyAudit(fail=1)
+    with pytest.raises(MarkerError, match="audit event could not be appended"):
+        _flag(store, approved, out, audit=a)
+    m = store.db.execute("SELECT marker_id FROM outcome_markers").fetchone()[0]
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_outbox").fetchone()[0] == 1
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 0
+    assert [b["marker_id"] for b in blocking_markers(store, "outcome", marker_view(store, m)["affected_ref"])] == [m]
+
+
+def test_replay_after_restart_appends_once_with_stable_id_and_is_idempotent(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    payload = store.db.execute("SELECT payload_json FROM marker_audit_outbox").fetchone()[0]
+    a = _FlakyAudit(fail=0)
+    assert replay_pending_audits(store, a) == 1
+    assert replay_pending_audits(store, a) == 0
+    assert len(a.events) == 1 and json.dumps(a.events[0], sort_keys=True, separators=(",", ":")) == payload
+    assert a.events[0]["event_id"] == "decision_marker_opened-" + store.db.execute(
+        "SELECT marker_id FROM outcome_markers").fetchone()[0]
+
+
+def test_duplicate_trigger_delivery_replays_missed_audit_then_does_not_duplicate(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    a = _FlakyAudit(fail=0)
+    _flag(store, approved, out, audit=a)
+    _flag(store, approved, out, audit=a)
+    assert len(a.events) == 1
+    assert store.db.execute("SELECT COUNT(*) FROM outcome_markers").fetchone()[0] == 1
+
+
+def test_successful_open_leaves_no_pending_outbox(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    a = _FlakyAudit(fail=0)
+    _flag(store, approved, out, audit=a)
+    assert len(a.events) == 1
+    assert replay_pending_audits(store, a) == 0 and len(a.events) == 1
+
+
+def test_outbox_tables_are_append_only(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    _flag(store, approved, out, audit=_FlakyAudit(fail=0))
+    for t in ("marker_audit_outbox", "marker_audit_done"):
+        with pytest.raises(Exception, match="append-only"):
+            store.db.execute(f"DELETE FROM {t}")
+        with pytest.raises(Exception, match="append-only"):
+            store.db.execute(f"UPDATE {t} SET event_id='x'")
+
+
+def test_without_audit_no_outbox_rows_and_behaviour_unchanged(tmp_path):
+    store, approved, out = _disputed(tmp_path)
+    _flag(store, approved, out)
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_outbox").fetchone()[0] == 0

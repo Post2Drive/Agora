@@ -71,7 +71,13 @@ def _setup(store: DecisionOutcomeStore) -> None:
                "prior_state TEXT NOT NULL, new_state TEXT NOT NULL, actor TEXT NOT NULL, at TEXT NOT NULL, "
                "disposition TEXT, evidence_json TEXT, replacement_marker_id TEXT, "
                "PRIMARY KEY(marker_id, seq))")
-    for table in ("marker_edges", "outcome_markers", "outcome_marker_events"):
+    # Audit outbox: the intent to audit a marker opening is committed WITH the marker, so a crash or audit
+    # failure between commit and append can be replayed (stable event id); delivery is recorded append-only.
+    db.execute("CREATE TABLE IF NOT EXISTS marker_audit_outbox (event_id TEXT PRIMARY KEY, marker_id TEXT NOT NULL, "
+               "payload_json TEXT NOT NULL, created_at TEXT NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS marker_audit_done (event_id TEXT PRIMARY KEY, done_at TEXT NOT NULL)")
+    for table in ("marker_edges", "outcome_markers", "outcome_marker_events", "marker_audit_outbox",
+                  "marker_audit_done"):
         for action in ("UPDATE", "DELETE"):
             db.execute(f"CREATE TRIGGER IF NOT EXISTS protect_{table}_{action.lower()} BEFORE {action} ON {table} "
                        f"BEGIN SELECT RAISE(ABORT, '{table} are append-only'); END")
@@ -91,6 +97,33 @@ def _audit(audit: AuditAppender | None, event_type: str, actor: str, decision_id
         audit.append(event)
     except Exception as exc:
         raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
+
+
+def _deliver(store: DecisionOutcomeStore, audit: AuditAppender, event_id: str) -> None:
+    row = store.db.execute("SELECT payload_json FROM marker_audit_outbox WHERE event_id=?", (event_id,)).fetchone()
+    if row is None or store.db.execute("SELECT 1 FROM marker_audit_done WHERE event_id=?", (event_id,)).fetchone():
+        return
+    try:
+        audit.append(json.loads(row[0]))
+    except Exception as exc:
+        raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
+    store.db.execute("INSERT INTO marker_audit_done VALUES (?,?)", (event_id, _stamp(None)))
+    store.db.commit()
+
+
+def replay_pending_audits(store: DecisionOutcomeStore, audit: AuditAppender) -> int:
+    """Append every committed-but-unaudited marker-open event (same event id and payload); returns the count.
+
+    Delivery is at-least-once: if the process dies after the chain append but before the done record, the
+    identical event (same id, same payload) is appended again; consumers dedupe on event_id.
+    """
+    _setup(store)
+    pending = [r[0] for r in store.db.execute(
+        "SELECT event_id FROM marker_audit_outbox WHERE event_id NOT IN (SELECT event_id FROM marker_audit_done) "
+        "ORDER BY created_at, event_id")]
+    for event_id in pending:
+        _deliver(store, audit, event_id)
+    return len(pending)
 
 
 def _fingerprint(fields: Mapping[str, Any]) -> str:
@@ -157,6 +190,8 @@ def _create(store, *, actor: str, decision_id: str, version: int, trigger_type: 
         key = hashlib.sha256(f"{trigger_type}|{trigger_event_id}|{atype}|{aref}".encode()).hexdigest()
         existing = store.db.execute("SELECT marker_id FROM outcome_markers WHERE idempotency_key=?", (key,)).fetchone()
         if existing:
+            if audit is not None:
+                _deliver(store, audit, f"decision_marker_opened-{existing[0]}")  # replay a missed audit
             created.append(marker_view(store, existing[0]))
             continue
         marker_id = f"marker-{key[:32]}"
@@ -174,11 +209,19 @@ def _create(store, *, actor: str, decision_id: str, version: int, trigger_type: 
                  outcome_recorder, fp))
             store.db.execute("INSERT INTO outcome_marker_events VALUES (?,?,?,?,?,?,?,?,?)",
                              (marker_id, 1, "none", "open", actor, stamp, None, None, None))
+            if audit is not None:
+                ev = {"event_id": f"decision_marker_opened-{marker_id}", "event_type": "decision_marker_opened",
+                      "subject_id": actor, "operation": "decision_outcome", "decision": "allow",
+                      "reason": trigger_type, "resource_ids": [decision_id, f"version-{version}", marker_id],
+                      "marker_fingerprint": fp}
+                store.db.execute("INSERT INTO marker_audit_outbox VALUES (?,?,?,?)",
+                                 (ev["event_id"], marker_id, _canonical(ev), stamp))
             store.db.commit()
         except Exception:
             store.db.rollback()
             raise
-        _audit(audit, "decision_marker_opened", actor, decision_id, version, marker_id, fp, trigger_type)
+        if audit is not None:
+            _deliver(store, audit, f"decision_marker_opened-{marker_id}")
         created.append(marker_view(store, marker_id))
     return created
 
@@ -349,5 +392,5 @@ def advance_marker_as(
 __all__ = [
     "MarkerError", "advance_marker_as", "blocking_markers", "flag_corrected_outcome_as",
     "flag_disputed_outcome_as", "flag_source_hash_mismatch_as", "marker_view", "outcome_ref",
-    "register_dependency_as", "source_ref",
+    "register_dependency_as", "replay_pending_audits", "source_ref",
 ]
