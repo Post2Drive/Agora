@@ -33,6 +33,8 @@ The current implementation verifies the source chain/anchor before copying, snap
 Post-merge review found two races that must be fixed before operator reliance:
 - `backup()` does not hold the same `AnchorStore.lock()` across source verification and copying the audit SQLite/anchor pair. An anchored append can interleave after the source verdict or between the DB and anchor copies; the function can return success with an inconsistent pair.
 - `restore()` verifies the backup, then copies files, but only verifies the restored chain/anchor afterward. It does not re-hash every restored file against the manifest after the copy; a non-audit file changed after pre-verification can be restored without detection.
+- The source is not proven synthetic: `_files(project)` recursively copies every file, follows symlinks through `Path.is_file()`/`shutil.copy2`, and the manifest hardcodes `synthetic_only=True`. No project marker or fixture-hash allowlist is checked, so arbitrary files, credential/config files or symlink targets can be copied under a false synthetic label.
+- `verify_backup()` does not validate `manifest_version` or `synthetic_only`, and `files` is only a type annotation, not a runtime check. A malformed `files` list can reach `.items()` and raise `AttributeError` instead of a stable `BackupBlocked` result.
 
 1. Stop all writers and preserve the current pair unchanged.
 2. Verify the backup manifest and both component hashes.
@@ -58,6 +60,8 @@ Planned synthetic-only cases:
 - Simulate an unanchored tail: protected appends and repair must stop; preserve both stores.
 - Inject an anchored writer between source verification and backup pair copy: the backup must block or hold the shared anchor lock until a consistent pair is captured.
 - Mutate a non-audit backup file after pre-verification but before/during restore copy: restore must fail, remove its staged target, and preserve the original backup.
+- Point backup at an unmarked/non-synthetic project and at a project containing a symlink to an outside file: both must fail closed without reading/copying the target or writing a `synthetic_only` manifest.
+- Tamper `manifest_version`, set `synthetic_only` false, replace `files` with a list, or corrupt `chain_id`/digest values: verification must return stable blocked codes, never an uncaught exception.
 
 ## 4. Acceptance evidence
 
@@ -67,6 +71,8 @@ Planned synthetic-only cases:
 - Failure tests prove original stores and backup bytes remain unchanged.
 - Backup concurrency tests prove the same `AnchorStore.lock()` spans source verification and audit DB/anchor snapshot; removing the lock must fail the test.
 - Restore tests re-hash every staged restored file against the manifest after copy and verify the chain/anchor before publishing the target; removing post-copy hash verification must fail the test.
+- Backup tests require a verified synthetic project marker/fixture allowlist, reject symlinks and unapproved paths, and prove the manifest's `synthetic_only` value is evidence-based.
+- Manifest tests validate version, synthetic-only flag, chain ID, and a relative-path-to-SHA256 mapping; malformed schemas return stable blocked codes.
 - A separately approved rehearsal log records command, SHA, fixture hashes, results and operator sign-off.
 
 ## 5. Explicit non-goals
