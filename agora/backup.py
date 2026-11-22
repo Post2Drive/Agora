@@ -235,7 +235,7 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     except (OSError, ValueError):
         raise BackupBlocked("BACKUP_MANIFEST_MISSING") from None
     seq, head_hash = manifest.get("chain_sequence"), manifest.get("chain_head_hash")
-    XX
+    if (seq, head_hash) != _head(verdict):
         raise BackupBlocked("BACKUP_NOT_INTACT", "manifest_head_mismatch")
     return {"files": len(listed), "audit_status": verdict["status"], "chain_id": chain_id}
 
