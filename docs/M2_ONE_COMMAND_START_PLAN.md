@@ -16,9 +16,9 @@ agora pilot --workdir ./tmp-agora-pilot
 
 Main now includes `agora pilot list` and `agora pilot start --fixture <fixture-id> --workdir <dir>` (#125). The start command verifies per-file hashes before creating stores, but does not prove package installation from a clean checkout. Its workdir guard checks for an existing project child, not every pre-existing file in the requested workdir.
 
-## 2. Proposed M2 command contract
+## 2. Merged command surface and remaining acceptance contract
 
-Candidate interface (not implemented):
+Merged interface on main (#125):
 
 ```bash
 agora pilot start --fixture <fixture-id> --workdir <new-empty-directory>
