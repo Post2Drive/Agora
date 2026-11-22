@@ -1,6 +1,6 @@
 # Decision Store and Audit-Chain Reconciliation Specification
 
-**Status:** Design specification only; no queue, worker, repair command or automatic reconciliation is implemented by this document.
+**Status:** Partial implementation. PR #100 adds a read-only detector for decision lifecycle/approval transitions; the queue, independent-review and repair workflow specified below remains unimplemented. The current detector does not verify the sidecar anchor and does not cover outcome/review rows.
 
 ## 1. Problem and objective
 
@@ -59,24 +59,21 @@ Proposed append-only reconciliation queue fields:
 
 Queue transitions are append-only status events; never overwrite the detection record. Free-text notes must be bounded, access-controlled and excluded from the audit chain. Secrets and personal values are prohibited.
 
-## 5. Gap detection
+## 5. Gap detection — minimal read-only detector on main (#100)
 
-A read-only detector should:
+PR #100 adds `agora reconcile --decisions <db> --audit <db>` and `agora.reconcile.reconcile(decisions_db, audit_db)`. It opens the two SQLite files with `mode=ro`, reads `decision_records`, `decision_approval_events` and `audit_events`, and never writes to either store.
 
-1. Verify the complete audit chain before attempting reconciliation.
-2. Enumerate committed decision transition events from the decision store in deterministic order.
-3. Match each source transition to an audit-chain event using the stable correlation ID and exact decision ID/version/type/fingerprint.
-4. Classify each source transition:
-   - `matched`: exactly one matching valid audit event;
-   - `missing`: no matching event and the source contains enough immutable data to reconstruct it;
-   - `conflict`: multiple events, mismatched payload/hash, duplicate correlation ID or contradictory transition;
-   - `unreconstructable`: missing immutable source fields;
-   - `chain_invalid`: audit-chain verification fails;
-   - `source_invalid`: decision version history is broken or inconsistent.
-5. Detect orphan audit events that reference no committed source transition.
-6. Emit a deterministic gap fingerprint so repeated scans identify the same gap rather than creating duplicate queue items.
+The merged detector currently:
 
-The detector must not append to either store or modify the queue while performing the initial inventory. A separate queue writer may append detection records after the read-only scan completes.
+1. Verifies the complete audit hash chain with `verify_rows()` before classifying. An invalid chain raises `CHAIN_INVALID`; the CLI exits 2 and emits no classifications.
+2. Checks decision-record version continuity and compares each transition row's `decision_fingerprint` with the fingerprint stored for the same decision/version.
+3. Matches lifecycle audit events by decision ID and exact `version-N` in `resource_ids`, expected `decision_<transition>` event type, fingerprint and actor/subject ID.
+4. Classifies source transitions as `matched`, `missing`, `conflict` or `source_invalid`; lists orphan lifecycle audit events separately.
+5. Emits deterministic JSON findings followed by a summary. Exit codes are 0 for no detected gaps, 1 for listed gaps, and 2 when blocked by a missing/unreadable store or invalid chain.
+
+**Review limitations to close before relying on the detector as complete reconciliation:** the current source check does not compare `decision_approval_events.transition`, actor, method or timestamp with the immutable `decision_records.payload_json`; a tampered transition row can retain the record fingerprint. The read-only store-opening path also needs a regression test that closes the already-open audit connection when the decisions store is missing. The detector has no sidecar-anchor verification, stable correlation ID, queue/repair workflow, or outcome/review coverage. These are not implemented by #100.
+
+PR #100 exact-head Actions run `44963254416` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Its tests cover matching/missing/conflicting/orphan events, version/fingerprint issues, invalid chain, missing stores, read-only determinism, CLI exit codes and engine-import isolation; they do not yet cover the metadata mismatch or partial-open connection cases.
 
 ## 6. Idempotent repair protocol
 
@@ -178,11 +175,11 @@ The implementation test suite must show named tests fail if a mutation:
 ## 12. Rollout gates and non-goals
 
 1. Add immutable correlation metadata to new decision transition records; define how legacy transitions are classified when correlation data is absent.
-2. Implement a read-only detector and deterministic gap report.
+2. Implemented minimally by #100: the read-only `agora reconcile` detector verifies the hash chain and classifies decision lifecycle/approval transitions. Extend source-transition metadata validation, stable correlation and anchor verification before treating this as a complete reconciliation control.
 3. Implement the append-only queue and independent review workflow.
 4. Add idempotent repair behind explicit configuration and approval.
 5. Prove crash/retry/concurrency behaviour and run mutation tests in a clean checkout.
 6. Integrate trusted principals and independent audit anchoring before any production use.
 7. Reconcile historical gaps only through an owner-approved, evidence-preserving migration plan.
 
-This document does not implement reconciliation, alter current stores, run repairs, enable network access or external write-back, use real data or credentials, run simulations, or change `VALIDATED_PREDICTION_ENABLED` (which remains `False`).
+This document specifies the future queue/repair workflow beyond the minimal read-only detector in #100. The current command does not alter either store, run repairs, enable network access or external write-back, use real data or credentials, run simulations, or change `VALIDATED_PREDICTION_ENABLED` (which remains `False`).
