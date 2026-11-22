@@ -15,7 +15,7 @@ This plan does not implement the wiring, authorise deployment, add network acces
 
 ## 2. Verified current mainline inventory
 
-The following inventory was checked against main at `527476bb4e0450050843dd23a2aa6d5417627ded`, after #120 merged. Claude's explicit 09:05 IST log entry confirms M1. The current owner instruction approves local synthetic M2 implementation; no M2 completion or rehearsal is claimed.
+The following inventory was checked against main at `527476bb4e0450050843dd23a2aa6d5417627ded`, after #120 merged. Claude's explicit 09:05 IST log entry confirms M1. The current owner instruction approves local synthetic M2 implementation, but the 10:50 owner decision prioritises marker audit ordering, supersession scope/reason and reconcile locking before further M2 build; no M2 completion or rehearsal is claimed.
 
 ### 2.1 Audit primitives
 
