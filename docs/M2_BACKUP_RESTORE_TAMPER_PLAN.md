@@ -1,6 +1,6 @@
 # M2 Backup, Restore and Tamper Drills — Planning Specification
 
-**Status:** #120 backup/verify/restore CLI and #127 hardening are merged. #127 adds the synthetic run-record gate, symlink/unsafe-path refusal, manifest schema validation, copied chain/anchor re-verification and post-copy restored-file hashes. Exact-head Actions run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. This document remains the operator safety/drill specification; no operator tamper drill or rehearsal has been run.
+**Status:** #120 backup/verify/restore CLI and #127 hardening are merged. #127 adds the synthetic run-record gate, in-tree symlink/unsafe-path refusal, manifest schema validation, copied chain/anchor re-verification and post-copy restored-file hashes; exact-head Actions run `44994798420` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Current main is `15a92c56fdac14bb6266eec4acbd15b528d4b035` after #132 fixture/workdir hardening (exact-head CI `44997320523`, 4/4); that fixture change does not close the separate backup project/backup/target root-symlink or source-pair snapshot-lock gaps. This document remains the operator safety/drill specification; no operator tamper drill or rehearsal has been run.
 **Boundary:** M1 was confirmed by Claude's 09:05 IST log entry. Local synthetic M2 implementation is owner-approved. Temporary local synthetic stores only; no simulation, real data, credentials, connectors, write-back or protected study mutation.
 
 ## 1. Backup consistency contract
