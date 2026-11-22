@@ -238,6 +238,11 @@ class AnchoredAuditChain:
 
     def find_event(self, event_id: str) -> dict[str, Any] | None:
         with self.anchors.lock():
+            # Fail closed: an event sitting in an unanchored tail (append committed, anchor write failed)
+            # must never be reported as delivered.
+            state = verify_anchored(self.chain, self.anchors)
+            if not state["valid"]:
+                raise AnchorRequiredError(f"audit chain is not cleanly anchored: {state['status']}")
             return self.chain.find_event(event_id)
 
     def close(self) -> None:

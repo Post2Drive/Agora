@@ -85,16 +85,25 @@ def _setup(store: DecisionOutcomeStore) -> None:
 
 
 def _audit(audit: AuditAppender | None, event_type: str, actor: str, decision_id: str, version: int,
-           marker_id: str, fingerprint: str, reason: str) -> None:
+           marker_id: str, fingerprint: str, reason: str, event_id: str | None = None) -> None:
     if audit is None:
         return
     event = {
-        "event_id": f"{event_type}-{uuid.uuid4().hex}", "event_type": event_type, "subject_id": actor,
+        "event_id": event_id or f"{event_type}-{uuid.uuid4().hex}", "event_type": event_type, "subject_id": actor,
         "operation": "decision_outcome", "decision": "allow", "reason": reason,
         "resource_ids": [decision_id, f"version-{version}", marker_id], "marker_fingerprint": fingerprint,
     }
+    finder = getattr(audit, "find_event", None)
     try:
+        if event_id is not None and finder is not None:
+            found = finder(event_id)  # a crash after append but before commit left this exact event
+            if found is not None:
+                if not _same_event(found, event):
+                    raise MarkerError("audit chain holds a different event under this marker event id")
+                return
         audit.append(event)
+    except MarkerError:
+        raise
     except Exception as exc:
         raise MarkerError("marker change was not committed because its audit event could not be appended") from exc
 
@@ -414,7 +423,8 @@ def advance_marker_as(
         # Audit BEFORE commit: a failed audit append rolls the transition back, so a hold can never be
         # lifted (resolved-valid / superseded) without its durable audit event.
         _audit(audit, f"decision_marker_{new_state}", actor, marker["decision_id"], marker["decision_version"],
-               marker_id, marker["fingerprint"], disposition or marker["reason_code"])
+               marker_id, marker["fingerprint"], disposition or marker["reason_code"],
+               event_id=f"decision_marker_{new_state}-{marker_id}-{seq}")
         store.db.commit()
     except Exception:
         store.db.rollback()
