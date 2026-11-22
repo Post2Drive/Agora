@@ -100,7 +100,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 ## Process note
 
-This assessment is refreshed against main `400666bd90da5834c68bfdcb4dbc135640f99aa0`, including merged #141 and #142. Exact-head CI `45012531745` and `45013670475` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
+This assessment is refreshed against main `400666bd90da5834c68bfdcb4dbc135640f99aa0`, including merged #141, #142 and #144. Exact-head CI `45012531745`, `45013670475` and `45015043801` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. ChatGPT did not run tests or simulations. M2 remains incomplete and no rehearsal is claimed.
 
 
 Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, exact-head Actions run `44995421141` passed 4/4. It provides baseline required-field/type, synthetic-only, false engine/prediction, hash and non-empty-workdir checks. #142 adds the pilot envelope, but strict legacy/new discrimination, RFC3339/version typing, full manifest/report checks and failure-atomic publication remain open.
