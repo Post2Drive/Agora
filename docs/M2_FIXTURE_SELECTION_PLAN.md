@@ -18,7 +18,7 @@ No personal, customer, health, commercial or externally sourced data is permitte
 
 ## 2. Proposed operator UX
 
-Candidate commands (not implemented):
+Merged command surface and later UX:
 
 ```bash
 agora pilot list
@@ -42,7 +42,7 @@ Selection should be explicit and reproducible. Avoid a moving `latest` alias: a 
 
 ## 4. Acceptance evidence
 
-Tests cover catalogue determinism, stable IDs, unknown IDs, hash mismatch, missing/extra files, path traversal, symlink escape, schema mismatch, immutable source bytes and exact run-record linkage. A clean checkout must list and select a fixture without network access.
+Tests cover catalogue determinism, stable IDs, unknown IDs, hash mismatch, missing/extra files, manifest-plus-payload tampering, path traversal, symlink escape, schema/binding compatibility, immutable source bytes, pre-existing non-empty workdir refusal and exact run-record linkage. A clean checkout must install/list/select a fixture without network access.
 
 ## 5. Non-goals
 
