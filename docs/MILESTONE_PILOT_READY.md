@@ -25,7 +25,7 @@ Claude's 09:05 IST log entry explicitly confirms M1 reached on main `83d0645b983
 python -m agora.cli pilot --workdir <new-empty-dir>
 ```
 
-Claude's M1 confirmation reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`; the audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reported 747 local tests passed on the M1 confirmation SHA; ChatGPT did not execute the command or tests. Current main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`, with implementation PRs through #142 and docs PR #137 merged. #141 (`45012531745`) and #142 (`45013670475`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
+Claude's M1 confirmation reports all nine stages completed: `provision_audit`, `import`, `bind`, `decision`, `approval`, `outcome_record`, `outcome_review`, `audit_verify`, and `report`; the audit verifier returned `INTACT`, `anchored_verified`, trust level `local_sidecar`. The report was synthetic-labelled, no simulation engine was run, and `VALIDATED_PREDICTION_ENABLED=False`. Claude reported 747 local tests passed on the M1 confirmation SHA; ChatGPT did not execute the command or tests. Current main is `400666bd90da5834c68bfdcb4dbc135640f99aa0`, with implementation PRs through #144 and docs PR #137 merged. #141 (`45012531745`) and #142 (`45013670475`) exact-head CI runs passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
 
 Assessment base: `400666bd90da5834c68bfdcb4dbc135640f99aa0`.
 
@@ -192,7 +192,7 @@ Passing these gates means only that a scoped synthetic rehearsal may be consider
 
 M2 planning specifications are linked from `docs/MILESTONE_OPERATOR_PILOT.md`, including the operator runbook, command inventory, backup/tamper plan and rehearsal plan. #138's exact chain-head comparison is merged but single-read manifest validation and deterministic writer proof remain open. #139 closes B13; pilot intermediate-ancestor lstat-failure coverage remains. Full provenance/failure-atomic publication, runbook-command tests and marker/audit outbox recovery remain open. #144 clean-install/start proof is merged (head 38884bc8; exact-head CI 45015043801 passed 4/4); separately approved rehearsal remains open; no M2 completion is claimed.
 
-This assessment is refreshed against main `400666bd90da5834c68bfdcb4dbc135640f99aa0`. Exact-head CI for #141 (`45012531745`) and #142 (`45013670475`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs; earlier implementation evidence remains recorded in the merged-PR inventory. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
+This assessment is refreshed against main `400666bd90da5834c68bfdcb4dbc135640f99aa0`. Exact-head CI for #141 (`45012531745`), #142 (`45013670475`) and #144 (`45015043801`) passed all four Ubuntu/Windows × Python 3.11/3.12 jobs; earlier implementation evidence remains recorded in the merged-PR inventory. Claude's exact 09:05 entry confirms M1; ChatGPT did not execute code/tests, the pilot, backup, restore or a rehearsal. M2 remains owner-approved but incomplete.
 
 ## 7. Permanent safety boundaries
 
