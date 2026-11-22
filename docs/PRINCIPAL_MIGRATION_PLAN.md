@@ -1,7 +1,7 @@
 # Principal Migration Plan
 
 **Status:** Documentation plan only; no implementation or production-authentication approval  
-**Assessment base:** `main` at `0313eedd845ba765509216019d8b4024dd41eea2` (22 November 2026; #149 marker-open replay merged, M2 still incomplete).
+**Assessment base:** `main` at `3dbeec7fb8714eaab313d27d8e28e4bf9d9fcd3d` (22 November 2026; #151 transition-event idempotency and #152 concurrent marker replay proof merged; M2 remains incomplete).
 **Related design:** docs/IDENTITY_ADAPTER_SPEC.md (merged PR #51)
 
 ## 1. Objective and security invariant
@@ -161,7 +161,7 @@ Deprecation must not create a temporary production escape hatch. If a compatibil
 - No changes to NCC Park Square, E0_C0_D0 or any existing study folder.
 - This document is a migration plan, not permission to start any implementation stage. Each implementation slice requires its own scoped approval and draft PR.
 
-## Current migration status — main `0313eedd845ba765509216019d8b4024dd41eea2` (22 November 2026)
+## Current migration status — main `3dbeec7fb8714eaab313d27d8e28e4bf9d9fcd3d` (22 November 2026)
 
 Verified on main:
 - **#78/#79/#89/#96/#99:** protected data-boundary functions no longer accept caller-supplied `require_policy` opt-out kwargs. #97 removes the unanchored fallback when `audit=None`; #99 removes the direct helper override and validates supplied denial writers with `require_anchored()`. Role-string PDP compatibility functions remain only as internal allowlisted compatibility surfaces after #111; protected callbacks require Principal-bound `BoundPolicy` after #113. The adapter remains synthetic-only.
@@ -176,7 +176,7 @@ Verified on main:
 - **#97:** removes the legacy approval env switch and defaults direct policy enforcement from `POLICY_REQUIRED`; exact-head CI run `44958568446` passed 4/4.
 - **#99:** removes the direct `require_policy` override and requires an anchored writer for protected policy-denial events; exact-head CI run `44960946006` passed 4/4.
 - **#109:** adds pre-mutation anchored-writer guards to `propose()`, `reject()`, `expire()` and `supersede()` when `ANCHOR_REQUIRED=True`; exact-head CI run `44975437439` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs.
- - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). #119 adds read-only sidecar-anchor verification before decision reconciliation classification; #115 adds a separate API-only missing-decision-event repair. #147 adds marker-open outbox persistence, but crash-window replay still fails against the real chain's duplicate event-ID guard; transition-event recovery, concurrent delivery and legacy-row backfill remain open. Stable correlation queue and outcome/review audit reconciliation remain unimplemented. #102/#106 provide a separate read-only held-outcome list; #116 adds the first marker slice but not reconciliation.
+ - **#100/#104:** adds and hardens the read-only decision lifecycle/audit detector; #104 validates immutable source transition metadata, expected audit operation/exact resource IDs and partial-open cleanup (run `44968039923`, 4/4). #119 adds read-only sidecar-anchor verification before decision reconciliation classification; #115 adds a separate API-only missing-decision-event repair. #147 persists marker-open audit intent; #149 makes real-chain replay idempotent; #151 adds anchored-valid lookup and stable transition IDs; #152 adds the two-real-caller concurrency proof. Legacy-marker backfill and outcome/review marker-audit reconciliation remain open. #102/#106 provide a separate read-only held-outcome list; #116 adds the first marker slice but not full reconciliation.
 
 **Review coverage gap:** `tests/test_protected_defaults.py` checks the six signature defaults, but the runtime no-anchor test does not call `approve_as()` despite its name; runtime default-denial coverage for `materialize_instances()` and `build_scenario_input()` is not present in that file. The autouse fixture in `tests/conftest.py` relaxes these defaults for unmarked tests, so the protected-default marker is essential.
 
