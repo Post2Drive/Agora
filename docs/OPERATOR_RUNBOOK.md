@@ -12,7 +12,7 @@ A green CI run, a draft runbook or a component API does not authorise an operato
 
 ## 2. M2 operator capability checklist
 
-| M2 requirement | Mainline status at `776669cac7c30722726ed87813f677d6d6d89aec` | Evidence / missing item |
+| M2 requirement | Mainline status at `27269a0b939e966dc5eee72c915562e68a61ec67` | Evidence / missing item |
 |---|---|---|
 | One-command install/start | **NOT YET** | `agora pilot --workdir <new-empty-directory>` exists (#88), but it is not a one-command installer/start or clean-checkout setup workflow. |
 | Checked-in synthetic dataset | **NOT YET** | #88 embeds `SYNTHETIC_CSV`, schema and binding in `agora/pilot.py`; `fixtures/pilot.csv`, `fixtures/pilot-schema.yaml` and `fixtures/pilot-binding.yaml` remain absent on main. |
