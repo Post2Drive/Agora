@@ -55,6 +55,20 @@ Claude's logged 22 November 2026 rehearsal used a fresh `/tmp/reh` workdir and o
 
 Stop on any gate denial, unsafe path, provenance/hash mismatch, chain/anchor failure, unexpected engine import, real data, credential, connector or external write. Do not bypass a gate, repair source evidence in place or rerun a failed step by deleting its evidence.
 
+Command forms (placeholders only; each path must be a fresh path inside a synthetic project; bound to the inventory by `tests/test_runbook_commands.py`):
+
+```bash
+agora pilot list
+agora pilot start --fixture synthetic-units-v1 --workdir <fresh-workdir>
+agora audit timeline --decisions <decisions-db> --audit <audit-db> --decision-id <decision-id>
+agora audit verify --audit <audit-db> --anchor <anchor-file> --chain-id synthetic-pilot-chain
+agora reconcile --decisions <decisions-db> --audit <audit-db> --anchor <anchor-file> --chain-id synthetic-pilot-chain
+agora outcomes held --decisions <decisions-db>
+agora backup --project <synthetic-project> --dest <new-backup-dir>
+agora backup verify --backup <backup-dir>
+agora restore --backup <backup-dir> --target <new-target-dir>
+```
+
 ## 5. Mandatory stop conditions
 
 Stop immediately on a missing/invalid Principal, wrong tenant/project, missing required policy, missing/invalid anchor, chain mismatch, non-exact import ID, provenance mismatch, unexpected source read before policy denial, real/personal/sensitive data, credentials, network access, write-back, a simulation/engine call, an unlabelled exploratory output or any attempt to modify a protected study.
