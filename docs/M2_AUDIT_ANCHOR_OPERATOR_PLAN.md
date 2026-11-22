@@ -1,7 +1,7 @@
 # M2 Plain-Language Audit and Anchor Verification — Planning Specification
 
 **Status:** Planning only; no new command or operator rehearsal is implemented here.
-**Current merged components:** `agora audit timeline` and `agora audit verify` (#107); read-only decision detector plus sidecar-anchor check `agora reconcile` (#100/#104/#119); API-only missing-event repair (#115).
+**Current merged components:** `agora audit timeline` and `agora audit verify` (#107); read-only decision detector plus sidecar-anchor check `agora reconcile` (#100/#104/#119); API-only missing-event repair (#115); and shared anchor locking across reconcile verification/classification (#122).
 **Current limitation:** #115's missing-decision-event repair is merged as a Python API only; it is not a CLI and does not cover outcome/review rows.
 
 ## 1. Operator-facing outcome
@@ -41,7 +41,7 @@ Do not expose event payloads, personal values, free-text notes, secrets or crede
 
 #115 is merged as `agora.reconcile_repair.apply_repairs(decisions_db, audit, *, principal, project_id, expected_audit_head)`. It requires an approver Principal, anchored writer, clean anchor and exact audit head; it repairs missing decision audit events only. It has no CLI. Conflicts, invalid sources, orphan events, broken chains and unanchored tails block. Outcome/review reconciliation is separate.
 
-Review note: #119 currently verifies the anchor, closes that SQLite connection, then opens a separate connection for classification. A concurrent append between these phases could invalidate the earlier anchor verdict; require a shared anchor lock or consistent snapshot before claiming concurrent-writer safety.
+Review note: #122 closes the original verify/classify TOCTOU by holding the same `AnchorStore.lock()` across both phases. The lock helper opens the sidecar with `a+b`, so a missing `.lock` file may be created during an otherwise read-only reconcile call; clarify whether that metadata side effect is permitted or preserve strict no-filesystem-write semantics. The concurrency test uses a fixed `time.sleep(0.5)` rather than a deterministic handshake proving the writer reached the lock attempt; strengthen the test so removing the lock reliably fails.
 
 ## 5. Acceptance evidence
 
