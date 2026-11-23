@@ -213,13 +213,15 @@ def verify_run_record_seal(project: str | Path) -> None:
     project = Path(project)
     raw = (project / RUN_RECORD_NAME).read_bytes()
     rec = json.loads(raw.decode("utf-8"))
+    if not isinstance(rec, dict) or not isinstance(rec.get("run_id"), str) or not rec["run_id"].strip():
+        raise ValueError("run record has no valid run_id")
     chain, anchor = project / "audit" / "chain.sqlite3", project / "audit_anchor" / "anchor.jsonl"
     v = verify_anchored_readonly(chain, anchor, CHAIN_ID)
     if not v.get("valid"):
         raise ValueError(f"run record seal unverifiable: audit {v.get('status')}")
     db = sqlite3.connect(f"file:{chain.resolve().as_posix()}?mode=ro", uri=True)
     try:
-        row = db.execute("SELECT event_json FROM audit_events WHERE event_id=?", (_seal_id(str(rec.get("run_id"))),)).fetchone()
+        row = db.execute("SELECT event_json FROM audit_events WHERE event_id=?", (_seal_id(rec["run_id"]),)).fetchone()
     finally:
         db.close()
     if row is None:
