@@ -8,7 +8,7 @@
 
 Publisher source commit: `4c1ff5e3aef1816ae04af63218015066e186c147`. Licence: CC BY 4.0, stated in the upstream [`LICENSE`](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/LICENSE). The per-file manifest and import notes are on the private PR branch `data/import-fivethirtyeight-polls-2026-11-23`, head `b06b29cb2071f048f0c234f65c1014ea4677d33d`; PR #5 is still draft and unmerged.
 
-The exact 4,679-byte `DATASET_MANIFEST.csv` has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, computed over its committed bytes and recorded in the private import README.
+The exact 4,679-byte `DATASET_MANIFEST.csv` has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, computed over its committed bytes and recorded in the private import README. Claude's STEP 5 report states that all 12 committed CSVs and Windows checked-out files matched the pinned publisher byte counts and SHA-256 values. ChatGPT inspected the manifest and import README through GitHub metadata only; it did not fetch raw CSV bytes or independently reproduce that verification. This is a partial FiveThirtyEight sub-manifest, not the complete all-package manifest.
 
 | Package | Path (exact in private repository) | Bytes | SHA-256 | Source commit/release | Licence | Source URL |
 |---|---|---:|---|---|---|---|
