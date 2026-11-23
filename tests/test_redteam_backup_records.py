@@ -313,3 +313,71 @@ def test_rt05b_unknown_status_on_unsealed_stopped_record_is_refused(tmp_path):
     p.write_text(json.dumps(rec), encoding="utf-8")
     _regen_manifest(bk)
     _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+# ---- RT05c residual cases (ChatGPT 14:02 finding): unsealed removal, status+run_id downgrade, bad IDs ----
+def _stopped_backup(tmp_path):
+    from agora.pilot import default_identities
+    ids = default_identities(NOW)
+    ids["operator"]["roles"] = ["reader"]
+    run_pilot(tmp_path / "run", now=NOW, identities=ids)
+    bk = tmp_path / "bk"
+    backup(tmp_path / "run" / PROJECT_ID, bk)
+    return bk
+
+
+def test_rt05c_unsealed_stopped_backup_with_record_removed_and_manifest_regenerated_is_refused(tmp_path):
+    bk = _stopped_backup(tmp_path)
+    (bk / "data" / "run_record.json").unlink()
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+@pytest.mark.parametrize("status", ["denied", "failed"])
+def test_rt05c_completed_downgraded_with_new_run_id_is_refused(project, tmp_path, status):
+    bk = tmp_path / "bk"
+    backup(project, bk)
+    p = bk / "data" / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["status"], rec["run_id"] = status, "f" * 32
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+@pytest.mark.parametrize("bad", [None, "", "   ", 7, ["x"], True])
+def test_rt05c_missing_empty_or_non_string_run_id_is_refused(project, tmp_path, bad):
+    bk = tmp_path / "bk"
+    backup(project, bk)
+    p = bk / "data" / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["status"] = "denied"
+    if bad is None:
+        rec.pop("run_id")
+    else:
+        rec["run_id"] = bad
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+@pytest.mark.parametrize("bad", [None, "", 7, ["x"]])
+def test_rt05c_stopped_record_bad_run_id_is_refused(tmp_path, bad):
+    bk = _stopped_backup(tmp_path)
+    p = bk / "data" / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    if bad is None:
+        rec.pop("run_id")
+    else:
+        rec["run_id"] = bad
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+def test_rt05c_controls_genuine_completed_and_stopped_still_round_trip(project, tmp_path):
+    bk = tmp_path / "bk1"
+    backup(project, bk)
+    assert restore(bk, tmp_path / "r1")["restored_to"]
+    bk2 = _stopped_backup(tmp_path / "s")
+    assert restore(bk2, tmp_path / "r2")["restored_to"]
