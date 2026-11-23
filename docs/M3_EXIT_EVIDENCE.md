@@ -32,7 +32,7 @@ For #171–#173, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed
 
 These are not waived by merged PRs or green CI:
 
-1. **Original/projected scenario hash semantics:** preserve the original `scenario.yaml` hash as `base_scenario_hash` before replacing `self.sc`; store the effective post-projection value as `projected_scenario_hash`. Add tests proving each value and resume mismatch behaviour.
+1. **Original/projected scenario hash semantics (merged in #178, CI `45113858688` 4/4):** preserved the original `scenario.yaml` hash as `base_scenario_hash` before replacing `self.sc`; store the effective post-projection value as `projected_scenario_hash`. Add tests proving each value and resume mismatch behaviour.
 2. **Policy authorization boundary:** the CLI currently calls `_governed_policy()`, which returns `None`; the policy-required builder therefore denies before opening snapshot bytes. Do not weaken this. Decide whether a narrowly scoped synthetic Principal is acceptable for local public-dataset validation or a production identity adapter is required. Any adapter must produce a Principal-bound, scoped, expiring capability and prove policy denial precedes source reads.
 3. **Direct engine constructor:** a self-consistent package/hash is not itself proof of a successful policy decision. Prove direct `Simulation(..., governed_input=...)` cannot bypass the policy-built input boundary, or explicitly constrain it to a trusted capability that cannot be forged by arbitrary callers. Include a mutation proof.
 4. **Provenance/report completeness:** verify manifest, projection, mapping, instances, original/projected scenario hashes and report/export fields agree. Keep append-once semantics and ensure `--force` cannot alter the envelope.

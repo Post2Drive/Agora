@@ -37,7 +37,7 @@ under a versioned `input_provenance` record:
 
 The engine calls its provenance guard from `Simulation.prepare()` before population creation. The stored envelope is append-once in the run store's `meta.input_provenance` key. Its outer shape is `provenance_version`, `scenario_hash`, `input_manifest`, and `manifest_hash`; `Store.get_input_provenance()` recomputes the manifest hash and checks that the outer and inner scenario hashes agree. The input manifest also carries the projection record (`mapping_hash`, `instances_hash`, `projection_hash`, and declared assumptions) and the effective scenario hash currently stored under the key `base_scenario_hash`.
 
-`manifest_hash` is the canonical hash of `input_manifest`; it is not a substitute for the source `scenario_hash`. The current `base_scenario_hash` name is semantically ambiguous: the reviewed engine sequence replaces `self.sc` with the projected scenario before `_guard_provenance()` computes the value stored under this key. It therefore appears to identify the effective projected scenario, not the original `scenario.yaml`. Preserve the original hash before projection and store it as `base_scenario_hash`; store the post-projection hash separately as `projected_scenario_hash`. Tests must pin both values and prove that a mapping/row change changes the projected hash while the original base hash remains stable.
+`manifest_hash` is the canonical hash of `input_manifest`; it is not a substitute for the source `scenario_hash`. Since #178 (merged, CI run `45113858688` 4/4): `base_scenario_hash` is the hash of `scenario.yaml` taken before projection; `projected_scenario_hash` binds that base hash to `projection_hash` (rows, mapping, segments). Tests pin both values, show a mapping/row change moves only the projected hash, and a changed-input resume is refused with the envelope byte-identical.
 
 ## 3. Immutability and consistency
 
@@ -97,7 +97,7 @@ Merged implementation evidence and remaining verification:
 - #172 tests exact import selection, missing input files, refusal of `latest`, refusal of `--force`, and the current no-identity-adapter policy denial; the denial leaves the run without provenance and without a population.
 - #173 tests that changing even an unmapped row property changes `instances_hash` and `projection_hash`, while row reordering leaves the order-independent row hash unchanged.
 - Exact-head Ubuntu/Windows × Python 3.11/3.12 CI passed 4/4 for each of #171, #172 and #173.
-- Still required: resolve the `base_scenario_hash` naming/meaning mismatch; close the direct-constructor policy trust boundary so a caller cannot supply a self-consistent but policy-unapproved package; decide whether a bounded synthetic Principal is acceptable for local public-dataset validation or whether a production identity adapter is required; complete the owner-supplied dataset register; and obtain explicit owner approval to freeze the validation protocol before any validation run.
+- Still required: close the direct-constructor policy trust boundary so a caller cannot supply a self-consistent but policy-unapproved package; decide whether a bounded synthetic Principal is acceptable for local public-dataset validation or whether a production identity adapter is required; complete the owner-supplied dataset register; and obtain explicit owner approval to freeze the validation protocol before any validation run.
 
 The original verification objectives remain applicable:
 
