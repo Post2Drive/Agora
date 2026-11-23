@@ -6,6 +6,8 @@
 
 | Package | Path (exact relative path + original filename) | Bytes | SHA-256 (64 lowercase hex) | Source commit or release (full immutable identifier) | Licence (exact licence/version or competition terms) |
 |---|---|---:|---|---|---|
+| E — FiveThirtyEight polls (2020 historical series; exact source revision to pin) | `polls/president_polls_historical.csv` |  |  | FiveThirtyEight/data full commit to pin; current import snapshot `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 |
+| E — FiveThirtyEight polls (2020 general-election averages; publisher URL path to pin) | `<exact publisher path for presidential_poll_averages_2020.csv>` |  |  | FiveThirtyEight 2020 general-data release to pin | CC BY 4.0 |
 | E — FiveThirtyEight polls | `polls/old_model/2024_presidential_primary_averages_old_model.csv` |  |  | FiveThirtyEight/data `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 |
 | E — FiveThirtyEight polls | `polls/old_model/donald_trump_favorability_old_model.csv` |  |  | FiveThirtyEight/data `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 |
 | E — FiveThirtyEight polls | `polls/old_model/generic_ballot_averages_old_model.csv` |  |  | FiveThirtyEight/data `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 |
