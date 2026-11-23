@@ -72,7 +72,7 @@ The owner-approved domains are election results and polls, retail sales (M5 Walm
 
 - Poll averages: state/geography, date, candidate, published average and source-defined margin/trend fields actually present. Do not expect poll ID, pollster or sample-size fields in this averages series; do not infer individual-poll records.
 - Results: election year, state/state code, county ID/FIPS, candidate, party, candidate votes, total votes, `mode` and dataset version. Mode rule: use the `TOTAL` row where present; otherwise sum the available mode rows. Never sum a `TOTAL` row with component modes. Claude reports 2024 contains both `TOTAL` and mode rows, so naïve summation double-counts; 2024 is outside the selected 2000–2016 window.
-- Exclude pollster free-text notes, respondent-level data if encountered, personal data, any post-election field and fields calculated using future results.
+- Exclude free-text notes if present, respondent-level data if encountered, personal data, any post-election field and fields calculated using future results.
 - Aggregate county returns to state-level two-party vote share using a deterministic documented grouping; independently reconcile aggregate totals to source totals. Exclude territories and any state/office/contest that cannot be matched unambiguously.
 
 **Time split**
