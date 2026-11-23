@@ -1,7 +1,8 @@
 # Run Provenance for Scenario Inputs — Rung 4
 
-**Status:** Normative contract. #142 implements the pilot `input_provenance` envelope and core read-time hash/import/role checks; #161 adds failure-atomic run-record publication (temp file, flush/fsync, exclusive hard-link publish and cleanup; exact-head CI `45051090990`, 4/4). Claude confirmed M2 reached at 23:43 IST on 22 November 2026. Remaining spec-hardening: reject float `provenance_version=1.0`, require timezone-aware RFC3339, cross-check envelope/manifest timestamps and include dataset/schema, binding, ontology, transformation-policy, data-role and source-hash fields in reports/exports. This document does not edit `agora/sim/**`, run the simulation engine, launch simulations or enable validated prediction.
-No simulation-engine integration, run launch or validated-prediction enablement is included in this specification.
+**Status:** Normative contract; M3 governed-input implementation slices 4.1–4.4 are merged on main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026). #171 adds the opt-in `Simulation(..., governed_input=...)` engine path; #172 adds `agora run --governed-input` with exact import ID and fail-closed policy handling; #173 binds instance rows into `projection_hash` with an order-independent `instances_hash`. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). M2 pilot provenance (#142) and atomic run-record publication (#161) remain part of the compatibility baseline.
+
+The governed path is implemented but is not yet usable through the production CLI: `_governed_policy()` currently returns `None` because no production identity adapter exists, and the policy-required scenario-input builder denies the request before opening the snapshot. No validation dataset has been run. `VALIDATED_PREDICTION_ENABLED` remains `False`; this specification does not authorize a simulation or validation run.
 
 ## 1. Purpose and boundary
 
@@ -32,9 +33,9 @@ under a versioned `input_provenance` record:
 }
 ```
 
-The envelope is written before the first round is committed and is included in
-run exports and report provenance. `manifest_hash` is the canonical hash of
-`input_manifest`; it is not a substitute for the exact `scenario_hash`.
+The engine calls its provenance guard from `Simulation.prepare()` before population creation. The stored envelope is append-once in the run store's `meta.input_provenance` key. Its outer shape is `provenance_version`, `scenario_hash`, `input_manifest`, and `manifest_hash`; `Store.get_input_provenance()` recomputes the manifest hash and checks that the outer and inner scenario hashes agree. The input manifest also carries the projection record (`mapping_hash`, `instances_hash`, `projection_hash`, and declared assumptions) and the effective scenario hash currently stored under the key `base_scenario_hash`.
+
+`manifest_hash` is the canonical hash of `input_manifest`; it is not a substitute for the source `scenario_hash`. The current `base_scenario_hash` name is semantically ambiguous: engine code computes it after replacing the base scenario's segments with the projected segments. The implementation should either preserve and store the original base-scenario hash under that name, or rename the current value to `projected_scenario_hash`, with tests pinning the distinction.
 
 ## 3. Immutability and consistency
 
@@ -52,11 +53,7 @@ run exports and report provenance. `manifest_hash` is the canonical hash of
 
 ## 4. Resume safety
 
-Resume is permitted only when the newly computed scenario hash equals the
-stored run record's `scenario_hash`, and the stored input manifest passes the
-same canonical-hash and binding checks. A changed snapshot, schema, binding,
-ontology pack, transformation policy, scenario parameter, or application input
-therefore blocks resume with a safe mismatch diagnostic.
+For a governed run, `Simulation.prepare()` invokes `_guard_provenance()` before any population write. On an initial run it appends the envelope; on an initialized run it first requires a verified existing envelope and then attempts the same append-once write, which succeeds only for an identical envelope. The engine re-verifies the package and projection before this check. A changed import, manifest, mapping, instance rows, projected scenario or other manifest field therefore refuses resume without replacing the original envelope. `--force` is refused by the CLI for governed input and cannot bypass the engine guard. Legacy runs without a verified envelope cannot be upgraded through this path.
 
 The existing engine rule that a changed scenario requires a new run remains in
 force. `--force` must not overwrite or mutate the old provenance envelope; if a
@@ -92,7 +89,15 @@ invent a scenario hash or reconstruct an input manifest from `latest`.
 
 ## 7. Verification plan
 
-Future implementation tests must prove:
+Merged implementation evidence and remaining verification:
+
+- #171 tests the governed engine path with synthetic packages and a mock backend, including append-once provenance, changed-input refusal, legacy-run refusal and `--force` resistance; the default ungoverned path remains separate.
+- #172 tests exact import selection, missing input files, refusal of `latest`, refusal of `--force`, and the current no-identity-adapter policy denial; the denial leaves the run without provenance and without a population.
+- #173 tests that changing even an unmapped row property changes `instances_hash` and `projection_hash`, while row reordering leaves the order-independent row hash unchanged.
+- Exact-head Ubuntu/Windows × Python 3.11/3.12 CI passed 4/4 for each of #171, #172 and #173.
+- Still required: resolve the `base_scenario_hash` naming/meaning mismatch; provide an approved production identity/policy adapter without weakening fail-closed behaviour; complete the owner-supplied dataset register and freeze the validation protocol before any validation run.
+
+The original verification objectives remain applicable:
 
 1. the exact manifest and scenario hash are persisted before a run starts;
 2. tampering with the manifest or hash is rejected;
@@ -105,5 +110,4 @@ Future implementation tests must prove:
 7. no personal or sensitive raw value is copied into provenance metadata; and
 8. validated-prediction mode remains disabled until separately approved.
 
-No implementation, simulation, calibration, backtest, forecast, network call,
-credential use, or write-back is included in this specification.
+No dataset validation, calibration, backtest, forecast, network call, credential use, or write-back is authorized by this specification. Keep all outputs labelled exploratory and simulated; keep `VALIDATED_PREDICTION_ENABLED=False`.
