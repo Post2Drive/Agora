@@ -68,3 +68,16 @@ As ChatGPT's list (12 gates) with this narrowed scope: exact-head CI 4/4, full s
 **Owner decision recorded:** at 05:54 IST on 23 November 2026, the owner approved editing `agora/sim/engine.py` only, per this design. That scope was implemented in #171. Any additional path under `agora/sim/**` requires a new written owner approval naming the exact path and design revision.
 
 **Still blocked:** no validation run until the production identity/policy adapter is available and fail-closed, the validation protocol is explicitly approved and frozen in a merged documentation commit, and the owner supplies the benchmark files with licence/version/hash records. No dataset or simulation run is authorized by this design. `VALIDATED_PREDICTION_ENABLED` remains `False`.
+
+
+## 9. Post-merge review findings and current operator boundary
+
+The merged slices establish a governed-input implementation path, but they do not yet establish an operator-usable approved path:
+
+- The CLI's `_governed_policy()` currently returns `None`; the policy-required scenario-input builder therefore denies before opening snapshot bytes. Do not inject a permissive callback or bypass this gate.
+- Review the direct `Simulation(..., governed_input=...)` constructor as a trust boundary. The engine verifies package hash consistency and projection integrity, but a caller-supplied package's internal hashes alone do not prove that `build_scenario_input()` completed a successful Principal-bound policy decision. Require a non-forgeable, scoped authorization/capability or make the trusted construction boundary explicit and enforceable. Add a mutation test that bypassing the policy-built path is denied.
+- Preserve the original `scenario.yaml` hash before replacing `self.sc` with the projected scenario. Store that original value as `base_scenario_hash` and the effective projected scenario hash as `projected_scenario_hash`; pin both in tests and ensure resume rejects changes without rewriting the append-once envelope.
+- The CLI form is `agora run PROJECT --governed-input IMPORT_ID --binding FILE --pack FILE --mapping FILE`. It is not currently an executable operator workflow because the production policy source denies. Do not run the legacy `agora run PROJECT` path as a substitute for governed benchmark input.
+- The owner has not authorized any dataset simulation or validation run. The validation protocol remains draft; keep `VALIDATED_PREDICTION_ENABLED=False`.
+
+These are completion gates, not permission for ChatGPT to edit source. Any additional path under `agora/sim/**` requires a separate written owner approval naming the exact path.
