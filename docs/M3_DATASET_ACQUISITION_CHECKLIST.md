@@ -1,12 +1,12 @@
 # M3 Dataset Acquisition Checklist
 
-**Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
+**Purpose:** track Package E and Package A under frozen protocol v0.2. Claude reports the first Package E calibration process exited silently without outputs; a tracked background task was restarted from frozen commit `3fc4bc4f9b06e90b4602169de4cc13534a403ca0`. No completed result or output inventory/hash is recorded. Package A is predeclared NOT EVALUABLE and Package R/M5 is dropped. This checklist does not authorize additional data, runs or imports; the 15-row manifest remains hash-only and unchanged.
 
 ## FiveThirtyEight polls handoff — 23 November 2026 (P2D PR #5 branch inventory)
 
 The private `Post2Drive/Post2Drive` main remains `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5) is still **open, draft and unmerged** at branch commit `b06b29cb2071f048f0c234f65c1014ea4677d33d` on `data/import-fivethirtyeight-polls-2026-11-23`. The PR now contains 12 CSVs (94,181,506 bytes) and `validation-data/elections/fivethirtyeight-polls/DATASET_MANIFEST.csv` with one per-file SHA-256 row for each CSV. The pinned source is FiveThirtyEight/data commit `4c1ff5e3aef1816ae04af63218015066e186c147`; the import README identifies CC BY 4.0, includes the upstream licence text, and has a package-scoped `.gitattributes` rule to preserve CSV bytes on Windows checkouts.
 
-The manifest's Git blob identifier is `308dfbd4fec4de36ffe1bda9dd3d15ec88870f8b`; this is a Git object ID, **not** the manifest file's SHA-256. The exact 4,679-byte manifest file has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, recorded in the private import README. Claude's STEP 5 report states that all 12 committed CSV byte counts and SHA-256 values matched the pinned publisher tree and that all 12 Windows checked-out files matched as well. ChatGPT's connector review inspected the PR metadata, manifest and import README only; it did not fetch raw CSV bytes or independently reproduce Claude's checks. The PR remains unmerged, so these files are not in P2D main or Agora main (`4a0607f8946e32ef828b47183099ead4f8ae2bd7`).
+The manifest's Git blob identifier is `308dfbd4fec4de36ffe1bda9dd3d15ec88870f8b`; this is a Git object ID, **not** the manifest file's SHA-256. The exact 4,679-byte manifest file has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, recorded in the private import README. Claude's STEP 5 report states that all 12 committed CSV byte counts and SHA-256 values matched the pinned publisher tree and that all 12 Windows checked-out files matched as well. ChatGPT's connector review inspected the PR metadata, manifest and import README only; it did not fetch raw CSV bytes or independently reproduce Claude's checks. The PR remains unmerged, so these files are not in P2D main or Agora main (`2730903234196e9b38914ccb0fcab2de4e6c16ca`).
 
 | Relative path under `validation-data/elections/fivethirtyeight-polls/` | Bytes | Per-file SHA-256 in PR #5 manifest |
 |---|---:|---|
@@ -25,23 +25,26 @@ The manifest's Git blob identifier is `308dfbd4fec4de36ffe1bda9dd3d15ec88870f8b`
 
 The 2024 general-average file is explicitly **uncorrected** and must not be described or used as the corrected 2024 averages. The 12-row manifest does not establish corrected-2024 or 2020 polling coverage, owner approval for use, or permission to run a benchmark. Claude's STEP 5 source review reports that `polls/pres_pollaverages_1968-2016.csv` contains FiveThirtyEight's daily state-level published averages, not individual poll records or sample sizes; usable elections in that file are 2000, 2004, 2008, 2012 and 2016, with 50–57 areas each from 1 October to Election Day. The draft default baseline is the latest publisher average for the same state/office dated on or before each cutoff, with previous-election state-margin persistence reported separately. Do not compute a sample-size-weighted 28-day mean from this averages file. The individual-poll alternative (`president_polls_historical.csv`) was not checked; use it only if the owner explicitly asks Claude to try the live links, then record the result and amend/version the draft protocol before freeze. Keep the source commit, path, byte count, per-file SHA-256 and CC BY 4.0 licence tied to each row.
 
-## Remaining package acquisition gates — 23 November 2026 (updated after Claude's mirror check)
+## Current package acquisition and custody status — 23 November 2026
 
-- **FiveThirtyEight polls:** all 12 CSVs and their per-file manifest are staged on open/draft/unmerged P2D PR #5 at `b06b29cb2071f048f0c234f65c1014ea4677d33d`. Claude's STEP 5 report states that source and committed-destination byte counts/SHA-256 values match for all 12 files and that the Windows checked-out files match after CSV line-ending conversion was disabled. The manifest file itself is 4,679 bytes with SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`. ChatGPT did not fetch raw CSV bytes or independently reproduce those checks. The PR must be merged or otherwise owner-accepted before use. Its 2024 general-average file is uncorrected; corrected 2024 and 2020 coverage are not established by these 12 rows.
-- **MEDSL Version 20.0:** the owner explicitly approved the exact mirror `mathis-group/cas-201-data-project` at commit `1358bc6047f0c22989d37fa64ac03ee755bd17e7`, file `data/medsl/countypres_2000-2024.csv` (10,222,208 bytes). Claude reports SHA-256 `9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8`, 94,151 data rows, Version 20.0, and CC0 1.0 dataset licence; the mirror repo's MIT licence applies to code only. The exact codebook and data README are present at the pinned commit. The raw CSV is in Claude's session workspace only, not P2D or Agora. ChatGPT inspected repository tree, README and codebook metadata, not raw CSV bytes; it did not independently reproduce the hash. No Dataverse guestbook response was submitted.
-- **M5 Walmart / Rossmann:** no retail files are present. M5 is now the only remaining owner download/terms decision: acquire the exact Kaggle bundle after personal competition-terms review, or explicitly drop retail from this benchmark. Rossmann was not selected and is not an automatic substitute.
-- **Ember monthly EV:** the owner explicitly approved the exact mirror `Awes0mer/fuel-cars-pollution` at commit `2c21f1edced7aae884314ebc28c89ab212f30563`, file `data/raw/ember_ev_monthly/monthly_ev_sales.csv` (7,695,642 bytes). Claude reports SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`, 46,799 rows, monthly and quarterly, 2005-01 to 2026-10, 59 countries; India has 729 rows from 2020-01 to 2026-09 across BEV, PHEV and total drivetrains. Label it **16-Nov-2026 snapshot**, not the 18-Nov update. Use monthly rows only and exclude quarterly rows. Data licence is CC BY 4.0 per the mirror manifest/README; the mirror repo's MIT licence applies to code only. The raw CSV is in Claude's session workspace only, not P2D or Agora. ChatGPT inspected repository tree, README and manifest metadata, not raw CSV bytes; it did not independently reproduce the hash.
-- **Manifest gate:** P2D PR #5 contains only the 12 FiveThirtyEight CSVs and its 4,679-byte manifest file SHA-256 is recorded above. Claude reports the MEDSL and Ember mirror hashes above verified, but both raw files remain in Claude's workspace only and are not staged in P2D. The complete all-package manifest cannot be frozen until the owner decides M5 vs drop-retail and the selected files are committed to the owner-controlled private repository.
+- **FiveThirtyEight polls:** all 12 CSVs (94,181,506 bytes) remain on open/draft/unmerged Post2Drive PR #5 at `b06b29cb2071f048f0c234f65c1014ea4677d33d`; the 4,679-byte sub-manifest SHA-256 is `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`. Claude reports source, PR-branch and Windows checkout bytes/hashes match; ChatGPT has not fetched/re-hashed the raw CSVs. PR #5 contains no MEDSL or Ember raw files.
+- **MEDSL V20.0:** the owner-approved mirror is `mathis-group/cas-201-data-project@1358bc6047f0c22989d37fa64ac03ee755bd17e7`, `data/medsl/countypres_2000-2024.csv`, 10,222,208 bytes, Claude-reported SHA-256 `9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8`, CC0 1.0. Use TOTAL mode where present; otherwise sum modes, never both.
+- **Ember:** the owner-approved 16-Nov-2026 mirror is `Awes0mer/fuel-cars-pollution@2c21f1edced7aae884314ebc28c89ab212f30563`, `data/raw/ember_ev_monthly/monthly_ev_sales.csv`, 7,695,642 bytes, Claude-reported SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`, CC BY 4.0; monthly rows only.
+- Claude's 23-Nov 22:40 report says all 15 manifest files were re-fetched from their pinned commits and matched the recorded bytes and SHA-256. This is Claude-reported verification; ChatGPT did not independently fetch or re-hash MEDSL/Ember raw files. The MEDSL/Ember files remain absent from P2D PR #5, whose changed-file list is still only the 12 FiveThirtyEight CSVs plus import support.
+- Agora's `docs/VALIDATION_DATASET_MANIFEST.csv` is a 15-row hash-only register with SHA-256 `59b39b96c83085fee2b3d4e150d242389f9536417ff2ab8d728c5336bfbf3fdf`; active E/A rows are `PLANNED - NOT EXECUTED`. This documentation manifest is not a substitute for committing the raw selected files and their per-file manifest to the owner-controlled private data repository.
+- **Package R/M5:** dropped by the owner on 23 November 2026. No Kaggle acquisition, no Rossmann substitute, no retail claim; this is not a remaining acquisition decision.
 
-Claude's STEP 5 report states that the 12 FiveThirtyEight CSVs were verified against the pinned source and committed P2D PR #5 branch, including Windows checkout bytes. A later Claude entry reports the owner-approved MEDSL and Ember mirror files fetched and SHA-256 verified in Claude's workspace only; neither was committed to P2D or Agora. ChatGPT inspected only public repository trees, README/codebook and manifest metadata, not raw CSV bytes, and did not independently reproduce those hashes. No raw dataset was downloaded by ChatGPT, no data was imported, and no simulation or validation was run.
+Package E is the only active run scope; Package A is predeclared NOT EVALUABLE and Package R/M5 is dropped. No raw benchmark file has been committed to Agora. Claude's 23:20 IST log reports the first calibration process exited silently with no output and no labels beyond training 2000/2004/2008; a tracked background task was restarted from frozen v0.2 commit `3fc4bc4f9b06e90b4602169de4cc13534a403ca0` at approximately 17:43 UTC. No completed result, output inventory/hash or held-out-label release is recorded.
+
+
 
 ## Important distinction
 
-There are **three benchmark packages, not three individual files**:
+There are **two active benchmark packages, not three individual files**:
 
-- Package E is a paired election benchmark with polling and election-return sources.
-- Package R is a multi-file M5 retail bundle.
-- Package A is an Ember monthly EV dataset.
+- Package E is a paired election benchmark with FiveThirtyEight polling averages and MEDSL election returns.
+- Package A is an Ember monthly EV dataset, predeclared NOT EVALUABLE under v0.2.
+- Package R/M5 was explicitly dropped by the owner; retail is untested and no Rossmann substitute is selected.
 
 Keep original source filenames and archive structure until the source release, licence and SHA-256 values have been recorded. Do not commit raw benchmark data or derived label files to this repository.
 
@@ -63,35 +66,17 @@ Keep original source filenames and archive structure until the source release, l
 - [x] Record the original MEDSL Dataverse citation, Version 20.0 and CC0 1.0 dataset licence. The mirror repository's MIT licence is for code only; it does not replace the dataset's CC0 licence.
 - [ ] Commit the approved MEDSL mirror file, codebook and required attribution/manifest row to the owner-controlled private repository. Keep polling and returns as separate source assets; do not combine or aggregate them before the preregistered transformations are frozen.
 
-## Package R — M5 Walmart retail sales
+## Package R — M5 Walmart retail sales (DROPPED)
 
-**Download location:** [Official M5 Forecasting — Accuracy data page](https://www.kaggle.com/c/m5-forecasting-accuracy/data). Review the competition rules before download/use.
-
-**Expected fields to verify:**
-
-- `sales_train_validation.csv`: item, department, category, store, state identifiers and daily unit-sales columns `d_1...`.
-- `calendar.csv`: day ID, date, weekday, week, month, year, event name/type and SNAP indicators.
-- `sell_prices.csv`: store, item, week and sell price.
-- If retaining the protocol's reserved `d_1914`–`d_1941` window, include and pin `sales_train_evaluation.csv`; those days are not present in `sales_train_validation.csv`. Do not expose the reserve labels to scenario/model selection.
-- Do not include submission-only identifiers or any target-window label as a feature. Verify exact headers and day/date mapping before freeze.
-
-- [ ] Review the official M5 competition rules and licence/terms at https://www.kaggle.com/c/m5-forecasting-accuracy/data **before acquisition or use**. The protocol records the data as “Subject to Competition Rules”; do not assume unrestricted use or redistribution.
-- [ ] If permitted for the intended evaluation, download the original files needed by the protocol, including `calendar.csv`, `sales_train_validation.csv` and `sell_prices.csv`.
-- [ ] Preserve the source archive and original filenames. Do not commit raw data, hidden labels, submission files or derived copies to Git.
-- [ ] Record the applicable rules/version, account/access conditions, source release, access date, citation and SHA-256 for every file.
-- [ ] If the competition terms do not clearly permit the intended use, stop and request an owner-approved replacement; do not substitute Rossmann automatically.
+The owner explicitly dropped Package R/M5 on 23 November 2026. Do not acquire M5, do not substitute Rossmann, and do not include retail in the evaluation scope. Retail is untested. This section is retained only to document the excluded package; no acquisition checklist applies.
 
 ## Package A — Ember Monthly EV Sales
 
-**Download location:** [Ember Monthly EV Sales Data and methodology] (source file: 16-Nov-2026 snapshot, not the 18-Nov update) and owner-approved [GitHub mirror at pinned commit](https://github.com/Awes0mer/fuel-cars-pollution/tree/2c21f1edced7aae884314ebc28c89ab212f30563/data/raw/ember_ev_monthly).
+**Status under v0.2:** predeclared **NOT EVALUABLE**. The run specification records that no deterministic, defensible mapping exists from AGORA counted actions to monthly EV registrations without fitting an invented conversion rule on the same series. Do not run an Ember simulation or make a predictive claim for Package A under the current protocol. The 2024–2025 held-out labels remain sealed; no label release is required for a package already declared not evaluable.
 
-**Expected fields to verify:** area, ISO 3 code, area type, date, frequency, drivetrain, aggregate-drivetrain flag, registrations, registrations YoY change and percentage, share of registrations, year-to-date registrations/share, rolling 12-month registrations/share. These are semantic field expectations; preserve the exact source headers and methodology version. Keep country/economy monthly rows separate from regional aggregates and quarterly observations.
+**Source and mirror:** owner-approved 16-Nov-2026 snapshot at `Awes0mer/fuel-cars-pollution@2c21f1edced7aae884314ebc28c89ab212f30563`, `data/raw/ember_ev_monthly/monthly_ev_sales.csv`; 7,695,642 bytes, Claude-reported SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`, CC BY 4.0. Monthly rows only; quarterly rows excluded. Claude reports re-verification against the pinned commit in the 23-Nov 22:40 pre-run check. ChatGPT did not independently fetch or re-hash this raw file. The file is not included in P2D PR #5.
 
-- [x] Owner approved the exact Ember mirror commit `2c21f1edced7aae884314ebc28c89ab212f30563` and file `data/raw/ember_ev_monthly/monthly_ev_sales.csv`; Claude reports 7,695,642 bytes and SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`. This is the 16-Nov-2026 snapshot, not the 18-Nov update. The file remains in Claude's workspace only and must still be committed to the owner-controlled private repository.
-- [x] Record the 16-Nov-2026 snapshot date, source URL and CC BY 4.0 licence. The mirror repository's MIT licence is for code only; it does not replace the dataset licence.
-- [ ] Commit the approved Ember CSV and per-file manifest row to the owner-controlled private repository; preserve CC BY 4.0 attribution and underlying-country-source notes.
-- [ ] Keep monthly rows distinct from quarterly rows; do not interpolate or combine them.
-- [ ] Record a SHA-256 for each downloaded CSV and keep the exact release together.
+
 
 ## Per-file evidence register
 
@@ -115,7 +100,7 @@ For every file, record:
 
 ## Required SHA-256 manifest (hard acquisition gate)
 
-Before any dataset import, the owner-controlled private data repository must contain a committed machine-readable manifest (CSV or JSON) with one row/object for **every** selected source file and at least: package, relative_path, original_filename, bytes, sha256, source_url, source_commit, publisher_release, licence_and_version, access_date and citation. P2D PR #5 stages a 12-row FiveThirtyEight `DATASET_MANIFEST.csv` on an unmerged branch; Claude reports source/destination byte and SHA-256 verification complete, and the 4,679-byte manifest file's own SHA-256 is `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`. P2D PR #5's sub-manifest covers only the 12 FiveThirtyEight CSVs. The MEDSL and Ember mirror rows below are owner-approved and Claude-reported hash-verified, but the raw files remain in Claude's workspace only; M5 is still undecided. Preserve per-file verification for every later transfer; do not substitute Git blob IDs, MD5 values or archive hashes for raw-file SHA-256. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. No validation is authorized by this checklist.
+Before any dataset import, the owner-controlled private data repository must contain a committed machine-readable manifest (CSV or JSON) with one row/object for every selected source file and at least: package, relative_path, original_filename, bytes, sha256, source_url, source_commit, publisher_release, licence_and_version, access_date and citation. Agora's 15-row `docs/VALIDATION_DATASET_MANIFEST.csv` is a hash-only register (SHA-256 `59b39b96c83085fee2b3d4e150d242389f9536417ff2ab8d728c5336bfbf3fdf`), not the private raw-file handoff. P2D PR #5 stages only the 12 FiveThirtyEight CSVs and its separate 12-row sub-manifest; MEDSL and Ember raw files are not in that PR. Claude reports all 15 selected manifest files re-fetched from pinned commits with matching byte counts and SHA-256, but ChatGPT has not independently reproduced the MEDSL/Ember checks. Package R/M5 is dropped. Preserve per-file verification for every later transfer; do not substitute Git blob IDs, MD5 values or archive hashes for raw-file SHA-256. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. No validation is authorized by this checklist.
 
 ### Additional owner-approved mirror rows (Claude workspace only; not staged)
 
@@ -142,14 +127,15 @@ Claude reports the 12 FiveThirtyEight rows verified against the pinned source an
 
 ## Handoff and stop conditions
 
-1. Keep the source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
-2. The current FiveThirtyEight handoff is 12 CSVs plus a per-file SHA-256 manifest on open/draft/unmerged P2D PR #5 at `b06b29cb2071f048f0c234f65c1014ea4677d33d`; the files remain absent from P2D main and Agora main. The per-file checks and manifest SHA-256 are recorded above.
-3. M5 is the only remaining owner download/terms decision: acquire the exact Kaggle bundle after personal competition-terms review, or explicitly drop retail. The approved MEDSL and Ember mirror files must be committed with their hashes and licences to the owner-controlled private repository before the all-package manifest is complete.
-4. The owner named ChatGPT as a separate-process evaluator, but the evaluator's restricted scope, output custody and label-release boundary are not established. Establish the restricted custody path before freeze.
-5. The owner approved B=2000, bootstrap RNG seed 20261123, percentile interval, one preregistered seed per configuration, and LLM temperature 0 with cache on. These are owner-approved design values, effective only after they are merged into `VALIDATION_PROTOCOL.md` and the owner supplies a complete freeze sentence naming the actual manifest SHA. The received sentence used literal `<sha>` and is not effective.
-6. The owner confirmed the synthetic-fixture Principal is acceptable for local public-data validation only; production CLI remains blocked/default-deny.
-7. The owner's one-run approval is received but dormant. Do not use any dataset in a simulation or validation run until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
-8. Keep `VALIDATED_PREDICTION_ENABLED=False`; this checklist authorizes no acquisition, import, simulation, validation or write-back.
+1. Keep raw source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
+2. P2D PR #5 remains open/draft/unmerged at `b06b29cb2071f048f0c234f65c1014ea4677d33d`; its 18 paths contain 12 FiveThirtyEight CSVs plus import support only. MEDSL and Ember are not included.
+3. Package R/M5 is dropped and is not a blocker. The remaining custody task is to stage the approved MEDSL and Ember raw files, codebook/attribution and a complete per-file manifest in the owner-controlled private repository, with source/destination byte and SHA-256 equality.
+PR #211 has merged the test-evaluate output-seal check ahead of MEDSL hashing/loading (exact head `1d90528de82d2a08f24ad38cf6c7c5c7bdd15eb0`, merge `2730903234196e9b38914ccb0fcab2de4e6c16ca`, exact-head CI `45229437458` passed 4/4). The merged test covers a wrong-seal negative only. A missing-seal negative and valid-seal positive control, with mutation proofs, remain required before any 2016 label release. No held-out labels before output freeze and independent output-integrity review.
+5. Protocol v0.2 is frozen at `3fc4bc4f9b06e90b4602169de4cc13534a403ca0` under the owner's conditional pre-approval. The only addition to v0.1 is `docs/VALIDATION_RUN_SPEC.md` (SHA-256 `ca87e4f47f39b1112e4ef808e949a49b1c87720f5e6576032acbba8723b5987b`); v0.1 protocol file SHA-256 `b776948e14d6dc5c72262b3572365ebc0288fd632bc0bb13743d96fe7d8fea66` and manifest SHA-256 `59b39b96c83085fee2b3d4e150d242389f9536417ff2ab8d728c5336bfbf3fdf` are unchanged. Claude reports exact-head and merge-commit CI 4/4.
+The 2016 held-out labels remain closed until the output inventory is logged and independently hash-checked, the #211 seal-order correction is supplemented by missing-seal negative and valid-seal positive-control tests with exact-head CI 4/4, and the separate label handoff is recorded.
+7. `VALIDATED_PREDICTION_ENABLED=False` remains unchanged. No flag change, extra data, rerun, retail test or use of real/personal data is authorized.
+
+
 
 ## Personal-data and data-minimisation gate
 
@@ -162,5 +148,5 @@ Before hashing/import handoff, inspect the exact headers and a small, controlled
 - [ ] Any unexpected personal/sensitive field causes a stop and owner review; do not upload it to ChatGPT, GitHub or Notion.
 - [ ] Retain only source metadata, schema/header allow-list, licence evidence, file size and SHA-256 in the dataset register.
 
-**Important M5 split note:** the current protocol's `d_1914`–`d_1941` reserve requires `sales_train_evaluation.csv`. The owner/operator must reconcile this with the exact Kaggle files and competition terms before freezing the protocol.
+**Retail scope note:** Package R/M5 is dropped by the owner. No Kaggle files are to be acquired and no retail benchmark is included in the current validation scope.
 
