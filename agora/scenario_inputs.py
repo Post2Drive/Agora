@@ -139,6 +139,7 @@ def build_scenario_input(
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
     project = Path(project)
+    receipt_resource: dict[str, Any] = {}
     if policy is not None or _protection.POLICY_REQUIRED:
         try:
             policy_binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
@@ -150,12 +151,7 @@ def build_scenario_input(
                  ) for property_id in policy_binding.column_map.values()),
                 key=lambda value: sensitivity_rank[value],
             )
-            enforce_policy(
-                policy,
-                audit=audit,
-                project=project,
-                operation="simulation_input",
-                resource={
+            receipt_resource = {
                     "project_id": project.name or str(project),
                     "resource_ids": [import_id, policy_binding.binding_id],
                     "import_id": import_id,
@@ -166,8 +162,9 @@ def build_scenario_input(
                     "target_sensitivity": source_sensitivity,
                     "purpose": transformation_policy.get("purpose") if isinstance(transformation_policy, Mapping) else None,
                     "retention": transformation_policy.get("retention") if isinstance(transformation_policy, Mapping) else None,
-                },
-            )
+            }
+            enforce_policy(policy, audit=audit, project=project, operation="simulation_input",
+                           resource=receipt_resource)
         except PolicyEnforcementError as exc:
             raise ScenarioInputError("Policy denied scenario-input construction.") from exc
         except (OntologyError, ValueError) as exc:
@@ -219,7 +216,7 @@ def build_scenario_input(
         "run_provenance_reference": f"scenario:{scenario_hash}",
         "redactions": redactions,
     }
-    return {
+    package = {
         "manifest": manifest,
         "scenario_hash": scenario_hash,
         "import_id": import_id,
@@ -227,6 +224,15 @@ def build_scenario_input(
         "run_record": {"import_id": import_id, "scenario_hash": scenario_hash, "input_manifest": manifest},
         "validated_prediction_enabled": False,
     }
+    from .principal import IdentityError, is_principal_bound, mint_simulation_receipt
+    if is_principal_bound(policy):  # receipt only after a Principal-bound allow for this exact package
+        try:
+            package["authorization_receipt"] = mint_simulation_receipt(
+                policy, resource=receipt_resource, manifest_hash=manifest_hash(manifest),
+                scenario_hash=scenario_hash)
+        except IdentityError as exc:
+            raise ScenarioInputError("Policy denied scenario-input construction.") from exc
+    return package
 
 
 __all__ = ["ScenarioInputError", "build_scenario_input", "manifest_hash", "recompute_scenario_hash"]

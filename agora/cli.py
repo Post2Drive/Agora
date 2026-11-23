@@ -110,7 +110,8 @@ def _governed_input(args, proj: Path):
     pack = parse_domain_pack(_load_doc(args.pack))
     mapping = _load_doc(args.mapping)
     package = build_scenario_input(binding, pack, proj, args.governed_input, policy=_governed_policy())
-    return {"package": package, "mapping": mapping}
+    receipt = package.pop("authorization_receipt", None)  # minted only after a Principal-bound allow
+    return {"package": package, "mapping": mapping, "receipt": receipt}
 
 
 def cmd_run(args) -> int:
