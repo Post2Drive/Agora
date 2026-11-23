@@ -4,9 +4,9 @@
 
 ## FiveThirtyEight polls handoff — 23 November 2026 (P2D PR #5 branch inventory)
 
-The private `Post2Drive/Post2Drive` main remains `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5) is still **open, draft and unmerged** at branch commit `17702622a7876e6c446ca87001983fe123662f42` on `data/import-fivethirtyeight-polls-2026-11-23`. The PR now contains 12 CSVs (94,181,506 bytes reported in the PR and import README) and `validation-data/elections/fivethirtyeight-polls/DATASET_MANIFEST.csv` with one per-file SHA-256 row for each CSV. The pinned source is FiveThirtyEight/data commit `4c1ff5e3aef1816ae04af63218015066e186c147`; the import README identifies CC BY 4.0 and includes the upstream licence text.
+The private `Post2Drive/Post2Drive` main remains `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5) is still **open, draft and unmerged** at branch commit `b06b29cb2071f048f0c234f65c1014ea4677d33d` on `data/import-fivethirtyeight-polls-2026-11-23`. The PR now contains 12 CSVs (94,181,506 bytes) and `validation-data/elections/fivethirtyeight-polls/DATASET_MANIFEST.csv` with one per-file SHA-256 row for each CSV. The pinned source is FiveThirtyEight/data commit `4c1ff5e3aef1816ae04af63218015066e186c147`; the import README identifies CC BY 4.0, includes the upstream licence text, and has a package-scoped `.gitattributes` rule to preserve CSV bytes on Windows checkouts.
 
-The manifest's Git blob identifier is `308dfbd4fec4de36ffe1bda9dd3d15ec88870f8b`; this is a Git object ID, **not** the manifest file's SHA-256. The manifest's own SHA-256 is not recorded in the repository. ChatGPT inspected only the manifest and import README metadata; no raw CSV bytes were downloaded or independently hash-verified. The PR remains unmerged, so these files are not in P2D main or Agora main (`4a0607f8946e32ef828b47183099ead4f8ae2bd7`).
+The manifest's Git blob identifier is `308dfbd4fec4de36ffe1bda9dd3d15ec88870f8b`; this is a Git object ID, **not** the manifest file's SHA-256. The exact 4,679-byte manifest file has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, recorded in the private import README. This session verified all 12 CSVs' committed bytes, sizes and SHA-256 values against the pinned publisher tree; all matched. The PR remains unmerged, so these files are not in P2D main or Agora main (`4a0607f8946e32ef828b47183099ead4f8ae2bd7`).
 
 | Relative path under `validation-data/elections/fivethirtyeight-polls/` | Bytes | Per-file SHA-256 in PR #5 manifest |
 |---|---:|---|
@@ -27,13 +27,13 @@ The 2024 general-average file is explicitly **uncorrected** and must not be desc
 
 ## Remaining package acquisition gates — 23 November 2026
 
-- **FiveThirtyEight polls:** all 12 CSVs and their per-file manifest are now staged on open/draft/unmerged P2D PR #5 at `17702622a7876e6c446ca87001983fe123662f42`. The manifest is metadata evidence, not independent ChatGPT verification of raw bytes. The PR must be merged or otherwise owner-accepted, and source/destination SHA-256 and byte counts must be checked before use. Its 2024 general-average file is uncorrected; corrected 2024 coverage and 2020 coverage are not established by these 12 rows.
-- **MEDSL Version 20.0:** no CSV or codebook is present in either target repository. PR #5 says Harvard Dataverse requires a guestbook response; no response was submitted. Do not submit one without the owner's response. The third-party candidate remains unapproved.
+- **FiveThirtyEight polls:** all 12 CSVs and their per-file manifest are staged on open/draft/unmerged P2D PR #5 at `b06b29cb2071f048f0c234f65c1014ea4677d33d`. This session verified source blob IDs, exact committed sizes and SHA-256 values for all 12 files, then confirmed the Windows checked-out bytes match after disabling CSV line-ending conversion. The PR must be merged or otherwise owner-accepted before use. Its 2024 general-average file is uncorrected; corrected 2024 coverage and 2020 coverage are not established by these 12 rows.
+- **MEDSL Version 20.0:** no CSV or codebook is present in either target repository. This session's official Harvard Dataverse download attempt returned a required guestbook response; none was submitted. Do not submit one without the owner's response. The third-party candidate remains unapproved.
 - **M5 Walmart / Rossmann:** no retail files are present. M5 remains blocked on the owner's personal Kaggle competition-terms review; Rossmann was not selected.
 - **Ember monthly EV:** no official Ember file is staged. The older third-party 16-Nov snapshot is not a substitute for the newer official source and remains unapproved.
-- **Manifest gate:** the PR #5 manifest covers only the 12 FiveThirtyEight CSVs. The manifest file's own SHA-256 is not recorded, and a complete manifest for the election-return, retail and adoption packages does not exist. No third-party mirror is approved by inclusion in this checklist.
+- **Manifest gate:** the PR #5 manifest covers only the 12 FiveThirtyEight CSVs, and its own SHA-256 is recorded above. A complete manifest for the election-return, retail and adoption packages does not exist. No third-party mirror is approved by inclusion in this checklist.
 
-ChatGPT read only `DATASET_MANIFEST.csv` and `IMPORT-README.md` from the PR branch. No raw benchmark CSV bytes were downloaded, read, hashed or imported by ChatGPT. No dataset, simulation or validation run is authorized.
+This session downloaded the four previously outstanding poll CSVs from the pinned FiveThirtyEight commit, verified SHA-256 and byte counts for all 12 poll files, and committed the manifest and import notes to the private PR #5 branch. The MEDSL download was stopped at the guestbook requirement; no Ember or M5 file was acquired. No simulation or validation run was performed or authorized.
 
 ## Important distinction
 
@@ -138,17 +138,17 @@ Before any dataset import, the owner-controlled private data repository must con
 |  |  |  |  |  |  |
 |  |  |  |  |  |  |
 
-For all 12 FiveThirtyEight files now listed in P2D PR #5, Claude/owner should compare the manifest's SHA-256 and byte count with the exact source and committed destination bytes before accepting the package. Use `Get-FileHash -LiteralPath <exact path> -Algorithm SHA256` and `Get-Item -LiteralPath <exact path> | Select-Object FullName,Length` locally for each row. ChatGPT did not run these commands or inspect raw CSV bytes. Add separate rows for every owner-approved MEDSL, retail and Ember file; do not put Git blob IDs or the MEDSL candidate MD5 in the SHA-256 column.
+The active session verified the 12 FiveThirtyEight rows against the exact source and committed destination bytes. Claude/owner may independently recheck before accepting the package using `Get-FileHash -LiteralPath <exact path> -Algorithm SHA256` and `Get-Item -LiteralPath <exact path> | Select-Object FullName,Length`. Add separate rows for every owner-approved MEDSL, retail and Ember file; do not put Git blob IDs or the MEDSL candidate MD5 in the SHA-256 column.
 
 ## Handoff and stop conditions
 
 1. Keep the source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
-2. The current FiveThirtyEight handoff is 12 CSVs plus a per-file SHA-256 manifest on open/draft/unmerged P2D PR #5 at `17702622a7876e6c446ca87001983fe123662f42`; the files remain absent from P2D main and Agora main. ChatGPT inspected manifest metadata only, not raw CSV bytes. The manifest file's own SHA-256 is not recorded.
+2. The current FiveThirtyEight handoff is 12 CSVs plus a per-file SHA-256 manifest on open/draft/unmerged P2D PR #5 at `b06b29cb2071f048f0c234f65c1014ea4677d33d`; the files remain absent from P2D main and Agora main. The per-file checks and manifest SHA-256 are recorded above.
 3. Supply the exact election-return, retail and adoption files, immutable source releases, byte sizes, SHA-256 values and licence evidence. M5 remains blocked on the owner's Kaggle terms review.
 4. The owner named ChatGPT as a separate-process evaluator, but the evaluator's restricted scope, output custody and label-release boundary are not established. Establish the restricted custody path before freeze.
 5. The owner approved B=2000, bootstrap RNG seed 20261123, percentile interval, one preregistered seed per configuration, and LLM temperature 0 with cache on. These are owner-approved design values, effective only after they are merged into `VALIDATION_PROTOCOL.md` and the owner supplies a complete freeze sentence naming the actual manifest SHA. The received sentence used literal `<sha>` and is not effective.
 6. The owner confirmed the synthetic-fixture Principal is acceptable for local public-data validation only; production CLI remains blocked/default-deny.
-7. The owner's one-run approval is received but dormant. Do not import or run any dataset until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
+7. The owner's one-run approval is received but dormant. Do not use any dataset in a simulation or validation run until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
 8. Keep `VALIDATED_PREDICTION_ENABLED=False`; this checklist authorizes no acquisition, import, simulation, validation or write-back.
 
 ## Personal-data and data-minimisation gate
@@ -163,3 +163,4 @@ Before hashing/import handoff, inspect the exact headers and a small, controlled
 - [ ] Retain only source metadata, schema/header allow-list, licence evidence, file size and SHA-256 in the dataset register.
 
 **Important M5 split note:** the current protocol's `d_1914`–`d_1941` reserve requires `sales_train_evaluation.csv`. The owner/operator must reconcile this with the exact Kaggle files and competition terms before freezing the protocol.
+
