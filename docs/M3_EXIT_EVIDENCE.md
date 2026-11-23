@@ -1,10 +1,10 @@
 # M3 Exit Evidence — Claude Milestone Declaration Checklist
 
-**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation; the latest Claude round is 16:16 IST. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
+**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, M3 has not been declared reached. The owner's 23 November run approval is recorded below as received, dormant; no freeze approval has been given, no run has occurred, and only Claude's explicit collaboration-log entry may declare M3 reached.
 
 **Post-#192/#194 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes verification/restore record findings. #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge commit `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes source-side strict-record preflight before destination creation/copy and re-checks copied bytes. #191 docs merged at exact head `02a88463529559009adec76c052be94621aa557e`, merge `705fe5cfa157b36fd75c93a141afe39255c08b65`, run `45148838308`, 4/4. #194 is the latest docs-only merge at exact head `5ae9bd643d41a00ad5b959a265a489fc18e0e3c1`, merge/current main `5cba6dcabce9047cdadf524f1a1ecee39dbd95b1`, run `45157828392`, 4/4 (seven paths all under `docs/**`). Path-based SQLite reopen (TOCTOU) remains owner-gated.
 
-**Assessment base:** main `5cba6dcabce9047cdadf524f1a1ecee39dbd95b1` (23 November 2026; latest docs-only merge #194; latest code merge #192).
+**Assessment base:** main `e29ee4b1428fbc27458b547cc8c68bd4833c6ff2` (23 November 2026; latest docs-only merge #195 at exact head `fedab29c7d1e5b3d67e252d73bb97c9ae37acf93`, exact-head CI `45160887328` passed 4/4; latest code merge #192 at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, exact-head CI `45150068645` passed 4/4).
 
 ## 1. Merged implementation slices
 
