@@ -23,7 +23,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from agora.audit_anchor import AnchorStore, bootstrap_anchor, open_anchored_audit, verify_anchored_readonly
+from agora.audit_anchor import (AnchorStore, bootstrap_anchor, open_anchored_audit, verify_anchored_on_conn,
+                                verify_anchored_readonly)
+from agora.pathsafe import UnsafePathError, open_ro_snapshot
 from agora.audit_chain import AuditChainStore
 from agora.decisions.approval import approve_as, propose
 from agora.decisions.outcomes import DecisionOutcomeStore, record_outcome_as, review_outcome_as
@@ -216,11 +218,14 @@ def verify_run_record_seal(project: str | Path) -> None:
     if not isinstance(rec, dict) or not isinstance(rec.get("run_id"), str) or not rec["run_id"].strip():
         raise ValueError("run record has no valid run_id")
     chain, anchor = project / "audit" / "chain.sqlite3", project / "audit_anchor" / "anchor.jsonl"
-    v = verify_anchored_readonly(chain, anchor, CHAIN_ID)
-    if not v.get("valid"):
-        raise ValueError(f"run record seal unverifiable: audit {v.get('status')}")
-    db = sqlite3.connect(f"file:{chain.resolve().as_posix()}?mode=ro", uri=True)
     try:
+        db = open_ro_snapshot(chain)  # ONE held-descriptor snapshot serves both the verdict and the lookup
+    except (UnsafePathError, OSError, sqlite3.Error):
+        raise ValueError("run record seal unverifiable: audit store_unreadable") from None
+    try:
+        v = verify_anchored_on_conn(db, anchor, CHAIN_ID)
+        if not v.get("valid"):
+            raise ValueError(f"run record seal unverifiable: audit {v.get('status')}")
         row = db.execute("SELECT event_json FROM audit_events WHERE event_id=?", (_seal_id(rec["run_id"]),)).fetchone()
     finally:
         db.close()
@@ -235,7 +240,10 @@ def chain_has_seal_event(project: str | Path) -> bool:
     """True if the project's audit chain holds any run_record_sealed event. Read-only; raises on a bad chain."""
     import sqlite3
     chain = Path(project) / "audit" / "chain.sqlite3"
-    db = sqlite3.connect(f"file:{chain.resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        db = open_ro_snapshot(chain)
+    except (UnsafePathError, OSError, sqlite3.Error):
+        raise ValueError("audit chain unreadable") from None
     try:
         for (ej,) in db.execute("SELECT event_json FROM audit_events"):
             if json.loads(ej).get("event_type") == SEAL_EVENT:

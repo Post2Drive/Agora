@@ -39,3 +39,63 @@ def require_safe_path(p: str | os.PathLike[str]) -> Path:
 
 def open_flags(base: int) -> int:
     return base | getattr(os, "O_NOFOLLOW", 0)
+
+
+_RACE_HOOK = None  # test seam: called after the bytes are read, before the identity re-check
+
+
+def _ident(st: os.stat_result) -> tuple[int, int, int, int]:
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def read_stable_bytes(p: str | os.PathLike[str]) -> bytes:
+    """Read a regular file through ONE held descriptor and prove the path still names that file.
+
+    Fails closed (UnsafePathError) if the path is a link/reparse point, is not a regular file, changed
+    while being read (size/mtime/inode), or no longer resolves to the descriptor's file afterwards
+    (concurrent path replacement). Nothing is ever re-opened by path after the check."""
+    path = require_safe_path(p)
+    try:
+        fd = os.open(path, open_flags(os.O_RDONLY | getattr(os, "O_BINARY", 0)))
+    except OSError:
+        raise UnsafePathError("could not open path for a held-descriptor read") from None
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise UnsafePathError("not a regular file")
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        if _RACE_HOOK is not None:
+            _RACE_HOOK(path)
+        after = os.fstat(fd)
+        try:
+            named = os.lstat(path)
+        except OSError:
+            raise UnsafePathError("path changed while reading") from None
+        if stat.S_ISLNK(named.st_mode) or _ident(before) != _ident(after):
+            raise UnsafePathError("file changed while reading")
+        if (named.st_dev, named.st_ino) != (before.st_dev, before.st_ino):
+            raise UnsafePathError("path now names a different file")
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def open_ro_snapshot(p: str | os.PathLike[str]):
+    """Read-only in-memory SQLite connection over bytes read from a held descriptor (no path reopen)."""
+    import sqlite3
+    data = read_stable_bytes(p)
+    if not hasattr(sqlite3.Connection, "deserialize"):  # Python < 3.11: refuse rather than reopen by path
+        raise UnsafePathError("handle-based SQLite open needs Python 3.11+")
+    db = sqlite3.connect(":memory:")
+    try:
+        db.deserialize(data)
+        db.execute("PRAGMA query_only=ON")
+    except Exception:
+        db.close()
+        raise
+    return db

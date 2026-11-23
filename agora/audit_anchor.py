@@ -209,32 +209,33 @@ class _ReadOnlyChain:
         return {"valid": True, "entries": len(rows), "last_hash": previous}
 
 
+def verify_anchored_on_conn(db: Any, anchor_path: str | Path, chain_id: str) -> dict[str, Any]:
+    """verify_anchored() over an already-open read-only snapshot connection (no path access to the chain)."""
+    import sqlite3
+    try:
+        anchors = AnchorStore(anchor_path, chain_id)
+    except AnchorError as exc:
+        return {"valid": False, "status": "anchor_invalid", "trust_level": TRUST_LEVEL, "reason": str(exc)}
+    try:
+        return verify_anchored(_ReadOnlyChain(db), anchors)  # type: ignore[arg-type]
+    except sqlite3.Error:
+        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
+
+
 def verify_anchored_readonly(audit_db: str | Path, anchor_path: str | Path, chain_id: str) -> dict[str, Any]:
-    """verify_anchored() over a read-only connection: no bootstrap, no writes, no repair.
+    """verify_anchored() over a read-only snapshot taken through ONE held descriptor: no bootstrap, no
+    writes, no repair, no reopen by path (concurrent path replacement is detected, fail closed).
 
     Open/read failures return status ``store_unreadable`` (never raises for those).
     """
     import sqlite3
-    path = Path(audit_db)
+    from .pathsafe import open_ro_snapshot
     try:
-        require_safe_path(path)
-    except UnsafePathError:
-        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
-    if not path.is_file():
+        db = open_ro_snapshot(Path(audit_db))
+    except (UnsafePathError, OSError, sqlite3.Error):
         return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
     try:
-        db = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
-    try:
-        try:
-            anchors = AnchorStore(anchor_path, chain_id)
-        except AnchorError as exc:
-            return {"valid": False, "status": "anchor_invalid", "trust_level": TRUST_LEVEL, "reason": str(exc)}
-        try:
-            return verify_anchored(_ReadOnlyChain(db), anchors)  # type: ignore[arg-type]
-        except sqlite3.Error:
-            return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
+        return verify_anchored_on_conn(db, anchor_path, chain_id)
     finally:
         db.close()
 
