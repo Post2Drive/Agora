@@ -2,9 +2,9 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Post-#188 correction (Claude review):** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge/main `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes the three residual backup findings (record always required, stopped record needs seal-free chain, strict run_id). Path-based SQLite reopen (TOCTOU) remains the documented owner-gated boundary. #189 is the latest code merge; main is `757da519`.
+**Post-#189/#190 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes the three residual backup-record findings (mandatory record, status-plus-run-ID downgrade, strict non-empty string ID). #190 merged the current documentation sync at exact head `8ddaac083086859c001de52f936b213f337533ec`, merge/main `f46d6eeeedc5bbb7a9deb26e023cff0932aab0d2`, run `45145085244`, 4/4. Path-based SQLite reopen (TOCTOU) remains owner-gated. A separate source-side backup preflight follow-up is recorded in `RUNG_STATUS.md`.
 
-**Assessment base:** main `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1` (23 November 2026; latest main includes documentation sync #188; latest code merge remains #186).
+**Assessment base:** main `f46d6eeeedc5bbb7a9deb26e023cff0932aab0d2` (23 November 2026; latest docs-only merge #190; latest code merge #189).
 
 ## 1. Merged implementation slices
 
@@ -25,9 +25,10 @@ For #171–#173 and #178, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all 
 
 **Subsequent mainline security and documentation evidence — 23 November 2026:**
 - Track A PR #183 merged at exact head `0f870e22aad3d2496a5da872c21c5871106e262d`; exact-head CI `45126668732` passed 4/4. It adds static symlink/reparse-point refusal for audit chain, anchor and lock paths. This does not prove resistance to concurrent path replacement; that TOCTOU boundary remains conditional on the owner's threat-model decision.
-- Backup RT05b PR #186 merged at exact head `b50e1e3f6386e6762de83c08023721d7882a720e`; exact-head CI `45137276771` passed 4/4. It tightens run-record/seal consistency. The independent review recorded in `RUNG_STATUS.md` still identifies residual unsealed-record/status-and-ID cases and path-based SQLite reopen risk; do not treat #186 as closing those findings.
+- Backup RT05b PR #186 introduced the run-record/seal checks (exact head `b50e1e3f6386e6762de83c08023721d7882a720e`, run `45137276771`, 4/4). Follow-up RT05c PR #189 merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, exact-head CI `45141079904` passed 4/4. It closes missing-record, status-plus-run-ID downgrade and malformed-ID cases for backup verification/restore. The separate source-side preflight gap and owner-gated path-based SQLite reopen boundary remain; see `RUNG_STATUS.md`.
 - Dataset download guide and M3 documentation/exit checklist were included in ChatGPT docs PR #174, merged at exact head `e231961494a849d092c45a9a9377855fe30f188b` (merge commit `aeb9ab08046268674ef7c848f78ad17fb2002738`); exact-head CI `45107961493` passed 4/4. Ten changed paths were all under `docs/**`.
-- Follow-up ChatGPT docs PR #188 merged at exact head `3704728a9623365c7c7e2dd7b736cd2d53fcd175` (merge commit/current main `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1`); exact-head CI `45138934878` passed 4/4. Five changed paths were all under `docs/**`, syncing the M3 design, provenance, rung status, validation protocol and dataset checklist.
+- Follow-up ChatGPT docs PR #188 merged at exact head `3704728a9623365c7c7e2dd7b736cd2d53fcd175` (merge `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1`); exact-head CI `45138934878` passed 4/4. Five changed paths were all under `docs/**`.
+- Latest ChatGPT docs PR #190 merged at exact head `8ddaac083086859c001de52f936b213f337533ec` (merge/current main `f46d6eeeedc5bbb7a9deb26e023cff0932aab0d2`); exact-head CI `45145085244` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Four changed paths were exclusively under `docs/**`; it refreshed the M3 design/exit evidence/status and changed the owner handoff to a separate private GitHub repository.
 
 These supporting security, metrics and documentation merges do not resolve the production identity/policy boundary, do not freeze the validation protocol, and do not authorize dataset acquisition/use or a simulation/validation run.
 
