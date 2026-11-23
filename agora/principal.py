@@ -193,5 +193,85 @@ def principal_policy(
                        trusted_issuers=trusted_issuers)
 
 
-__all__ = ["principal_policy", "BoundPolicy", "is_principal_bound", "Assurance",
+class _MintKey:
+    """Module-private capability: only code in this module can hold the single instance."""
+    __slots__ = ()
+
+
+_MINT = _MintKey()
+_SCOPE_FIELDS = ("project_id", "import_id", "binding_id", "manifest_hash", "scenario_hash")
+
+
+class AuthorizationReceipt:
+    """Opaque proof that a Principal-bound policy ALLOWED one exact simulation input.
+
+    Minted only by mint_simulation_receipt() after an allow decision; bound to the principal's issuer,
+    subject, role and expiry and to the exact project, import, binding, manifest and scenario hash.
+    Not constructible, copyable or picklable by callers; a plain mapping is never accepted as proof."""
+
+    __slots__ = ("_token", "issuer", "subject_id", "role", "expires_at", "project_id", "import_id",
+                 "binding_id", "manifest_hash", "scenario_hash")
+
+    def __init__(self, token: object, **fields: Any) -> None:
+        if token is not _MINT:
+            raise IdentityError("authorization receipts can only be minted from an allow decision")
+        object.__setattr__(self, "_token", token)
+        for name, value in fields.items():
+            object.__setattr__(self, name, value)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("receipt is immutable")
+
+    def __reduce__(self):  # blocks pickle, copy.copy and copy.deepcopy
+        raise TypeError("authorization receipts cannot be copied or serialised")
+
+
+def _str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def mint_simulation_receipt(policy: Any, *, resource: Mapping[str, Any], manifest_hash: str,
+                            scenario_hash: str, now: datetime | None = None) -> AuthorizationReceipt:
+    """Mint a receipt only for an exact BoundPolicy whose decision for this exact resource is allow.
+
+    resource is the same simulation_input resource the policy decides on (project_id, import_id, binding_id,
+    sensitivity, purpose, retention); the receipt binds its project, import and binding plus the hashes."""
+    if not is_principal_bound(policy) or policy.principal is None:
+        raise IdentityError("a receipt needs a Principal-bound policy")
+    if not isinstance(resource, Mapping):
+        raise IdentityError("resource must be a mapping")
+    scope = {"project_id": resource.get("project_id"), "import_id": resource.get("import_id"),
+             "binding_id": resource.get("binding_id"), "manifest_hash": manifest_hash,
+             "scenario_hash": scenario_hash}
+    if not all(_str(v) for v in scope.values()):
+        raise IdentityError("receipt scope fields must be non-empty strings")
+    principal = policy.principal
+    decision, role = decide_principal(
+        principal, "simulation_input", resource, now=policy._now,
+        required_role=policy._required_role, trusted_issuers=policy._trusted_issuers)
+    if decision.get("decision") != "allow" or role is None:
+        raise IdentityError("policy did not allow this simulation input")
+    return AuthorizationReceipt(_MINT, issuer=principal.issuer, subject_id=principal.subject_id, role=role,
+                                expires_at=principal.expires_at, **scope)
+
+
+def verify_simulation_receipt(receipt: Any, *, now: datetime | None = None,
+                              trusted_issuers: frozenset[str] = frozenset({SyntheticFixtureAdapter.ISSUER}),
+                              **expected: str) -> AuthorizationReceipt:
+    """Fail closed (IdentityError) unless receipt is a genuine, unexpired, trusted, exactly-scoped receipt."""
+    if type(receipt) is not AuthorizationReceipt or getattr(receipt, "_token", None) is not _MINT:
+        raise IdentityError("authorization receipt missing or not genuine")
+    if set(expected) != set(_SCOPE_FIELDS):
+        raise IdentityError("receipt verification needs the full scope")
+    if _utc(now or datetime.now(timezone.utc), "now") >= receipt.expires_at:
+        raise IdentityError("authorization receipt expired")
+    if receipt.issuer not in trusted_issuers:
+        raise IdentityError("authorization receipt issuer untrusted")
+    for name in _SCOPE_FIELDS:
+        if not _str(expected[name]) or getattr(receipt, name) != expected[name]:
+            raise IdentityError(f"authorization receipt scope mismatch: {name}")
+    return receipt
+
+
+__all__ = ["AuthorizationReceipt", "mint_simulation_receipt", "verify_simulation_receipt", "principal_policy", "BoundPolicy", "is_principal_bound", "Assurance",
            "IdentityError", "Principal", "SyntheticFixtureAdapter", "decide_principal"]

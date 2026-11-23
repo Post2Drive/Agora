@@ -11,7 +11,10 @@ import sqlite3
 
 import pytest
 
-from agora.scenario_inputs import recompute_scenario_hash
+from datetime import datetime, timezone
+
+from agora.principal import SyntheticFixtureAdapter, mint_simulation_receipt, principal_policy
+from agora.scenario_inputs import manifest_hash, recompute_scenario_hash
 from agora.sim.engine import GovernedInputError, Simulation
 from conftest import make_project
 
@@ -29,7 +32,7 @@ def make_package(values=(0.2, 0.4, 0.5, 0.6), *, import_id="import-1"):
             rows.append({"row_id": f"{i}-{k}",
                          "property_values": {SEG: name, ACT: values[i] + 0.01 * k},
                          "property_sensitivity": {SEG: "public", ACT: "public"}})
-    manifest = {"import_id": import_id, "snapshot_manifest_hash": "sha256:" + "11" * 32,
+    manifest = {"import_id": import_id, "binding_id": "binding-1", "snapshot_manifest_hash": "sha256:" + "11" * 32,
                 "schema_fingerprint": "sha256:" + "22" * 32, "binding_fingerprint": "sha256:" + "33" * 32,
                 "ontology_pack_fingerprint": "sha256:" + "44" * 32,
                 "transformation_policy_fingerprint": None, "scenario_parameters": {}}
@@ -38,8 +41,27 @@ def make_package(values=(0.2, 0.4, 0.5, 0.6), *, import_id="import-1"):
             "validated_prediction_enabled": False}
 
 
-def gi(package=None, mapping=None):
-    return {"package": package or make_package(), "mapping": mapping or copy.deepcopy(MAPPING)}
+NOW_FIXED = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
+_FX = {"operator": {"subject_id": "op-1", "tenant_id": "t1", "project_ids": ["proj"], "roles": ["operator"],
+                    "assurance": "HIGH", "expires_at": datetime(2099, 1, 1, tzinfo=timezone.utc)}}
+
+
+def mint(package, *, project_id="proj", fixture=None, now=None):
+    """Mint a genuine receipt for a package via a synthetic Principal-bound policy (the only allowed way)."""
+    fx = {"operator": {**_FX["operator"], **(fixture or {})}}
+    principal = SyntheticFixtureAdapter(fx).issue("operator")
+    m = package["manifest"]
+    resource = {"project_id": project_id, "resource_ids": [m["import_id"], m["binding_id"]],
+                "import_id": m["import_id"], "binding_id": m["binding_id"], "source_role": "scenario_input",
+                "source_sensitivity": "public", "target_sensitivity": "public"}
+    return mint_simulation_receipt(principal_policy(principal, now=now), resource=resource,
+                                   manifest_hash=manifest_hash(m), scenario_hash=m["scenario_hash"], now=now)
+
+
+def gi(package=None, mapping=None, receipt=None, project_id="proj"):
+    package = package or make_package()
+    return {"package": package, "mapping": mapping or copy.deepcopy(MAPPING),
+            "receipt": receipt if receipt is not None else mint(package, project_id=project_id)}
 
 
 def provenance_bytes(project):

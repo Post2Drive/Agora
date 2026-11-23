@@ -80,7 +80,7 @@ class Simulation:
         self.governed: dict | None = None
         self.base_scenario_hash = self.scenario_hash  # scenario.yaml as loaded, before any projection
         if governed_input is not None:
-            self.governed = self._verify_governed(governed_input, self.sc)
+            self.governed = self._verify_governed(governed_input, self.sc, self.dir.name)
             self.sc = self.governed["scenario"]
         cfg = safe_study_llm(self.sc.llm)
         cfg.update(llm_override or {})
@@ -116,12 +116,31 @@ class Simulation:
                                          sort_keys=True).encode()).hexdigest()[:16]
 
     @staticmethod
-    def _verify_governed(governed_input: Mapping, base) -> dict:
+    def _receipt_scope(manifest: Mapping, project_id: str) -> dict:
+        from ..scenario_inputs import manifest_hash
+        try:
+            return {"project_id": project_id, "import_id": manifest["import_id"],
+                    "binding_id": manifest["binding_id"], "manifest_hash": manifest_hash(manifest),
+                    "scenario_hash": manifest["scenario_hash"]}
+        except (KeyError, TypeError, ValueError):
+            raise GovernedInputError("package manifest lacks the fields an authorization receipt binds") from None
+
+    @staticmethod
+    def _check_receipt(receipt, scope: Mapping) -> None:
+        """Fail closed unless receipt is a genuine Principal-bound allow for exactly this package and project."""
+        from ..principal import IdentityError, verify_simulation_receipt
+        try:
+            verify_simulation_receipt(receipt, **scope)
+        except IdentityError as exc:
+            raise GovernedInputError(f"authorization refused: {exc}") from exc
+
+    @staticmethod
+    def _verify_governed(governed_input: Mapping, base, project_id: str) -> dict:
         """Verify the package and derive the scenario here; nothing from the caller is trusted."""
         from ..scenario_inputs import recompute_scenario_hash
         from ..scenario_projection import ProjectionError, project_segments
-        if not isinstance(governed_input, Mapping) or set(governed_input) != {"package", "mapping"}:
-            raise GovernedInputError("governed_input must be exactly {package, mapping}")
+        if not isinstance(governed_input, Mapping) or set(governed_input) != {"package", "mapping", "receipt"}:
+            raise GovernedInputError("governed_input must be exactly {package, mapping, receipt}")
         package, mapping = governed_input["package"], governed_input["mapping"]
         if not isinstance(package, Mapping) or package.get("validated_prediction_enabled") is not False:
             raise GovernedInputError("package must be a scenario-input package with validated_prediction_enabled False")
@@ -132,11 +151,14 @@ class Simulation:
             raise GovernedInputError("package manifest is incomplete") from None
         if not (manifest.get("scenario_hash") == recomputed == package.get("scenario_hash")):
             raise GovernedInputError("package scenario_hash does not match its manifest")
+        scope = Simulation._receipt_scope(manifest, project_id)
+        Simulation._check_receipt(governed_input["receipt"], scope)  # before any projection/write
         try:
             derived, record = project_segments(package, mapping, base)
         except ProjectionError as exc:
             raise GovernedInputError(f"projection refused: {exc}") from exc
-        return {"scenario": derived, "manifest": {**dict(manifest), "projection": record}}
+        return {"scenario": derived, "manifest": {**dict(manifest), "projection": record},
+                "receipt": governed_input["receipt"], "receipt_scope": scope}
 
     def _guard_provenance(self) -> None:
         """Governed runs are append-once and never forceable; legacy runs cannot adopt or ignore an envelope."""
@@ -145,6 +167,7 @@ class Simulation:
             if stored is not None:
                 raise GovernedInputError("this run is governed: resume it with its governed input")
             return
+        self._check_receipt(self.governed["receipt"], self.governed["receipt_scope"])  # expiry re-checked before any write
         manifest_projection = self.governed["manifest"]["projection"]
         manifest = {**self.governed["manifest"], "base_scenario_hash": self.base_scenario_hash,
                     "projected_scenario_hash": self._projected_scenario_hash(manifest_projection)}
