@@ -83,8 +83,8 @@ def test_scope_tenant_and_assurance_enforced():
     assert _decide(_adapter().issue("other-project"))[0]["reason"] == "cross_scope"
     assert _decide(_adapter().issue("approver"), res=RES | {"tenant_id": "t2"})[0]["reason"] == "cross_tenant"
     assert _decide(_adapter().issue("low"))[0]["reason"] == "assurance_insufficient"
-    empty = Principal("u", "t1", frozenset(), frozenset({"approver"}), Assurance.HIGH,
-                      "synthetic-fixture-issuer", LATER)
+    empty = _adapter(emptyscope={"subject_id": "u", "tenant_id": "t1", "project_ids": [], "roles": ["approver"],
+                                 "assurance": "HIGH", "expires_at": LATER}).issue("emptyscope")
     assert _decide(empty)[0]["reason"] == "cross_scope"  # empty scope is not a wildcard
     assert _decide(_adapter().issue("approver"), res={"source_sensitivity": "internal"})[0]["reason"] == "scope_missing"
 

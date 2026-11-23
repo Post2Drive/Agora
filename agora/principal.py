@@ -7,7 +7,7 @@ and then delegates to the central PDP. No OIDC, network or real credentials.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum
 from typing import Any
@@ -35,6 +35,13 @@ def _utc(value: Any, name: str) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+class _IssueKey:
+    __slots__ = ()
+
+
+_ISSUED = _IssueKey()
+
+
 @dataclass(frozen=True)
 class Principal:
     subject_id: str
@@ -44,6 +51,10 @@ class Principal:
     assurance: Assurance
     issuer: str
     expires_at: datetime
+    # Adapter provenance: only SyntheticFixtureAdapter.issue() sets this (module-private key).
+    # A hand-built Principal carries None and is denied by decide_principal ("principal_not_adapter_issued").
+    # Residual: in-process Python can still reach _ISSUED; real separation needs the production adapter.
+    _origin: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in ("subject_id", "tenant_id", "issuer"):
@@ -87,7 +98,7 @@ class SyntheticFixtureAdapter:
                 subject_id=fixture["subject_id"], tenant_id=fixture["tenant_id"],
                 project_ids=frozenset(fixture["project_ids"]), roles=frozenset(fixture["roles"]),
                 assurance=Assurance[fixture["assurance"]], issuer=self.ISSUER,
-                expires_at=fixture["expires_at"],
+                expires_at=fixture["expires_at"], _origin=_ISSUED,
             )
         except KeyError as exc:
             raise IdentityError("malformed fixture identity") from exc
@@ -112,6 +123,8 @@ def decide_principal(
         return deny("principal_expired", sid)
     if principal.issuer not in trusted_issuers:
         return deny("issuer_untrusted", sid)
+    if principal._origin is not _ISSUED:
+        return deny("principal_not_adapter_issued", sid)
     if not isinstance(resource, Mapping):
         return deny("scope_missing", sid)
     project = resource.get("project_id")
