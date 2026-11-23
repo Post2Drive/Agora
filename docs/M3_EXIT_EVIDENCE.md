@@ -16,6 +16,8 @@
 
 For #171–#173, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed successfully. Claude's log reports 15 new engine tests, 7 CLI tests and 2 row-hash tests, plus local full-suite/mutation results; ChatGPT did not run or independently reproduce those local tests. Confirm exact merge-head and workflow evidence for every implementation PR; do not rely on a branch-head result if the merged SHA differs.
 
+**Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py` and synthetic-vector tests; it is merged at main `e3b0a58004298af05f9242795715b62d566941b7`, with exact PR-head CI `45105990141` passing 4/4. Main review found that `rmsse()` excludes leading zero training observations, unlike the standard M5 scale denominator, and that poll-date/window and boolean-share validation need strengthening. These corrections are required before the helper is used for the preregistered M5/poll metrics; no dataset run is authorized.
+
 ## 2. Scope and safety evidence
 
 - [ ] Review changed-file lists for #163/#164/#171/#172/#173 and confirm no unauthorized path under `agora/sim/**` was edited. The #171 owner go was specifically `agora/sim/engine.py` only; #172/#173 and projection slices must remain outside `agora/sim/**`.
