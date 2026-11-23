@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from agora.pathsafe import require_safe_path
+
 GENESIS = "0" * 64
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 _RESERVED_EVENT_FIELDS = {"previous_hash", "entry_hash"}
@@ -58,6 +60,7 @@ def _validate_event(event: Any) -> dict[str, Any]:
 @contextmanager
 def _exclusive_lock(lock_path: Path) -> Iterator[None]:
     """Lock a stable sidecar file across processes on Windows and POSIX."""
+    require_safe_path(lock_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle:
         if os.name == "nt":
@@ -159,14 +162,14 @@ def _verify_unlocked(path: Path) -> dict[str, Any]:
 
 def verify(path: str | Path) -> dict[str, Any]:
     """Verify the complete chain under the same lock used by appenders."""
-    audit_path = Path(path)
+    audit_path = require_safe_path(path)
     with _exclusive_lock(audit_path.with_name(audit_path.name + ".lock")):
         return _verify_unlocked(audit_path)
 
 
 def append(path: str | Path, event: dict[str, Any]) -> dict[str, Any]:
     """Verify and append one event as a single cross-process critical section."""
-    audit_path = Path(path)
+    audit_path = require_safe_path(path)
     row = _validate_event(event)
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = audit_path.with_name(audit_path.name + ".lock")
