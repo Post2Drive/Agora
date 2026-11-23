@@ -2,18 +2,20 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Owner-reported FiveThirtyEight polls handoff — 23 November 2026
+## Owner-reported FiveThirtyEight polls handoff — 23 November 2026 (latest log confirmation 17:57 IST)
 
-This update supersedes earlier checklist statements that no polling files were in hand. The owner reports a **partial** import in the separate private repository Post2Drive/Post2Drive, branch data/import-fivethirtyeight-polls-2026-11-23, draft PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5), commit 15c9a053291925813ef568466a92fc5460f6b554. The imported material is reported to include the upstream polls README/licence and the complete old_model/ directory. This is owner-reported handoff metadata only; this review did not inspect the separate private repository or raw data bytes. It is not a complete benchmark package and is not in the Agora source repository.
+The owner reports a **partial** import in the separate private repository `Post2Drive/Post2Drive`, branch `data/import-fivethirtyeight-polls-2026-11-23`, draft PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5), commit `15c9a053291925813ef568466a92fc5460f6b554`. The reported contents are the upstream polls README/licence and eight `polls/old_model/*.csv` files. This remains owner-reported handoff metadata only; this review did not inspect the private repository or raw data bytes, and no per-file SHA-256 values are recorded.
 
 Four large source files remain outstanding and must be transferred and hashed before the polling package can pass acquisition review:
 
-- polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv — 1,604,311 bytes (uncorrected; **not** a substitute for corrected 2024 averages).
-- polls/2024-averages/presidential_primary_averages_2024.csv — 11,407,331 bytes.
-- polls/pres_pollaverages_1968-2016.csv — 50,438,309 bytes.
-- polls/pres_primary_avgs_1980-2016.csv — 30,087,513 bytes.
+- `polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv` — 1,604,311 bytes (uncorrected; **not** a substitute for corrected 2024 averages).
+- `polls/2024-averages/presidential_primary_averages_2024.csv` — 11,407,331 bytes.
+- `polls/pres_pollaverages_1968-2016.csv` — 50,438,309 bytes.
+- `polls/pres_primary_avgs_1980-2016.csv` — 30,087,513 bytes.
 
-No SHA-256 values were recorded for the imported files in the reported handoff. Keep PR #5 open until the four outstanding files are transferred and a per-file SHA-256 manifest is committed. The source snapshot reported for the import is FiveThirtyEight/data commit 4c1ff5e3aef1816ae04af63218015066e186c147; verify the source commit, exact file bytes and licence record for every file rather than treating the PR description or Git blob IDs as SHA-256 evidence. This partial handoff does not establish adequate 2020 or corrected-2024 poll coverage, owner approval for use, or permission to run a benchmark.
+The owner must commit a per-file manifest containing exact relative path, bytes, SHA-256, immutable source commit/release and licence/version. The source snapshot reported for the import is FiveThirtyEight/data commit `4c1ff5e3aef1816ae04af63218015066e186c147`; verify exact source and destination bytes rather than treating the PR description or Git blob IDs as SHA-256 evidence. The private repository is not available through this round's permitted Agora GitHub connector, so no independent verification is claimed. The partial handoff does not establish complete 2020/corrected-2024 coverage, licence approval or permission to run.
+
+The owner has named ChatGPT as a separate-process evaluator limited to the frozen protocol, manifest and raw outputs, but private-repository access and label/output custody are not yet established. The owner freeze sentence contains a literal `<sha>` placeholder, so the protocol remains draft. The one-run approval is dormant. No dataset import or run is authorized.
 
 ## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:42 IST)
 
@@ -112,14 +114,13 @@ Before any dataset import, create and commit a machine-readable manifest (CSV or
 
 ## Handoff and stop conditions
 
-1. Owner downloads the exact publisher files manually, retains the source archives and licence evidence, and completes the per-file register (source/version, licence/citation, access date, original filename, byte size and SHA-256).
-2. After owner review of the exact sources and terms, push only the approved, licence-permitted files to a separate **private** GitHub repository (suggested name `agora-validation-data`) using the steps in `DATASET_DOWNLOAD_GUIDE.md`. Keep it separate from the AGORA source repository.
-3. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to AGORA. Do not include credentials, personal/customer/driver data or unrelated files. Claude receives read access only through the owner's GitHub authorization; never send passwords, tokens or cookies in chat.
-4. **M5 gate:** do not push M5 files until the owner has personally reviewed the Kaggle competition terms and confirmed the private collaborator handoff is permitted. If unclear, leave M5 local and stop.
-5. Before any import, reconcile the owner-approved files against the dataset register and the field allow-lists/time splits in `VALIDATION_PROTOCOL.md`. The private-repository handoff is not approval to import.
-6. **No validation run yet:** the owner selected the synthetic-fixture Principal for strictly local validation on approved public datasets only; this is not production authentication. The direct-engine opaque receipt is not implemented, and the existing Principal type/issuer check does not yet prove adapter issuance (a hand-built Principal with the trusted synthetic issuer must be rejected). The production CLI policy source `_governed_policy()` still returns `None`, so the policy-required builder denies governed input before opening snapshot bytes. Do not bypass this guard or inject a permissive policy.
-7. Validation also requires the claimed handle-based SQLite TOCTOU fix and mutation proofs, the complete per-file manifest committed in the private repository, a named independent evaluator and explicit owner approval to freeze the protocol in a merged docs commit. Dataset availability alone is not authorization to run.
-8. Keep `VALIDATED_PREDICTION_ENABLED=False`; report any future outputs as exploratory simulations, not observed demand or validated predictions.
+1. Keep the source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
+2. The reported FiveThirtyEight import is partial: eight `old_model/*.csv` files and README/licence are owner-reported present; four large CSVs remain outstanding. No per-file SHA-256 manifest is available.
+3. Supply the exact election-return, retail and adoption files, immutable source releases, byte sizes, SHA-256 values and licence evidence. M5 remains blocked on the owner's Kaggle terms review.
+4. The owner named ChatGPT as a separate-process evaluator, but private-repository read access and label/output custody are not established. Establish the restricted custody path before freeze.
+5. Resolve the proposed validation parameters, commit the complete per-file manifest, and obtain a new owner freeze sentence naming the actual merged protocol commit and manifest SHA. The previously received sentence used the literal `<sha>` placeholder and is not effective.
+6. The owner's one-run approval is received but dormant. Do not import or run any dataset until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
+7. Keep `VALIDATED_PREDICTION_ENABLED=False`; this checklist authorizes no acquisition, import, simulation, validation or write-back.
 
 ## Personal-data and data-minimisation gate
 
