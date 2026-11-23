@@ -16,6 +16,7 @@ from typing import Any
 
 from .audit_anchor import AnchorError, AnchorStore, verify_anchored
 from .audit_chain import verify_rows
+from .pathsafe import is_unsafe_path
 
 
 class AuditBlocked(Exception):
@@ -25,6 +26,8 @@ class AuditBlocked(Exception):
 
 
 def _ro(path: Path) -> sqlite3.Connection:
+    if is_unsafe_path(path):
+        raise AuditBlocked("STORE_UNREADABLE")
     if not path.is_file():
         raise AuditBlocked("STORE_NOT_FOUND")
     try:

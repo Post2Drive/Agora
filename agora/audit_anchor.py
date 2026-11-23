@@ -11,12 +11,14 @@ import hashlib
 import json
 import os
 import re
+import stat
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 from agora.audit_chain import GENESIS, AuditChainStore, _canonical
+from agora.pathsafe import UnsafePathError, open_flags, require_safe_path
 from agora.validation.audit_log import _exclusive_lock
 
 FORMAT_VERSION = 1
@@ -56,7 +58,14 @@ class AnchorStore:
     def read(self) -> list[dict[str, Any]]:
         """Return validated history; raise AnchorError when absent or invalid."""
         try:
-            raw = self.path.read_text(encoding="utf-8")
+            require_safe_path(self.path)
+            fd = os.open(self.path, open_flags(os.O_RDONLY))
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                    raise AnchorError("anchor history is not a regular file")
+                raw = handle.read()
+        except UnsafePathError:
+            raise AnchorError("anchor path is unsafe (symlink or reparse point)") from None
         except FileNotFoundError:
             raise AnchorError("anchor history is missing") from None
         except OSError as exc:
@@ -107,7 +116,7 @@ class AnchorStore:
                 raise AnchorError("anchor sequence must increase")
             previous = history[-1]["record_hash"]
         else:
-            if self.path.exists():
+            if os.path.lexists(self.path):
                 raise AnchorError("anchor history already exists; refusing to bootstrap")
             previous = GENESIS
         body: dict[str, Any] = {
@@ -116,8 +125,12 @@ class AnchorStore:
             "previous_record_hash": previous, **dict(extra or {}),
         }
         record = {**body, "record_hash": _record_hash(body)}
+        try:
+            require_safe_path(self.path)
+        except UnsafePathError:
+            raise AnchorError("anchor path is unsafe (symlink or reparse point)") from None
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)  # owner-only on POSIX
+        fd = os.open(self.path, open_flags(os.O_WRONLY | os.O_APPEND | os.O_CREAT), 0o600)  # owner-only on POSIX
         with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
             handle.write(_canonical(record) + "\n")
             handle.flush()
@@ -126,6 +139,11 @@ class AnchorStore:
 
     def lock(self):
         """Cross-process exclusive lock on a sidecar lock file next to the anchor history."""
+        try:
+            require_safe_path(self.path)
+            require_safe_path(self.path.with_name(self.path.name + ".lock"))
+        except UnsafePathError:
+            raise AnchorError("anchor path is unsafe (symlink or reparse point)") from None
         return _exclusive_lock(self.path.with_name(self.path.name + ".lock"))
 
     def advance(self, sequence: int, head_hash: str) -> dict[str, Any]:
@@ -198,6 +216,10 @@ def verify_anchored_readonly(audit_db: str | Path, anchor_path: str | Path, chai
     """
     import sqlite3
     path = Path(audit_db)
+    try:
+        require_safe_path(path)
+    except UnsafePathError:
+        return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
     if not path.is_file():
         return {"valid": False, "status": "store_unreadable", "trust_level": TRUST_LEVEL}
     try:
@@ -267,6 +289,11 @@ def open_anchored_audit(chain_path: str | Path, anchor_path: str | Path, chain_i
     anchored at open time, raises AnchorRequiredError (fail closed).
     """
     chain_path, anchor_path = Path(chain_path), Path(anchor_path)
+    try:
+        require_safe_path(chain_path)
+        require_safe_path(anchor_path)
+    except UnsafePathError:
+        raise AnchorRequiredError("audit path is unsafe (symlink or reparse point)") from None
     if chain_path.resolve() == anchor_path.resolve():
         raise AnchorError("anchor must be a separate file from the audit chain")
     anchors = AnchorStore(anchor_path, chain_id)
