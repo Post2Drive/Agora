@@ -132,8 +132,16 @@ def cluster_bootstrap_ci(errors_by_cluster: Mapping[str, Sequence[float]], *, sa
     """
     if not isinstance(seed, int) or isinstance(seed, bool):
         raise NotEstimable("an explicit integer seed is required")
-    if not (0 < alpha < 1) or samples < 100:
-        raise NotEstimable("alpha must be in (0,1) and samples at least 100")
+    for name, val in (("samples", samples), ("min_clusters", min_clusters)):
+        if not isinstance(val, int) or isinstance(val, bool):
+            raise NotEstimable(f"{name} must be an integer")
+    if min_clusters < 1:
+        raise NotEstimable("min_clusters must be a positive integer")
+    if (isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not math.isfinite(alpha)
+            or not (0 < alpha < 1)):
+        raise NotEstimable("alpha must be a finite number in (0,1)")
+    if samples < 100:
+        raise NotEstimable("samples must be at least 100")
     clusters = {k: _vec(v, f"cluster {k}") for k, v in errors_by_cluster.items()}
     if len(clusters) < min_clusters:
         raise NotEstimable(f"only {len(clusters)} clusters; at least {min_clusters} are needed")

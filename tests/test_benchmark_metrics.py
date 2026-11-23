@@ -172,3 +172,15 @@ def test_poll_margin_rejects_malformed_poll_even_if_out_of_window(bad):
 def test_poll_margin_valid_future_poll_excluded_not_error():
     fut = {**_P, "end_date": _dt.date(2024, 11, 1), "a_pct": 10}
     assert _bm.weighted_poll_margin([_P, fut], _dt.date(2024, 10, 2)) == _bm.two_party_margin(50, 45)
+
+
+@pytest.mark.parametrize("kw", [
+    {"samples": 500.5}, {"samples": "500"}, {"samples": True}, {"samples": 99},
+    {"min_clusters": 2.5}, {"min_clusters": True}, {"min_clusters": 0}, {"min_clusters": -1},
+    {"alpha": float("nan")}, {"alpha": float("inf")}, {"alpha": True}, {"alpha": "0.05"},
+    {"alpha": 0.0}, {"alpha": 1.0},
+])
+def test_bootstrap_invalid_parameters_are_not_estimable(kw):
+    args = {"samples": 500, "seed": 7, "min_clusters": 10, **kw}
+    with pytest.raises(NotEstimable):
+        cluster_bootstrap_ci(_clusters(), **args)
