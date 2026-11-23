@@ -2,7 +2,7 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Assessment base:** main `e3b0a58004298af05f9242795715b62d566941b7`.
+**Assessment base:** main `7ab87555ced2c33f8b591038beadbfec1b9efb2a` (23 November 2026).
 
 ## 1. Merged implementation slices
 
@@ -13,14 +13,17 @@
 | 4.2 governed engine integration | #171 | `agora/sim/engine.py` plus tests only; optional governed input, verification, append-once provenance guard, changed-input/legacy/force refusal | Run `45089066900`, 4/4 |
 | 4.3 governed CLI | #172 | `agora/cli.py` plus tests; exact import ID, binding/pack/mapping args, `--force` refusal, exit 3 on engine refusal | Run `45093439437`, 4/4 |
 | 4.4 instance-row integrity | #173 | `agora/scenario_projection.py` plus tests; order-independent `instances_hash` included in `projection_hash` | Run `45096233966`, 4/4 |
+| 4.6 base/projected scenario hashes | #178 | `agora/sim/engine.py` plus tests only, within the owner's named scope; original `scenario.yaml` hash is `base_scenario_hash`, separate `projected_scenario_hash` binds it to `projection_hash` | Run `45113858688`, 4/4 |
 
-For #171–#173, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed successfully. Claude's log reports 15 new engine tests, 7 CLI tests and 2 row-hash tests, plus local full-suite/mutation results; ChatGPT did not run or independently reproduce those local tests. Confirm exact merge-head and workflow evidence for every implementation PR; do not rely on a branch-head result if the merged SHA differs.
+For #171–#173 and #178, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed successfully. Claude's log reports 15 new engine tests, 7 CLI tests, 2 row-hash tests and four hash-split regression cases, plus local full-suite/mutation results; ChatGPT did not run or independently reproduce those local tests. For #178, exact head `a620feb98d342250e29ded132781630fcb31f395` passed run `45113858688` 4/4. Its diff changes only `agora/sim/engine.py` and `tests/test_engine_governed_input.py`; the sole `agora/sim/**` path remains the owner-approved `engine.py`. Confirm exact merge-head and workflow evidence for every implementation PR; do not rely on a branch-head result if the merged SHA differs.
 
-**Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py` and synthetic-vector tests; it is merged at main `e3b0a58004298af05f9242795715b62d566941b7`, with exact PR-head CI `45105990141` passing 4/4. Main review found that `rmsse()` excludes leading zero training observations, unlike the standard M5 scale denominator, and that poll-date/window and boolean-share validation need strengthening. These corrections are required before the helper is used for the preregistered M5/poll metrics; no dataset run is authorized.
+**Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py`; exact PR-head CI `45105990141` passed 4/4. Follow-up #176 hardens boolean, date and window validation and pins the official M5 RMSSE scale convention (differences start at the first non-zero training observation; pre-sale leading zeros are excluded); its exact PR-head CI `45110601617` passed 4/4. #176 changed only the metric helper and its tests. These supporting utilities do not complete the governed engine slices or authorize data use; no dataset run is authorized.
+
+
 
 ## 2. Scope and safety evidence
 
-- [ ] Review changed-file lists for #163/#164/#171/#172/#173 and confirm no unauthorized path under `agora/sim/**` was edited. The #171 owner go was specifically `agora/sim/engine.py` only; #172/#173 and projection slices must remain outside `agora/sim/**`.
+- [ ] Review changed-file lists for #163/#164/#171/#172/#173/#178 and confirm no unauthorized path under `agora/sim/**` was edited. #171 and #178 touch only the owner-approved `agora/sim/engine.py`; #172/#173 and projection slices remain outside `agora/sim/**`.
 - [ ] Confirm the default `governed_input=None` path remains compatible and the legacy run path is not silently treated as governed.
 - [ ] Confirm no simulation, calibration, backtest, forecast, validation or real/public dataset run occurred without separate owner approval. Unit tests with synthetic fixtures/mock backend are not dataset runs.
 - [ ] Confirm `VALIDATED_PREDICTION_ENABLED=False` remains unchanged.
@@ -30,10 +33,10 @@ For #171–#173, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed
 
 These are not waived by merged PRs or green CI:
 
-1. **Original/projected scenario hash semantics:** preserve the original `scenario.yaml` hash as `base_scenario_hash` before replacing `self.sc`; store the effective post-projection value as `projected_scenario_hash`. Add tests proving each value and resume mismatch behaviour.
-2. **Policy authorization boundary:** the CLI currently calls `_governed_policy()`, which returns `None`; the policy-required builder therefore denies before opening snapshot bytes. Do not weaken this. Decide whether a narrowly scoped synthetic Principal is acceptable for local public-dataset validation or a production identity adapter is required. Any adapter must produce a Principal-bound, scoped, expiring capability and prove policy denial precedes source reads.
-3. **Direct engine constructor:** a self-consistent package/hash is not itself proof of a successful policy decision. Prove direct `Simulation(..., governed_input=...)` cannot bypass the policy-built input boundary, or explicitly constrain it to a trusted capability that cannot be forged by arbitrary callers. Include a mutation proof.
-4. **Provenance/report completeness:** verify manifest, projection, mapping, instances, original/projected scenario hashes and report/export fields agree. Keep append-once semantics and ensure `--force` cannot alter the envelope.
+Resolved by #178: `base_scenario_hash` is captured from the original `scenario.yaml` before projection; `projected_scenario_hash` is separate and bound to `projection_hash`. The exact-head CI passed 4/4 and merged tests cover row/mapping changes plus unchanged-envelope resume refusal. Claude reports local mutation proofs; ChatGPT did not reproduce them.
+1. **Policy authorization boundary:** the CLI currently calls `_governed_policy()`, which returns `None`; the policy-required builder therefore denies before opening snapshot bytes. Do not weaken this. The owner must decide whether a bounded synthetic Principal is acceptable for local public-data validation or a production identity adapter is required. Any accepted adapter must be Principal-bound, scoped, expiring, fail-closed, and prove denial precedes source reads.
+2. **Direct engine constructor:** a self-consistent package/hash is not proof of a successful policy decision. Prove direct `Simulation(..., governed_input=...)` cannot bypass the policy-built input boundary, or require a trusted capability that arbitrary callers cannot forge. Include a mutation proof.
+3. **Provenance/report completeness:** verify manifest, projection, mapping, instances, original/projected scenario hashes and report/export fields agree. Keep append-once semantics and ensure `--force` cannot alter the envelope.
 
 Claude must explicitly resolve each item or record a justified, owner-approved deferral before declaring the implementation milestone. A deferral cannot be used to claim an operator-usable governed workflow while the CLI still denies.
 
@@ -62,7 +65,7 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 2. List exact-head CI run IDs and all four job conclusions for each required slice.
 3. State test counts and mutation proofs with clear distinction between CI evidence and local-only claims.
 4. Confirm only the owner-approved `agora/sim/engine.py` path was touched under `agora/sim/**`.
-5. Confirm policy identity/capability trust boundary and hash semantics are resolved, or explicitly state why M3 is limited to implementation-only and not operator-usable.
+5. Confirm the policy identity/capability trust boundary is resolved or explicitly state why M3 is limited to implementation-only and not operator-usable; cite #178 for the now-implemented base/projected hash semantics.
 6. Link merged docs and the validation-protocol status; no false claim that draft preregistration equals approved validation.
 7. Confirm no dataset/simulation/validation run occurred without authorization and `VALIDATED_PREDICTION_ENABLED=False`.
 8. Use the exact phrase **"M3 reached"** only if all required acceptance gates are satisfied; otherwise state **"M3 not yet reached"** and name the remaining blockers.
