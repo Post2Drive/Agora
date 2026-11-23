@@ -113,3 +113,10 @@ Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, 
 - **#172** — `agora/cli.py` plus tests: exact import ID, binding/pack/mapping inputs, `--force` refusal, engine refusal mapped to exit 3. The production policy source is deliberately `None`, so the real CLI denies until an identity adapter exists. Exact-head CI `45093439437` passed 4/4.
 - **#173** — `agora/scenario_projection.py` plus tests: order-independent `instances_hash` included in `projection_hash`, covering row content not represented by the manifest scenario hash. Exact-head CI `45096233966` passed 4/4.
 - **Review follow-up:** `engine.py` currently stores the effective projected scenario hash under `base_scenario_hash`; clarify whether to preserve the original scenario.yaml hash under that name or rename the stored value to `projected_scenario_hash` and pin both with tests.
+
+
+## M3 documentation and exit-evidence tracking
+
+The current ChatGPT documentation review is tracked in [PR #174](https://github.com/Post2Drive/Agora/pull/174), draft only. It covers provenance, M3 design, rung status, validation-protocol review, dataset acquisition, operator guidance, milestone cross-links and the M3 exit-evidence checklist. It is not merged evidence and does not make M3 reached.
+
+See [M3 exit evidence](M3_EXIT_EVIDENCE.md) for the evidence Claude must verify before making the sole milestone declaration. Current blockers include the policy trust boundary/identity decision, the provenance hash-name correction, the still-draft validation protocol and missing dataset register. No dataset or simulation run is authorized.
