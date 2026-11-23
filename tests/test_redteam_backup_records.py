@@ -381,3 +381,97 @@ def test_rt05c_controls_genuine_completed_and_stopped_still_round_trip(project, 
     assert restore(bk, tmp_path / "r1")["restored_to"]
     bk2 = _stopped_backup(tmp_path / "s")
     assert restore(bk2, tmp_path / "r2")["restored_to"]
+
+
+# ---- RT05d source-side preflight: backup() must refuse a malformed source record ---------------
+def _source_refused(proj, dest, code="SOURCE_RECORD_INVALID"):
+    """backup() refuses, publishes no destination, and leaves the source bytes untouched."""
+    before = _tree_hash(proj)
+    with pytest.raises(BackupBlocked) as e:
+        backup(proj, dest)
+    assert e.value.code == code
+    assert not dest.exists()          # no artifact published
+    assert _tree_hash(proj) == before  # source untouched by the refusal
+
+
+@pytest.mark.parametrize("edit", [
+    lambda rec: rec.pop("run_id"),                 # missing ID
+    lambda rec: rec.update(run_id=""),             # empty ID
+    lambda rec: rec.update(run_id="   "),          # whitespace ID
+    lambda rec: rec.update(run_id=7),              # non-string ID
+    lambda rec: rec.update(status="bogus"),        # unknown status
+    lambda rec: rec.update(status="denied"),       # downgrade while the chain holds a seal
+    lambda rec: rec.update(record_version=999),    # unsupported version
+    lambda rec: rec.update(audit_ref="head"),      # malformed typed field
+])
+def test_rt05d_malformed_but_synthetic_tagged_source_record_is_refused_before_any_copy(project, tmp_path, edit):
+    """The source stays data_class=synthetic, so _is_synthetic_project() passes; the strict preflight
+    must still refuse instead of publishing a backup that could never be verified or restored."""
+    p = project / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    edit(rec)
+    assert rec["data_class"] == "synthetic"
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _source_refused(project, tmp_path / "bk")
+
+
+def test_rt05d_source_record_removed_is_refused_as_not_synthetic(project, tmp_path):
+    (project / "run_record.json").unlink()
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert e.value.code == "SOURCE_NOT_SYNTHETIC"
+    assert not (tmp_path / "bk").exists()
+
+
+def test_rt05d_stopped_source_record_with_bad_id_is_refused(tmp_path):
+    from agora.pilot import default_identities
+    ids = default_identities(NOW)
+    ids["operator"]["roles"] = ["reader"]
+    run_pilot(tmp_path / "run", now=NOW, identities=ids)
+    proj = tmp_path / "run" / PROJECT_ID
+    p = proj / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["run_id"] = ""
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _source_refused(proj, tmp_path / "bk")
+
+
+def test_rt05d_record_edited_after_the_preflight_is_not_published(project, tmp_path, monkeypatch):
+    """A record swap between the preflight and the copy must not produce a published backup either."""
+    import agora.backup as B
+    real = B._copy_tree
+
+    def evil(src, dst, rels):
+        real(src, dst, rels)
+        p = dst / "run_record.json"
+        rec = json.loads(p.read_text(encoding="utf-8"))
+        rec["status"] = "denied"
+        p.write_text(json.dumps(rec), encoding="utf-8")
+
+    monkeypatch.setattr(B, "_copy_tree", evil)
+    _source_refused(project, tmp_path / "bk")
+
+
+def test_rt05d_control_genuine_completed_and_stopped_sources_still_back_up(project, tmp_path):
+    bk = tmp_path / "bk-ok"
+    assert backup(project, bk)["files"] > 0
+    assert verify_backup(bk)["files"] > 0
+    from agora.pilot import default_identities
+    ids = default_identities(NOW)
+    ids["operator"]["roles"] = ["reader"]
+    run_pilot(tmp_path / "run2", now=NOW, identities=ids)
+    bk2 = tmp_path / "bk-stopped"
+    assert backup(tmp_path / "run2" / PROJECT_ID, bk2)["files"] > 0
+    assert restore(bk2, tmp_path / "restored2")["restored_to"]
+
+
+def test_rt05d_malformed_source_record_is_refused_before_any_byte_is_copied(project, tmp_path, monkeypatch):
+    """Proves the refusal is a preflight: no copy is attempted and no destination is created."""
+    import agora.backup as B
+    monkeypatch.setattr(B, "_copy_tree", lambda *a, **k: pytest.fail("source was copied despite a bad record"))
+    monkeypatch.setattr(B, "_check_dest", lambda d: pytest.fail("destination was touched despite a bad record"))
+    p = project / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["run_id"] = ""
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _source_refused(project, tmp_path / "bk")

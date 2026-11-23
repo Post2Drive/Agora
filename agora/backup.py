@@ -34,6 +34,8 @@ _WORDS = {
                          "(tampered, truncated or unanchored). Investigate before backing up.",
     "SOURCE_NOT_SYNTHETIC": "Nothing was backed up: the folder is not a verified synthetic pilot project "
                             "(its run record is missing or not marked synthetic).",
+    "SOURCE_RECORD_INVALID": "Nothing was backed up: the project's run record is malformed or contradicts its "
+                             "audit chain. Investigate before backing up.",
     "UNSAFE_PATH": "Refused: a symbolic link or unsafe path was found. Only plain files inside the folder are handled.",
     "SOURCE_LOCK_FAILED": "Nothing was backed up: the project's writer lock could not be taken. Try again when no run is active.",
     "SNAPSHOT_CHANGED": "Nothing was kept: the audit chain changed or failed verification while it was being copied. "
@@ -204,6 +206,10 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
     verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))
+    # Source preflight: the same strict record invariant verify_backup()/restore() enforce, applied to the
+    # SOURCE before any destination is created or any byte is copied. Without it a malformed but
+    # synthetic-tagged record produced a "successful" backup that could never be verified or restored.
+    _check_run_record_seal(project, "SOURCE_RECORD_INVALID")
     _check_dest(dest)
     existed = dest.exists()
     dest.mkdir(parents=True, exist_ok=True)
@@ -242,6 +248,9 @@ def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
     if (not after.get("valid") or after.get("status") != verdict["status"]
             or _head(after) != _head(verdict)):
         raise BackupBlocked("SNAPSHOT_CHANGED", after.get("status"))
+    # Re-checked on the copied bytes: a record edit between the preflight and the copy must not be
+    # published either, so backup() never returns an artifact verify_backup() would reject on record grounds.
+    _check_run_record_seal(dest / "data", "SOURCE_RECORD_INVALID")
     seq, head_hash = _head(after)
     manifest = {"manifest_version": 1, "synthetic_only": True, "chain_id": chain_id,
                 "audit_status": verdict["status"], "chain_sequence": seq, "chain_head_hash": head_hash,
@@ -250,7 +259,7 @@ def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
     return {"files": len(copied), "audit_status": verdict["status"], "backup": str(dest)}
 
 
-def _check_run_record_seal(data: Path) -> None:
+def _check_run_record_seal(data: Path, code: str = "BACKUP_NOT_INTACT") -> None:
     """Run-record invariant (manifest-regeneration safe). Every pilot backup carries run_record.json
     (backup() only accepts synthetic projects, which have one). The record must pass the strict loader
     (object, non-empty string run_id, typed fields; no coercion) and a status in completed|denied|failed.
@@ -272,7 +281,7 @@ def _check_run_record_seal(data: Path) -> None:
         elif chain_has_seal_event(data):
             raise ValueError("stopped record contradicts a seal in its chain")
     except (OSError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error):
-        raise BackupBlocked("BACKUP_NOT_INTACT", "run_record_seal") from None
+        raise BackupBlocked(code, "run_record_seal") from None
 
 
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
