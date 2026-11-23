@@ -2,9 +2,9 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 15:40 IST)
+## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:16 IST)
 
-Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded during that check. Claude's 15:40 IST note records that the owner shared the FiveThirtyEight `polls/` folder listing, but no polling files are in hand. The owner is asked to download the exact GitHub-hosted files listed in `DATASET_DOWNLOAD_GUIDE.md`, try each of the four README live URLs once, and report every success/failure. This 15:40 note is an owner-log update, not a new host-reachability test, file handoff, source approval or protocol decision. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
+Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded during that check. Claude's 15:40 IST note records that the owner shared the FiveThirtyEight `polls/` folder listing, but no polling files are in hand. The owner is asked to download the exact GitHub-hosted files listed in `DATASET_DOWNLOAD_GUIDE.md`, try each of the four README live URLs once, and report every success/failure. Claude's 16:16 IST round confirms no new owner files or decisions. The 15:40 and 16:16 notes are owner-log updates, not a new host-reachability test, file handoff, source approval or protocol decision. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
 
 | Package | Candidate route and evidence | Access status / caveat |
 |---|---|---|
