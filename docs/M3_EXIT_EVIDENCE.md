@@ -34,9 +34,9 @@ For #171–#173 and #178, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all 
 These are not waived by merged PRs or green CI:
 
 Resolved by #178: `base_scenario_hash` is captured from the original `scenario.yaml` before projection; `projected_scenario_hash` is separate and bound to `projection_hash`. The exact-head CI passed 4/4 and merged tests cover row/mapping changes plus unchanged-envelope resume refusal. Claude reports local mutation proofs; ChatGPT did not reproduce them.
-1. **Policy authorization boundary
-2. **Direct engine constructor
-3. **Provenance/report completeness
+1. **Policy authorization boundary:** the CLI currently calls `_governed_policy()`, which returns `None`; the policy-required builder therefore denies before opening snapshot bytes. Do not weaken this. The owner must decide whether a bounded synthetic Principal is acceptable for local public-data validation or a production identity adapter is required. Any accepted adapter must be Principal-bound, scoped, expiring, fail-closed, and prove denial precedes source reads.
+2. **Direct engine constructor:** a self-consistent package/hash is not proof of a successful policy decision. Prove direct `Simulation(..., governed_input=...)` cannot bypass the policy-built input boundary, or require a trusted capability that arbitrary callers cannot forge. Include a mutation proof.
+3. **Provenance/report completeness:** verify manifest, projection, mapping, instances, original/projected scenario hashes and report/export fields agree. Keep append-once semantics and ensure `--force` cannot alter the envelope.
 
 Claude must explicitly resolve each item or record a justified, owner-approved deferral before declaring the implementation milestone. A deferral cannot be used to claim an operator-usable governed workflow while the CLI still denies.
 
