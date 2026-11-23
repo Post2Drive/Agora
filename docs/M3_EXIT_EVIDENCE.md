@@ -1,10 +1,10 @@
 # M3 Exit Evidence — Claude Milestone Declaration Checklist
 
-**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
+**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation; the latest Claude round is 15:41 IST. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Post-#191/#192 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes the verification/restore record findings (mandatory record, status-plus-run-ID downgrade, strict non-empty string ID). #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge/current main `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes the source-side strict-record preflight by validating before destination creation/copy and re-checking copied bytes. #191 merged the current documentation sync at exact head `02a88463529559009adec76c052be94621aa557e`, merge `705fe5cfa157b36fd75c93a141afe39255c08b65`, run `45148838308`, 4/4. Path-based SQLite reopen (TOCTOU) remains owner-gated.
+**Post-#192/#193 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes verification/restore record findings. #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge commit `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes source-side strict-record preflight before destination creation/copy and re-checks copied bytes. #191 docs merged at exact head `02a88463529559009adec76c052be94621aa557e`, merge `705fe5cfa157b36fd75c93a141afe39255c08b65`, run `45148838308`, 4/4. #193 is the latest docs-only merge at exact head `01221be714c771f524f03a17e3dee3ab6dbd94bb`, merge/current main `d51f9cb1fa10a31d92900630a75bf7d8814697c6`, run `45151716696`, 4/4 (six paths all under `docs/**`). Path-based SQLite reopen (TOCTOU) remains owner-gated.
 
-**Assessment base:** main `3e55e5505cda38a2ccfdc93a3e9996120ebb659e` (23 November 2026; latest docs-only merge #191; latest code merge #192).
+**Assessment base:** main `d51f9cb1fa10a31d92900630a75bf7d8814697c6` (23 November 2026; latest docs-only merge #193; latest code merge #192).
 
 ## 1. Merged implementation slices
 
@@ -88,7 +88,7 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 
 ## 7. Dataset reachability update — 23 November 2026
 
-Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the workspace allowlist. No data was downloaded. The acquisition checklist now records two third-party GitHub mirror candidates:
+Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the workspace allowlist. No data was downloaded. Claude's 15:40 IST note adds that the owner shared the FiveThirtyEight polls folder listing but no files are in hand; the owner should try the four live README URLs once and report failures. No 2000–2016 scope change is approved. The acquisition checklist records two third-party GitHub mirror candidates:
 - MEDSL V20 county returns in `mathis-group/cas-201-data-project`, whose README records the same MD5 as Dataverse V20, 94,151 rows and CC0 1.0.
 - Ember monthly CSV in `Awes0mer/fuel-cars-pollution`, whose manifest records the official Ember source URL, CC BY 4.0, 7,695,642 bytes and SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`; this is a 16-Nov snapshot, while the official Ember page now reports an 18-Nov update.
 

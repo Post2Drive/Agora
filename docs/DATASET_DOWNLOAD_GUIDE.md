@@ -24,21 +24,29 @@ Get-FileHash -Algorithm SHA256 -LiteralPath ".\\filename.csv"
 
 **Official index:** https://github.com/fivethirtyeight/data/tree/master/polls
 
-The pinned repository README at commit `4c1ff5e3aef1816ae04af63218015066e186c147` lists these direct CSV URLs:
+**Pinned listing reviewed:** repository commit `4c1ff5e3aef1816ae04af63218015066e186c147`. The owner-shared `polls/` folder listing (23 November 2026, 15:40 IST) shows these GitHub-hosted files:
+
+- `pres_pollaverages_1968-2016.csv` — historical averages ending in 2016.
+- `2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv` — explicitly uncorrected; **not** an acceptable substitute for corrected 2024 general-election averages.
+- `2024-averages/presidential_primary_averages_2024.csv` — primary-election averages, not general-election averages.
+
+The pinned `polls/README.md` lists four live `projects.fivethirtyeight.com` CSV URLs for current and historical presidential polls, 2020 general-election averages, and corrected 2024 general-election averages:
 
 - Current presidential polls: https://projects.fivethirtyeight.com/polls-page/data/president_polls.csv
 - Historical presidential polls: https://projects.fivethirtyeight.com/polls-page/data/president_polls_historical.csv
 - 2020 presidential general-election averages: https://projects.fivethirtyeight.com/2020-general-data/presidential_poll_averages_2020.csv
-- Corrected presidential general-election averages URL listed in that README: https://projects.fivethirtyeight.com/polls/data/presidential_general_averages.csv
+- Corrected presidential general-election averages: https://projects.fivethirtyeight.com/polls/data/presidential_general_averages.csv
+
+**Important:** the GitHub folder listing does not contain the required 2020 averages or corrected 2024 general averages. The 1968–2016 file does not provide 2020/2024 coverage, and the uncorrected 2024 file must not be used as a substitute. No polling file has been supplied to the private handoff yet.
 
 **Steps**
 
-1. Open the official polls index and read its README before downloading.
-2. For each required CSV, open the exact direct URL above. Use the browser's download/save control; keep the publisher filename.
-3. The `president_polls.csv` and `president_polls_historical.csv` endpoints are current/historical feeds and can change over time. The corrected 2024 averages endpoint is also a live URL, not a pinned immutable release. Confirm the downloaded file actually contains the protocol's required 2020/2024 pre-election records and cutoffs. Record the retrieval date and SHA-256. If it does not, stop and request a versioned source/protocol decision.
-4. Do **not** use `presidential_general_averages_2024-09-12_uncorrected.csv` as a substitute; the repository marks it as the preserved uncorrected file. The GitHub `pres_pollaverages_1968-2016.csv` file ends in 2016 and does not supply 2020/2024 averages.
-5. FiveThirtyEight repository data is stated as **CC BY 4.0** unless a dataset is otherwise noted. Retain the attribution and exact source commit/release with the files.
-
+1. Open the pinned official polls folder and README. Preserve the exact repository commit and original paths.
+2. Download the GitHub-hosted files listed above for inventory/reference, keeping their original names. Do not count them as satisfying missing 2020 or corrected 2024 inputs.
+3. Try each of the four live README URLs **once**. For each attempt, record the exact URL, success/failure, access date/time, original filename, byte size and SHA-256. If a URL is unavailable, record it as unavailable; do not retry through another URL or use a mirror.
+4. If the corrected 2024 general-averages URL is unavailable, state plainly that the corrected 2024 file could not be obtained. Do not use the preserved uncorrected 2024 file. Record any unavailable 2020 asset the same way.
+5. If required 2020/2024 assets are unavailable, stop and ask the owner whether to approve narrowing the polling test window to **2000–2016**. That scope change is **not approved** by this guide or the 15:40 note. Only after the owner's explicit written decision may Claude amend the still-draft protocol; the revised protocol then requires its own explicit owner freeze approval. Never narrow silently or treat a failed URL as approval.
+6. FiveThirtyEight repository data is stated as **CC BY 4.0** unless a dataset is otherwise noted. Retain the attribution and exact source commit/release with the files.
 ### E2. MEDSL county presidential returns
 
 **Official dataset page:** https://doi.org/10.7910/DVN/VOQCHQ
