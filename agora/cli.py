@@ -86,15 +86,65 @@ def cmd_check(args) -> int:
     return 0 if ok else 2
 
 
+def _governed_policy():
+    """Policy source for governed runs. There is no production identity adapter yet (only synthetic
+    fixtures), so this returns None and a governed run is denied (fail closed) until one is wired."""
+    return None
+
+
+def _load_doc(path: str):
+    import yaml
+    text = Path(path).read_text(encoding="utf-8")
+    return json.loads(text) if Path(path).suffix.lower() == ".json" else yaml.safe_load(text)
+
+
+def _governed_input(args, proj: Path):
+    """Build {package, mapping} for Simulation from an exact import id. Raises ScenarioInputError/ValueError."""
+    from .ontology import parse_domain_pack
+    from .ontology.binding import load_binding
+    from .scenario_inputs import ScenarioInputError, build_scenario_input
+    missing = [f for f in ("binding", "pack", "mapping") if not getattr(args, f, None)]
+    if missing:
+        raise ScenarioInputError("--governed-input needs --" + ", --".join(missing))
+    binding = load_binding(_load_doc(args.binding))
+    pack = parse_domain_pack(_load_doc(args.pack))
+    mapping = _load_doc(args.mapping)
+    package = build_scenario_input(binding, pack, proj, args.governed_input, policy=_governed_policy())
+    return {"package": package, "mapping": mapping}
+
+
 def cmd_run(args) -> int:
     proj = Path(args.project)
-    sim = _simulation()(proj, _llm_override(args))
-    ok, msg = sim.llm.status()
-    if not ok:
-        print(msg, file=sys.stderr)
-        sim.close()
+    governed = None
+    if getattr(args, "governed_input", None) is not None:
+        if args.force:
+            print("GOVERNED_FORCE_REFUSED: --force cannot be used with --governed-input.", file=sys.stderr)
+            return 2
+        try:
+            governed = _governed_input(args, proj)
+        except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+            print(f"GOVERNED_INPUT_REFUSED: {exc}", file=sys.stderr)
+            return 3
+    elif any(getattr(args, f, None) for f in ("binding", "pack", "mapping")):
+        print("GOVERNED_INPUT_REFUSED: --binding/--pack/--mapping need --governed-input.", file=sys.stderr)
         return 2
-    sim.prepare(force=args.force)
+    from .sim.engine import GovernedInputError
+    try:
+        sim = _simulation()(proj, _llm_override(args), governed_input=governed) if governed else \
+            _simulation()(proj, _llm_override(args))
+        ok, msg = sim.llm.status()
+        if not ok:
+            print(msg, file=sys.stderr)
+            sim.close()
+            return 2
+        try:
+            sim.prepare(force=args.force)
+        except GovernedInputError:
+            sim.close()
+            raise
+    except GovernedInputError as exc:
+        print(f"GOVERNED_INPUT_REFUSED: {exc}", file=sys.stderr)
+        return 3
     done = sim.store.last_round() + 1
     if done >= sim.sc.rounds:
         print("This run is already complete. See: agora status", proj)
@@ -668,6 +718,11 @@ def main(argv=None) -> int:
     p.add_argument("project")
     p.add_argument("--rounds", type=int, help="only run this many rounds now")
     p.add_argument("--force", action="store_true", help="resume even if scenario.yaml changed")
+    p.add_argument("--governed-input", metavar="IMPORT_ID",
+                   help="start/resume from one exact approved import (latest is rejected); needs --binding --pack --mapping")
+    p.add_argument("--binding", help="data binding file (with --governed-input)")
+    p.add_argument("--pack", help="ontology pack file (with --governed-input)")
+    p.add_argument("--mapping", help="declared segment mapping file (with --governed-input)")
     llm_flags(p)
     p.set_defaults(f=cmd_run)
 
