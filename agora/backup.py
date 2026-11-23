@@ -251,16 +251,33 @@ def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
 
 
 def _check_run_record_seal(data: Path) -> None:
-    """A completed run record must match its audit-chain seal (closes the manifest-regeneration gap)."""
+    """Close the run-record bypasses (manifest-regeneration safe): a chain that holds a seal event
+    requires the run record to be present; its status must be a known value; a record that claims
+    denied/failed while its own run_id is sealed in the chain is refused. Genuine stopped runs
+    (no seal for their run_id) stay valid."""
+    from .pilot import _seal_id, chain_has_seal_event, verify_run_record_seal
     rec = data / "run_record.json"
-    if not rec.is_file():
-        return
-    from .pilot import verify_run_record_seal
     try:
-        if json.loads(rec.read_text(encoding="utf-8")).get("status") != "completed":
+        sealed_any = chain_has_seal_event(data)
+        if not rec.is_file():
+            if sealed_any:
+                raise ValueError("sealed chain but run record missing")
             return
-        verify_run_record_seal(data)
-    except (OSError, ValueError, AttributeError):
+        obj = json.loads(rec.read_text(encoding="utf-8"))
+        status = obj.get("status")
+        if status not in ("completed", "denied", "failed"):
+            raise ValueError("unknown run record status")
+        if status == "completed":
+            verify_run_record_seal(data)
+            return
+        db = sqlite3.connect(f"file:{(data / CHAIN_REL).resolve().as_posix()}?mode=ro", uri=True)
+        try:
+            row = db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (_seal_id(str(obj.get("run_id"))),)).fetchone()
+        finally:
+            db.close()
+        if row is not None:
+            raise ValueError("stopped record contradicts its own seal")
+    except (OSError, ValueError, AttributeError, TypeError, sqlite3.Error):
         raise BackupBlocked("BACKUP_NOT_INTACT", "run_record_seal") from None
 
 
