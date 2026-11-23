@@ -273,7 +273,7 @@ The owner's freeze sentence received 23 November names evaluator ChatGPT but use
 | Random seeds and number of runs | One preregistered seed per configuration (owner-approved 23 Nov; exact seed/configuration list must be frozen) |
 | Evaluation script SHA | TBD |
 | Independent evaluator | ChatGPT, owner-named separate process; restricted scope, output custody and label-release procedure still to be established |
-| Dataset-specific owner approval references | 12:52 IST named approval; 23 Nov owner "Approve both" for exact MEDSL/Ember mirror commits (recorded in Claude's 21:30 entry); Claude's delegated 2000–2016 window choice; confirm scope at freeze |
+| Dataset-specific owner approval references | 12:52 IST named approval; 23 Nov owner "Approve both" for exact MEDSL/Ember mirror commits (recorded in Claude's latest entry); Claude's delegated 2000–2016 window choice; confirm scope at freeze |
 | First run date | Not scheduled |
 | Validation results | None recorded in this draft |
 
