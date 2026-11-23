@@ -1,15 +1,15 @@
 # M3 Design — Governed Scenario Input to the Simulation Engine
 
-**Status:** Design and implementation record (23 November 2026; assessed main `e10dea15177d05ee0b93f0b731086e89c31aa0c4`). The owner gave written approval at 05:54 IST for the exact `agora/sim/engine.py`-only scope in section 3. That slice is merged in #171; the non-simulation CLI and projection follow-ups are merged in #172 and #173 (with #163/#164 implementing and hardening the pure projection). #178 completes the base/projected scenario-hash split within the same approved `engine.py` path. Supporting dataset-independent metrics #175, #176 and #179 are merged separately; they do not expand the approved simulation-engine scope or constitute a validation run. The negative-seed follow-up #180 is merged (merge commit `76ee7625`, exact-head run `45119572140`, 4/4). This document and those merges do not authorize a simulation/validation run, dataset use, real or personal data, connectors, credentials, write-back, or validated prediction. The production CLI currently denies governed runs because no production identity adapter exists.
+**Status:** Design and implementation record (23 November 2026; assessed main `9dad1c8f9ab9ccc3c73aee76403cecab222d25e6`). The owner gave written approval at 05:54 IST for the exact `agora/sim/engine.py`-only scope in section 3. That slice is merged in #171; the non-simulation CLI and projection follow-ups are merged in #172 and #173 (with #163/#164 implementing and hardening the pure projection). #178 completes the base/projected scenario-hash split within the same approved `engine.py` path. Supporting dataset-independent metrics #175, #176 and #179 are merged separately; #180 closes the non-negative bootstrap-seed guard. These supporting metrics do not expand the approved simulation-engine scope or constitute a validation run. ChatGPT documentation PR #181 merged at exact head `73a4947efc1beb94b55718568a1d453d579bae1b` (merge commit/main `9dad1c8f9ab9ccc3c73aee76403cecab222d25e6`; exact-head CI run `45122674011`, 4/4; five changed paths, all `docs/**`). This document and those merges do not authorize a simulation/validation run, dataset use, real or personal data, connectors, credentials, write-back, or validated prediction. M3 remains unreached; only Claude's exact collaboration-log confirmation can declare it reached. The production CLI currently denies governed runs because no production identity adapter exists.
 
 
 
-## 1. What M3 proves (and nothing more)
+## 1. M3 target contract (not yet an operational proof)
 
-A simulation run can be started from one exact, approved, immutable tabular import, with:
-policy check before bytes are read; a deterministic projection; a failure-atomic provenance envelope written before
-round 0; resume that refuses any change; reports that carry the trace and the EXPLORATORY label.
-Not proved: that outputs match reality (that is Track B, under `VALIDATION_PROTOCOL.md`).
+**Target contract:** a governed run must start from one exact, approved, immutable tabular import, with a policy check before source bytes are read; deterministic projection; a failure-atomic provenance envelope written before round 0; resume refusal on any input change; and reports that carry the trace and the EXPLORATORY label.
+
+**Current mainline boundary:** the engine integration and CLI entry point are merged, but the production CLI's `_governed_policy()` returns `None`, so it denies before snapshot bytes are opened. The direct `Simulation(..., governed_input=...)` constructor still verifies package/hash/projection consistency without proof of a successful Principal-bound policy decision. The end-to-end governed-run contract is therefore not demonstrated on main. Not proved: that outputs match reality (Track B, under `VALIDATION_PROTOCOL.md`).
+
 `VALIDATED_PREDICTION_ENABLED` stays `False`; no connectors, credentials, network, write-back, real or personal data.
 
 ## 2. Findings from live code that shape the design
