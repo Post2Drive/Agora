@@ -10,6 +10,8 @@ import sqlite3
 from typing import Any, Mapping, Protocol
 
 
+from agora.pathsafe import require_safe_path
+
 GENESIS = "0" * 64
 _SAFE_KEYS = {
     "event_id", "event_type", "subject_id", "operation", "decision", "policy_version",
@@ -72,7 +74,7 @@ def verify_rows(rows: Any) -> tuple[str, int | None]:
 
 class AuditChainStore:
     def __init__(self, path: str | Path):
-        self.path = Path(path)
+        self.path = require_safe_path(path)  # UnsafePathError before SQLite can follow a link
         self.db = sqlite3.connect(str(self.path), timeout=5.0)
         self.db.execute("CREATE TABLE IF NOT EXISTS audit_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, previous_hash TEXT NOT NULL, event_json TEXT NOT NULL, event_hash TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL)")
         self.db.execute("CREATE TRIGGER IF NOT EXISTS protect_audit_event_update BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit chain is append-only'); END")
