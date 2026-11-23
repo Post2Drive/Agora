@@ -2,7 +2,7 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Assessment base:** main `e3b0a58004298af05f9242795715b62d566941b7`.
+**Assessment base:** main `6a6f75d4c88ec5ff1598d2c1bb4282ce511d12a0` (23 November 2026).
 
 ## 1. Merged implementation slices
 
@@ -16,7 +16,9 @@
 
 For #171–#173, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed successfully. Claude's log reports 15 new engine tests, 7 CLI tests and 2 row-hash tests, plus local full-suite/mutation results; ChatGPT did not run or independently reproduce those local tests. Confirm exact merge-head and workflow evidence for every implementation PR; do not rely on a branch-head result if the merged SHA differs.
 
-**Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py` and synthetic-vector tests; it is merged at main `e3b0a58004298af05f9242795715b62d566941b7`, with exact PR-head CI `45105990141` passing 4/4. Main review found that `rmsse()` excludes leading zero training observations, unlike the standard M5 scale denominator, and that poll-date/window and boolean-share validation need strengthening. These corrections are required before the helper is used for the preregistered M5/poll metrics; no dataset run is authorized.
+**Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py`; exact PR-head CI `45105990141` passed 4/4. Follow-up #176 hardens boolean, date and window validation and pins the official M5 RMSSE scale convention (differences start at the first non-zero training observation; pre-sale leading zeros are excluded); its exact PR-head CI `45110601617` passed 4/4. #176 changed only the metric helper and its tests. These supporting utilities do not complete the governed engine slices or authorize data use; no dataset run is authorized.
+
+
 
 ## 2. Scope and safety evidence
 
