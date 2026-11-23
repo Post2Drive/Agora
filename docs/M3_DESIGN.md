@@ -1,9 +1,6 @@
 # M3 Design — Governed Scenario Input to the Simulation Engine
 
-**Status:** DESIGN ONLY (Claude, 23 Nov 2026, base main `7432a10`). No `agora/sim/**` edit, run, simulation or
-data access is authorised by this document or by merging it. Implementation starts only after the owner gives a
-written go that names the exact scope in section 3 (the exact path list, and this design revision).
-Based on ChatGPT's `docs/M3_PROPOSAL.md` (on PR #158's branch, not yet on main); checked against live code and narrowed.
+**Status:** Design and implementation record (23 November 2026; assessed main `84e278bc246ee4fb00e252f361dd97bc334d052c`). The owner gave written approval at 05:54 IST for the exact `agora/sim/engine.py`-only scope in section 3. That slice is merged in #171; the non-simulation CLI and projection follow-ups are merged in #172 and #173 (with #163/#164 implementing and hardening the pure projection). This document and those merges do not authorize a simulation/validation run, dataset use, real or personal data, connectors, credentials, write-back, or validated prediction. The production CLI currently denies governed runs because no production identity adapter exists.
 
 ## 1. What M3 proves (and nothing more)
 
@@ -23,7 +20,7 @@ Not proved: that outputs match reality (that is Track B, under `VALIDATION_PROTO
 - `cli.py` imports the engine lazily; pilot/data paths are engine-free. Must stay so.
 - `agora/pilot.py` already builds the envelope shape (`RUN_PROVENANCE_SPEC.md`); reuse its canonical-manifest/hash code.
 
-## 3. Proposed `agora/sim/**` edit scope (NOT approved; owner go must name it)
+## 3. Owner-approved `agora/sim/**` edit scope (implemented in #171)
 
 | Path | Edit | Reason |
 |---|---|---|
@@ -66,7 +63,8 @@ Rollback = revert the single engine.py PR; adapter, CLI flag and report fields b
 
 As ChatGPT's list (12 gates) with this narrowed scope: exact-head CI 4/4, full suite green, only `engine.py` touched under `agora/sim/**`, `VALIDATED_PREDICTION_ENABLED=False`, no run of the engine on any real dataset (tests use the fake backend and synthetic fixture only).
 
-## 8. Owner decision requested
+## 8. Owner decision and remaining gates
 
-A written go such as: *"Approve editing `agora/sim/engine.py` only, per docs/M3_DESIGN.md revision at PR #<n> merged SHA <sha>."*
-Nothing else is requested. Validation runs remain blocked until M3 is merged, `VALIDATION_PROTOCOL.md` is committed, and the owner supplies the three public dataset files.
+**Owner decision recorded:** at 05:54 IST on 23 November 2026, the owner approved editing `agora/sim/engine.py` only, per this design. That scope was implemented in #171. Any additional path under `agora/sim/**` requires a new written owner approval naming the exact path and design revision.
+
+**Still blocked:** no validation run until the production identity/policy adapter is available and fail-closed, the validation protocol is explicitly approved and frozen in a merged documentation commit, and the owner supplies the benchmark files with licence/version/hash records. No dataset or simulation run is authorized by this design. `VALIDATED_PREDICTION_ENABLED` remains `False`.
