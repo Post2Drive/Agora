@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Baseline:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The CLI still denies governed runs because `_governed_policy()` returns `None` until a production identity adapter exists. This protocol remains draft; no dataset has been run and no validation is authorized.
+**Baseline:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The CLI still denies governed runs because `_governed_policy()` returns `None` until a production identity adapter exists. Claude's dataset-independent metric helpers are in draft PR #175 (head `eb49dd4c7850252494326ac539cab994333664cd`; exact-head CI `45105990141`, 4/4), not on main. Review identified an M5 RMSSE scale mismatch: the draft skips leading-zero training observations, while the standard M5 scale uses all adjacent training observations. It also needs stricter poll-date/window and numeric-type validation. Do not rely on #175 until corrected and merged. This protocol remains draft; no dataset has been run and no validation is authorized.
 
 ## 1. Purpose, scope and non-claims
 
@@ -105,7 +105,7 @@ The owner-approved domains are election results and polls, retail sales (M5 Walm
 
 - Target: daily unit sales per item/store series over the 28-day horizon.
 - Primary metric: M5 Weighted Root Mean Squared Scaled Error (WRMSSE), implemented from the published M5 hierarchy/weights with an independent calculation check.
-- Secondary metrics: WAPE and RMSSE. Report aggregate and category/store-level metrics; disclose zero-denominator handling before the run.
+- Secondary metrics: WAPE and RMSSE. For RMSSE, the scale denominator is the mean squared first difference over the **entire training series**, including leading zero observations; do not trim leading zeros. A zero scale is not estimable and must not be imputed. Report aggregate and category/store-level metrics; disclose zero-denominator handling before the run.
 - If AGORA engine output cannot be mapped to a numeric item/store/day prediction without inventing a conversion rule, classify the benchmark as not evaluable.
 
 **Naive baseline**
