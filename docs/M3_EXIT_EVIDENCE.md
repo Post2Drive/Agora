@@ -1,10 +1,10 @@
 # M3 Exit Evidence — Claude Milestone Declaration Checklist
 
-**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation; the latest Claude round is 16:16 IST. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
+**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, M3 has not been declared reached. The owner's 23 November run approval is recorded below as received, dormant; no freeze approval has been given, no run has occurred, and only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Post-#192/#194 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes verification/restore record findings. #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge commit `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes source-side strict-record preflight before destination creation/copy and re-checks copied bytes. #191 docs merged at exact head `02a88463529559009adec76c052be94621aa557e`, merge `705fe5cfa157b36fd75c93a141afe39255c08b65`, run `45148838308`, 4/4. #194 is the latest docs-only merge at exact head `5ae9bd643d41a00ad5b959a265a489fc18e0e3c1`, merge/current main `5cba6dcabce9047cdadf524f1a1ecee39dbd95b1`, run `45157828392`, 4/4 (seven paths all under `docs/**`). Path-based SQLite reopen (TOCTOU) remains owner-gated.
+**Post-#192/#195 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes verification/restore record findings. #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge commit `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes source-side strict-record preflight before destination creation/copy and re-checks copied bytes. #195 is the latest docs-only merge at exact head `fedab29c7d1e5b3d67e252d73bb97c9ae37acf93`, current main `e29ee4b1428fbc27458b547cc8c68bd4833c6ff2`, exact-head CI `45160887328`, 4/4 (six paths all under `docs/**`). Path-based SQLite reopen (TOCTOU) remains owner-gated.
 
-**Assessment base:** main `5cba6dcabce9047cdadf524f1a1ecee39dbd95b1` (23 November 2026; latest docs-only merge #194; latest code merge #192).
+**Assessment base:** main `e29ee4b1428fbc27458b547cc8c68bd4833c6ff2` (23 November 2026; latest docs-only merge #195 at exact head `fedab29c7d1e5b3d67e252d73bb97c9ae37acf93`, exact-head CI `45160887328` passed 4/4; latest code merge #192 at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, exact-head CI `45150068645` passed 4/4).
 
 ## 1. Merged implementation slices
 
@@ -86,10 +86,30 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 **No dataset was acquired, no simulation or validation was run, and no prediction-validity claim is made by this document.**
 
 
-## 7. Dataset reachability update — 23 November 2026
+## 7. Dataset handoff status — 23 November 2026
 
-Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the workspace allowlist. No data was downloaded. Claude's 15:40 IST note adds that the owner shared the FiveThirtyEight polls folder listing but no files are in hand; the owner should try the four live README URLs once and report failures. No 2000–2016 scope change is approved. The acquisition checklist records two third-party GitHub mirror candidates:
-- MEDSL V20 county returns in `mathis-group/cas-201-data-project`, whose README records the same MD5 as Dataverse V20, 94,151 rows and CC0 1.0.
-- Ember monthly CSV in `Awes0mer/fuel-cars-pollution`, whose manifest records the official Ember source URL, CC BY 4.0, 7,695,642 bytes and SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`; this is a 16-Nov snapshot, while the official Ember page now reports an 18-Nov update.
+The owner reports a partial FiveThirtyEight import in private `Post2Drive/Post2Drive` PR #5, import commit `15c9a053291925813ef568466a92fc5460f6b554`, from FiveThirtyEight/data source commit `4c1ff5e3aef1816ae04af63218015066e186c147`. The PR's changed-file list shows the upstream polls README/licence and eight `old_model/*.csv` files. Four larger CSVs remain outstanding: the uncorrected 2024 general averages, 2024 primary averages, 1968–2016 presidential poll averages and 1980–2016 presidential primary averages. Their reported byte counts and per-file manifest rows are in `DATASET_MANIFEST_TEMPLATE.md`. No per-file SHA-256 values are recorded; the handoff metadata does not establish raw-byte verification, complete 2020/2024 coverage, licence approval or permission to run.
 
-Both are third-party mirrors and require explicit owner approval of exact repository/commit/file/version before acquisition. M5 remains owner-supplied through Kaggle terms. No mirror was downloaded, imported or run by ChatGPT.
+The MEDSL V20 county presidential returns source is Harvard Dataverse DOI 10.7910/DVN/VOQCHQ, Version 20.0, CC0 1.0; the exact source file and bytes still need to be pinned and hashed. M5 Walmart remains conditional on the owner's review of Kaggle Competition Rules; do not acquire or use it before that review. The Ember monthly EV file remains a candidate public-adoption source whose exact official release and licence must be verified; a third-party 16-Nov snapshot is not presumed current. Any Rossmann replacement requires explicit selection and its own per-file licence review.
+
+No raw dataset bytes were downloaded or inspected by ChatGPT in this documentation task. No complete manifest is present, no protocol freeze has occurred, and no dataset, simulation or validation run has occurred.
+
+## 8. Owner approvals received — 23 November 2026 (status, not milestone completion)
+
+### A–D design acceptance
+
+The owner explicitly accepted Claude's written 23 November A–D design approval in the owner's chat message. This is acceptance of the design decisions, not an expansion of repository-path authorization. Within `agora/sim/**`, the only authorized path remains `agora/sim/engine.py`; no additional `agora/sim/**` path is authorized.
+
+### Run approval — received, dormant
+
+**Owner's run approval received 23 November 2026; status: RECEIVED, DORMANT.** The owner's approved scope is exactly one run per frozen configuration on the election, retail and adoption public datasets named in the frozen protocol, no tuning and no reruns for better numbers, all results reported including losses to the naive baseline, and no NCC, Nutrivance or P2D data.
+
+This approval remains dormant until all preconditions are met: the protocol is separately frozen by the owner's freeze approval below; the complete selected datasets and per-file SHA-256 manifest are committed in the owner-controlled private repository; required implementation slices are merged and Claude records M3 reached; and the independent evaluator and custody are in place. The four outstanding FiveThirtyEight CSVs remain an acquisition blocker. This record does not authorize a run now, a second run, prediction enablement or any data outside the named public sets. No run has been made.
+
+### Owner freeze sentence — template only; not approved or executed
+
+Once the protocol PR is merged and the complete manifest and evaluator are ready, the owner may paste the following sentence with only the three values supplied:
+
+“I approve freezing `docs/VALIDATION_PROTOCOL.md` as merged at commit [protocol commit sha], with dataset manifest [manifest sha] and evaluator [evaluator name]. This approves no run and no flag change.”
+
+The blanks are intentionally limited to the protocol commit SHA, manifest SHA and evaluator name. This is a template, not a freeze decision. The protocol remains draft/unfrozen; M3 has not been declared reached; no dataset or simulation run has occurred; `VALIDATED_PREDICTION_ENABLED=False` remains unchanged.
