@@ -71,7 +71,7 @@ The owner-approved domains are election results and polls, retail sales (M5 Walm
 - Held-out test cycle: 2024 (Election Day 2024-11-05).
 - **Conditional 2000–2016 fallback:** if the corrected 2024 general-poll asset is unavailable after its single prescribed live-URL attempt, use a separately versioned preregistration with training cycles 2000/2004/2008, validation 2012 and held-out test 2016, using the pinned historical poll-average file and MEDSL results. This is the owner-delegated fallback proposed for freeze; it is not a silent edit to the current 2020/2024 design. Do not use the uncorrected 2024 file or a mirror. Freeze the exact file names, hashes, cutoffs and new split before any run.
 - For each election cycle, freeze forecast cutoffs at 28, 14 and 7 calendar days before Election Day. Only polls with `enddate` on or before cutoff may be used. Exclude any poll or derived field published after cutoff.
-- The 2024 outcome labels remain sealed until predictions are frozen. If the pinned poll source does not contain adequate pre-election 2024 coverage, stop this benchmark rather than substitute another cycle after inspecting outcomes.
+- The 2024 outcome labels remain sealed until predictions are frozen. If the corrected 2024 poll asset is unavailable, do not run the current 2020/2024 split; use the conditional 2000–2016 fallback only in a separately versioned preregistration with training 2000/2004/2008, validation 2012 and held-out test 2016, frozen before any run. If the fallback's exact source files and manifest are not available, stop this benchmark rather than substitute another cycle after inspecting outcomes.
 
 **Target and metrics**
 
