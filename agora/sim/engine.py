@@ -20,7 +20,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 import numpy as np
 
@@ -60,13 +60,27 @@ class RoundOutput:
         self.mutes: list[tuple[int, int]] = []
 
 
+class GovernedInputError(RuntimeError):
+    """A governed run was started or resumed with input that is missing, altered or unverifiable."""
+
+
 class Simulation:
     bad_replies = 0       # model replies that stayed unusable after retries (that agent did nothing)
     retried_replies = 0   # replies that needed a second try
 
-    def __init__(self, project: str | Path, llm_override: dict | None = None):
+    def __init__(self, project: str | Path, llm_override: dict | None = None,
+                 governed_input: Mapping | None = None):
+        """governed_input (optional, M3): {"package": <scenario-input package>, "mapping": <declared mapping>}.
+
+        When given, the population comes from the approved, hash-verified package and the run
+        carries an append-once provenance envelope. When None, behaviour is exactly the legacy path.
+        """
         self.dir = Path(project)
         self.sc = scenario_mod.load(self.dir / SCENARIO_FILE)
+        self.governed: dict | None = None
+        if governed_input is not None:
+            self.governed = self._verify_governed(governed_input, self.sc)
+            self.sc = self.governed["scenario"]
         cfg = safe_study_llm(self.sc.llm)
         cfg.update(llm_override or {})
         self.llm_cfg = LLMConfig.from_dict(cfg)
@@ -91,8 +105,49 @@ class Simulation:
         return hashlib.sha256(json.dumps(self.sc.raw, sort_keys=True, default=str)
                               .encode()).hexdigest()[:16]
 
+    @staticmethod
+    def _verify_governed(governed_input: Mapping, base) -> dict:
+        """Verify the package and derive the scenario here; nothing from the caller is trusted."""
+        from ..scenario_inputs import recompute_scenario_hash
+        from ..scenario_projection import ProjectionError, project_segments
+        if not isinstance(governed_input, Mapping) or set(governed_input) != {"package", "mapping"}:
+            raise GovernedInputError("governed_input must be exactly {package, mapping}")
+        package, mapping = governed_input["package"], governed_input["mapping"]
+        if not isinstance(package, Mapping) or package.get("validated_prediction_enabled") is not False:
+            raise GovernedInputError("package must be a scenario-input package with validated_prediction_enabled False")
+        manifest = package.get("manifest")
+        try:
+            recomputed = recompute_scenario_hash(manifest)
+        except (KeyError, TypeError, ValueError):
+            raise GovernedInputError("package manifest is incomplete") from None
+        if not (manifest.get("scenario_hash") == recomputed == package.get("scenario_hash")):
+            raise GovernedInputError("package scenario_hash does not match its manifest")
+        try:
+            derived, record = project_segments(package, mapping, base)
+        except ProjectionError as exc:
+            raise GovernedInputError(f"projection refused: {exc}") from exc
+        return {"scenario": derived, "manifest": {**dict(manifest), "projection": record}}
+
+    def _guard_provenance(self) -> None:
+        """Governed runs are append-once and never forceable; legacy runs cannot adopt or ignore an envelope."""
+        stored = self.store.get_meta("input_provenance")
+        if self.governed is None:
+            if stored is not None:
+                raise GovernedInputError("this run is governed: resume it with its governed input")
+            return
+        manifest = {**self.governed["manifest"], "base_scenario_hash": self.scenario_hash}
+        if self.store.is_initialised():
+            if self.store.get_input_provenance().get("provenance_status") != "verified":
+                raise GovernedInputError("legacy run has no input provenance and cannot resume as governed")
+        try:
+            # idempotent when identical; raises (original left byte-identical) when anything differs
+            self.store.set_input_provenance(manifest)
+        except (RuntimeError, ValueError) as exc:
+            raise GovernedInputError(f"governed input does not match this run: {exc}") from exc
+
     def prepare(self, force: bool = False) -> World:
         """Create the population on first run, or reload it to resume."""
+        self._guard_provenance()  # before any population write; --force never reaches this check
         if not self.store.is_initialised():
             (self.dir / "decisions.jsonl").unlink(missing_ok=True)
             w, follows, members = population.build(self.sc)
