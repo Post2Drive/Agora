@@ -2,7 +2,7 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Assessment base:** main `84e278bc246ee4fb00e252f361dd97bc334d052c`.
+**Assessment base:** main `e3b0a58004298af05f9242795715b62d566941b7`.
 
 ## 1. Merged implementation slices
 
