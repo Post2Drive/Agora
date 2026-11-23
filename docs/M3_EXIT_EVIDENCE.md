@@ -99,7 +99,7 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 
 ## 7. Dataset handoff status — 23 November 2026
 
-The private Post2Drive data repository main is `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR #5 is still open/unmerged at branch commit `15c9a053291925813ef568466a92fc5460f6b554`; the eight files below exist only on that PR branch at `validation-data/elections/fivethirtyeight-polls/old_model/`. The owner-reported/connector-inspected inventory lists no SHA-256 for any of them. Git blob IDs are not SHA-256 file checksums.
+The private Post2Drive data repository main is `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR #5 is still open/unmerged at branch commit `15c9a053291925813ef568466a92fc5460f6b554`; the eight files below exist only on that PR branch at `validation-data/elections/fivethirtyeight-polls/old_model/`. The read-only GitHub tree inspection records no SHA-256 for any of them. Git blob IDs are not SHA-256 file checksums.
 
 | File in Post2Drive/Post2Drive PR #5 branch | Bytes | SHA-256 recorded? |
 |---|---:|---|
