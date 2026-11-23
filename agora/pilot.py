@@ -229,6 +229,20 @@ def verify_run_record_seal(project: str | Path) -> None:
         raise ValueError("run record does not match its audit-chain seal")
 
 
+def chain_has_seal_event(project: str | Path) -> bool:
+    """True if the project's audit chain holds any run_record_sealed event. Read-only; raises on a bad chain."""
+    import sqlite3
+    chain = Path(project) / "audit" / "chain.sqlite3"
+    db = sqlite3.connect(f"file:{chain.resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        for (ej,) in db.execute("SELECT event_json FROM audit_events"):
+            if json.loads(ej).get("event_type") == SEAL_EVENT:
+                return True
+    finally:
+        db.close()
+    return False
+
+
 _SHA = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FP = re.compile(r"^(sha256:)?[0-9a-f]{64}$")  # ontology pack fingerprints are bare hex
 _REQUIRED = {

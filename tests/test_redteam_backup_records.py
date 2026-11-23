@@ -262,3 +262,54 @@ def test_rt11_limitation_hardlink_to_outside_file_is_a_plain_file_and_is_copied(
     backup(project, tmp_path / "bk")
     assert outside.read_text() == "SENTINEL"
     assert (tmp_path / "bk" / "data" / "hard.txt").read_text() == "SENTINEL"
+
+
+# ---- RT05b run-record removal / status downgrade with regenerated manifest (ChatGPT 13:17 finding) ----
+def test_rt05b_run_record_removed_with_regenerated_manifest_is_refused(project, tmp_path):
+    bk = tmp_path / "bk"
+    backup(project, bk)
+    (bk / "data" / "run_record.json").unlink()
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+@pytest.mark.parametrize("status", ["denied", "failed", "bogus", "stopped"])
+def test_rt05b_completed_record_status_changed_with_regenerated_manifest_is_refused(project, tmp_path, status):
+    bk = tmp_path / "bk"
+    backup(project, bk)
+    p = bk / "data" / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["status"] = status
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
+
+
+def test_rt05b_genuine_stopped_record_without_seal_is_still_valid(tmp_path):
+    """Control: a real denied run (record present, no seal for its run_id) backs up, verifies, restores."""
+    from agora.pilot import default_identities
+    ids = default_identities(NOW)
+    ids["operator"]["roles"] = ["reader"]
+    res = run_pilot(tmp_path / "run", now=NOW, identities=ids)
+    assert res.status == "stopped"
+    proj = tmp_path / "run" / PROJECT_ID
+    assert json.loads((proj / "run_record.json").read_text(encoding="utf-8"))["status"] == "denied"
+    bk = tmp_path / "bk"
+    backup(proj, bk)
+    assert verify_backup(bk)["files"] > 0
+    assert restore(bk, tmp_path / "restored")["restored_to"]
+
+
+def test_rt05b_unknown_status_on_unsealed_stopped_record_is_refused(tmp_path):
+    from agora.pilot import default_identities
+    ids = default_identities(NOW)
+    ids["operator"]["roles"] = ["reader"]
+    run_pilot(tmp_path / "run", now=NOW, identities=ids)
+    bk = tmp_path / "bk"
+    backup(tmp_path / "run" / PROJECT_ID, bk)
+    p = bk / "data" / "run_record.json"
+    rec = json.loads(p.read_text(encoding="utf-8"))
+    rec["status"] = "bogus"
+    p.write_text(json.dumps(rec), encoding="utf-8")
+    _regen_manifest(bk)
+    _refused(bk, tmp_path / "restored", "BACKUP_NOT_INTACT")
