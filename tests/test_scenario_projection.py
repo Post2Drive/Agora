@@ -95,3 +95,21 @@ def test_no_engine_network_or_flag_flip(monkeypatch):
     assert not any(("sim" in m.split(".")) or m in {"socket", "urllib", "requests", "httpx"} for m in mods)
     monkeypatch.setattr(socket, "socket", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
     project_segments(_pkg(), MAP, _base())
+
+
+def test_unmapped_row_content_changes_hashes_but_not_segments():
+    """scenario_hash does not cover rows; an edit to an unmapped property must still change the record."""
+    base = _pkg()
+    sc1, r1 = project_segments(base, MAP, _base())
+    edited = copy.deepcopy(base)
+    edited["instances"][0]["property_values"]["x:other"] = "changed"
+    sc2, r2 = project_segments(edited, MAP, _base())
+    assert sc1.segments == sc2.segments
+    assert r1["instances_hash"] != r2["instances_hash"]
+    assert r1["projection_hash"] != r2["projection_hash"]
+
+
+def test_instances_hash_is_row_order_independent():
+    pkg = _pkg()
+    rev = copy.deepcopy(pkg); rev["instances"].reverse()
+    assert project_segments(pkg, MAP, _base())[1]["instances_hash"] == project_segments(rev, MAP, _base())[1]["instances_hash"]
