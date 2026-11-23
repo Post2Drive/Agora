@@ -72,7 +72,8 @@ def wrmsse(trains: Sequence[Sequence[float]], obs: Sequence[Sequence[float]],
 def seasonal_naive(history: Sequence[float], horizon: int, season: int) -> np.ndarray:
     """Repeat the last `season` observations over `horizon` steps (t-7 for daily, t-12 for monthly)."""
     h = _vec(history, "history")
-    if not isinstance(horizon, int) or horizon < 1 or not isinstance(season, int) or season < 1:
+    if (not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1
+            or not isinstance(season, int) or isinstance(season, bool) or season < 1):
         raise NotEstimable("horizon and season must be positive integers")
     if h.size < season:
         raise NotEstimable("history is shorter than one season; nothing is interpolated")
@@ -82,7 +83,8 @@ def seasonal_naive(history: Sequence[float], horizon: int, season: int) -> np.nd
 
 def two_party_margin(a_pct: float, b_pct: float) -> float:
     """Two-party margin in percentage points: (a - b) / (a + b) * 100."""
-    if not all(isinstance(v, (int, float)) and math.isfinite(v) and v >= 0 for v in (a_pct, b_pct)):
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
+               for v in (a_pct, b_pct)):
         raise NotEstimable("shares must be finite and non-negative")
     if a_pct + b_pct == 0:
         raise NotEstimable("both shares are zero")
@@ -95,11 +97,21 @@ def weighted_poll_margin(polls: Sequence[Mapping], cutoff: date, window_days: in
     Each poll: {"end_date": date, "sample_size": positive number, "a_pct": x, "b_pct": y}.
     A poll ending after the cutoff is never used. No eligible poll -> NotEstimable (no imputation).
     """
+    if type(cutoff) is not date:
+        raise NotEstimable("cutoff must be a date (not a datetime)")
+    if not isinstance(window_days, int) or isinstance(window_days, bool) or window_days < 1:
+        raise NotEstimable("window_days must be a positive integer")
     start = cutoff - timedelta(days=window_days)
     num = den = 0.0
     for p in polls:
-        end = p["end_date"]
-        if not isinstance(end, date) or not (start < end <= cutoff):
+        try:
+            end = p["end_date"]
+            _ = p["sample_size"], p["a_pct"], p["b_pct"]
+        except (KeyError, TypeError):
+            raise NotEstimable("poll must carry end_date, sample_size, a_pct and b_pct") from None
+        if type(end) is not date:
+            raise NotEstimable("poll end_date must be a date (not a datetime or string)")
+        if not (start < end <= cutoff):
             continue
         n = p["sample_size"]
         if not isinstance(n, (int, float)) or isinstance(n, bool) or not math.isfinite(n) or n <= 0:

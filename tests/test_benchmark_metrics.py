@@ -127,3 +127,48 @@ def test_bootstrap_resamples_whole_clusters():
     assert cluster_bootstrap_ci(homo, samples=300, seed=3)["hi"] - cluster_bootstrap_ci(homo, samples=300, seed=3)["lo"] == 0
     ci = cluster_bootstrap_ci(hetero, samples=300, seed=3)
     assert ci["hi"] > ci["lo"]
+
+
+# ---- hardening slice (input validation); RMSSE keeps official M5 scale semantics ----
+import datetime as _dt
+import pytest as _pytest
+from agora.validation import benchmark_metrics as _bm
+
+
+def test_rmsse_scale_starts_at_first_nonzero_like_official_m5():
+    # train [0,0,1,3,2]: official M5 scale uses diffs from first non-zero: (2^2+1^2)/2 = 2.5
+    assert _bm.rmsse([0, 0, 1, 3, 2], [4, 4], [2, 3]) == _pytest.approx((2.5 / 2.5) ** 0.5)  # mse 2.5 / scale 2.5
+
+
+def test_seasonal_naive_rejects_bools():
+    with _pytest.raises(_bm.NotEstimable):
+        _bm.seasonal_naive([1, 2, 3], True, 1)
+    with _pytest.raises(_bm.NotEstimable):
+        _bm.seasonal_naive([1, 2, 3], 2, True)
+
+
+def test_two_party_margin_rejects_bools():
+    with _pytest.raises(_bm.NotEstimable):
+        _bm.two_party_margin(True, 40)
+
+
+_P = {"end_date": _dt.date(2024, 10, 1), "sample_size": 100, "a_pct": 50, "b_pct": 45}
+
+
+@_pytest.mark.parametrize("cutoff,window", [(_dt.datetime(2024, 10, 2), 28), (_dt.date(2024, 10, 2), 0),
+                                            (_dt.date(2024, 10, 2), True), (_dt.date(2024, 10, 2), 2.5)])
+def test_poll_margin_rejects_bad_cutoff_or_window(cutoff, window):
+    with _pytest.raises(_bm.NotEstimable):
+        _bm.weighted_poll_margin([_P], cutoff, window)
+
+
+@_pytest.mark.parametrize("bad", [{**_P, "end_date": "2024-10-01"}, {**_P, "end_date": _dt.datetime(2024, 10, 1)},
+                                  {k: v for k, v in _P.items() if k != "a_pct"}])
+def test_poll_margin_rejects_malformed_poll_even_if_out_of_window(bad):
+    with _pytest.raises(_bm.NotEstimable):
+        _bm.weighted_poll_margin([_P, bad], _dt.date(2024, 10, 2))
+
+
+def test_poll_margin_valid_future_poll_excluded_not_error():
+    fut = {**_P, "end_date": _dt.date(2024, 11, 1), "a_pct": 10}
+    assert _bm.weighted_poll_margin([_P, fut], _dt.date(2024, 10, 2)) == _bm.two_party_margin(50, 45)
