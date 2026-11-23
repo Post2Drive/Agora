@@ -72,12 +72,98 @@ The pinned repository README at commit `4c1ff5e3aef1816ae04af63218015066e186c147
 4. Record the release/publication date, methodology version, underlying-source notes, **CC BY 4.0** attribution, exact bytes and SHA-256.
 5. The reviewed GitHub candidate `Awes0mer/fuel-cars-pollution` at commit `2c21f1edced7aae884314ebc28c89ab212f30563` records a 16 November 2026 snapshot of 7,695,642 bytes with SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`. The checklist notes Ember's official page had a newer 18 November update. This candidate is **not the latest official release and is not approved**; do not use it unless the owner approves that exact snapshot.
 
-## Attach the owner-approved files
+## Hand off through a separate private GitHub repository
 
-1. Put the original files and their source/size/hash register in a clearly named local folder, one package at a time.
-2. Attach only the owner-approved, licence-permitted files to this ChatGPT conversation using the attachment/paperclip control. Include the register (publisher, version, filename, bytes, SHA-256, licence and access date).
-3. If a file is too large for the chat upload limit, do not replace it with a public link, cloud credential or unapproved mirror. Stop and request an approved local handoff method.
-4. Do not put raw files in the GitHub repository or Notion. Keep them outside AGORA and outside the repository.
+**Do not attach raw benchmark files to this ChatGPT conversation, Notion, or the AGORA source repository.** Claude's agreed handoff is a separate owner-controlled **private** GitHub repository, kept separate from AGORA. Suggested repository name: `agora-validation-data`. The owner creates it and controls who can access it.
+
+### 1. Create the private repository
+
+1. Sign in to GitHub in your own browser.
+2. Select **+** (top-right) → **New repository**.
+3. Repository name: `agora-validation-data` (or another name you choose).
+4. Set **Visibility** to **Private**. Do not select Public.
+5. For the simplest first push, leave **Add a README**, **.gitignore** and **license** unchecked so the repository is empty.
+6. Select **Create repository**.
+7. Give Claude's GitHub integration access using GitHub's own authorization/invitation controls, if it is not already authorized. Do not send passwords, personal access tokens, cookies or recovery codes in chat. If access cannot be granted safely, stop and ask for another owner-approved handoff.
+
+### 2. Prepare the folders on your Windows laptop
+
+Keep the downloaded originals in a local folder outside your AGORA checkout. Use one folder per package, for example:
+
+```text
+agora-validation-data/
+  E_fivethirtyeight/
+  E_medsl/
+  R_m5/
+  A_ember/
+  register/
+```
+
+Put each publisher's original files in the matching folder. Keep the original filenames. Put the source/version/licence/size/hash register in `register/` as a small CSV or Markdown file. Do not add unrelated files, personal data, credentials, or AGORA project files.
+
+**Expected filenames to look for (verify against the publisher page; do not rename to force a match):**
+
+- FiveThirtyEight: `president_polls.csv`, `president_polls_historical.csv`, and the exact 2020/2024 average CSVs listed in the publisher README/direct links above. The required 2024 corrected averages file is a live external URL; verify coverage and retrieval date.
+- MEDSL: the Dataverse Version 20.0 County Presidential Election Returns 2000–2024 CSV and its codebook. `countypres_2000-2024.csv` is the candidate mirror's filename, not a guarantee of the official Dataverse filename.
+- M5: `calendar.csv`, `sales_train_validation.csv`, `sell_prices.csv`, and `sales_train_evaluation.csv` if retaining the reserved `d_1914`–`d_1941` window.
+- Ember: the current official monthly CSV; the reviewed snapshot calls it `monthly_ev_sales.csv`. Verify the filename and release on Ember's download page.
+
+There is no approved fixed byte-size threshold for the live FiveThirtyEight or Ember downloads, or for the current official MEDSL download. Record the actual byte size of every downloaded file; do not reject or accept a file solely because it differs from an unapproved mirror's size. The MEDSL mirror's claimed 10,222,208 bytes and Ember mirror's 7,695,642 bytes are candidate-snapshot details only, not official acceptance targets. Claude's handoff note estimates M5 `sales_train_evaluation.csv` at about 120 MB; verify your actual file size.
+
+### 3. Check files before pushing
+
+1. In PowerShell, change to the folder containing the dataset folders.
+2. Record file sizes and SHA-256 values. Example:
+
+```powershell
+Get-ChildItem -File -Recurse | Select-Object FullName, Length
+Get-ChildItem -File -Recurse | ForEach-Object {
+  Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName
+}
+```
+
+3. Open each small CSV locally and confirm its header and expected date coverage. Do not upload or push respondent-level, personal, customer, driver, account, or sensitive data.
+4. GitHub's browser upload limit is 25 MB per file; for Git pushes, do not push a file larger than 100 MB. For a file over 100 MB, create a ZIP copy locally (keep the original separately):
+
+```powershell
+Compress-Archive -LiteralPath ".\large-file.csv" -DestinationPath ".\large-file.csv.zip"
+Get-Item ".\large-file.csv.zip" | Select-Object FullName, Length
+```
+
+5. The ZIP must itself be below 100 MB for an ordinary Git push. If it is still 100 MB or larger, **stop**; do not split it, use Git LFS, or switch to a public link without a separately approved handoff method. Record both the original file's size/hash and the ZIP's size/hash. Claude must be told which archive to retrieve and how it maps to the original filename.
+6. **M5 gate:** do not push any Kaggle M5 file to the private repository until you have personally reviewed the competition terms and confirmed that this private collaborator handoff is permitted. A private repository does not override Kaggle terms. If unclear or prohibited, leave M5 local and stop for an owner-approved alternative.
+
+### 4. Push to the private repository (PowerShell)
+
+Install Git for Windows if needed, then open PowerShell. Replace the placeholders with your own GitHub username and private repository name. Do not use the AGORA repository URL.
+
+```powershell
+cd "$HOME\Downloads"
+git clone https://github.com/<YOUR_GITHUB_USERNAME>/agora-validation-data.git
+cd .\agora-validation-data
+```
+
+Copy the prepared package folders and register into this newly cloned folder. Then check exactly what will be committed:
+
+```powershell
+git status --short
+git add .\E_fivethirtyeight .\E_medsl .\A_ember .\register
+# Add .\R_m5 only if the Kaggle terms explicitly permit this handoff.
+git status --short
+```
+
+If the staged list contains anything unexpected, stop and unstage it before continuing. Once the staged list is correct:
+
+```powershell
+git commit -m "Add owner-approved validation benchmark files"
+git push origin main
+```
+
+If GitHub asks you to authenticate, use the normal Git Credential Manager/browser sign-in on your own computer. Never paste a token or password into ChatGPT, Notion, a commit, or a log. Confirm the repository page still shows **Private** after the push.
+
+### 5. Tell Claude what is ready
+
+Send Claude the private repository name/URL and the package folder names, plus the register. Do not send credentials. Claude should pull only the owner-approved files, verify the original filenames, versions, sizes and SHA-256 values, and update the dataset register. A successful push is not approval to import the data into AGORA.
 
 ## Stop conditions
 
