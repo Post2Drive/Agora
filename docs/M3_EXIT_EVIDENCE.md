@@ -2,7 +2,7 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
-**Assessment base:** main `2ca4ec4b` (23 November 2026).
+**Assessment base:** main `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1` (23 November 2026; latest main includes documentation sync #188; latest code merge remains #186).
 
 ## 1. Merged implementation slices
 
@@ -20,6 +20,14 @@ For #171–#173 and #178, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all 
 **Supporting validation utility (not an M3 engine slice):** #175 adds pure benchmark metrics/baselines in `agora/validation/benchmark_metrics.py`; exact PR-head CI `45105990141` passed 4/4. Follow-up #176 hardens boolean, date and window validation and pins the official M5 RMSSE scale convention (differences start at the first non-zero training observation; pre-sale leading zeros are excluded); exact-head CI `45110601617` passed 4/4. #179 adds strict `samples`, `min_clusters` and `alpha` guards; exact-head CI `45116463242` passed 4/4. #180 adds a non-negative seed guard (merged at `82c830fd`, merge commit `76ee7625`; exact-head CI run `45119572140` passed 4/4). These supporting utilities do not complete the governed engine slices or authorize data use; no dataset run is authorized.
 
 **Documentation evidence:** ChatGPT docs PR #181 merged at exact head `73a4947efc1beb94b55718568a1d453d579bae1b` (merge commit/main `9dad1c8f9ab9ccc3c73aee76403cecab222d25e6`); exact-head CI run `45122674011` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Its five changed paths were exclusively `docs/**`. This is documentation evidence only; it does not close the policy-authorization, validation-protocol approval or dataset-register gates.
+
+**Subsequent mainline security and documentation evidence — 23 November 2026:**
+- Track A PR #183 merged at exact head `0f870e22aad3d2496a5da872c21c5871106e262d`; exact-head CI `45126668732` passed 4/4. It adds static symlink/reparse-point refusal for audit chain, anchor and lock paths. This does not prove resistance to concurrent path replacement; that TOCTOU boundary remains conditional on the owner's threat-model decision.
+- Backup RT05b PR #186 merged at exact head `b50e1e3f6386e6762de83c08023721d7882a720e`; exact-head CI `45137276771` passed 4/4. It tightens run-record/seal consistency. The independent review recorded in `RUNG_STATUS.md` still identifies residual unsealed-record/status-and-ID cases and path-based SQLite reopen risk; do not treat #186 as closing those findings.
+- Dataset download guide and M3 documentation/exit checklist were included in ChatGPT docs PR #174, merged at exact head `e231961494a849d092c45a9a9377855fe30f188b` (merge commit `aeb9ab08046268674ef7c848f78ad17fb2002738`); exact-head CI `45107961493` passed 4/4. Ten changed paths were all under `docs/**`.
+- Follow-up ChatGPT docs PR #188 merged at exact head `3704728a9623365c7c7e2dd7b736cd2d53fcd175` (merge commit/current main `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1`); exact-head CI `45138934878` passed 4/4. Five changed paths were all under `docs/**`, syncing the M3 design, provenance, rung status, validation protocol and dataset checklist.
+
+These supporting security, metrics and documentation merges do not resolve the production identity/policy boundary, do not freeze the validation protocol, and do not authorize dataset acquisition/use or a simulation/validation run.
 
 
 
