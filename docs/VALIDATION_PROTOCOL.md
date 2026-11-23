@@ -240,6 +240,12 @@ Do not freeze by merely replacing TBD with assumptions. Record source evidence a
 | First run date | Not scheduled |
 | Validation results | None recorded in this draft |
 
+## 8.2 Acquisition reachability and mirror approval
+
+Claude's 09:05 IST reachability check reports FiveThirtyEight GitHub data fetchable, but Harvard Dataverse, Kaggle and Ember's official host blocked by its workspace allowlist. The dataset checklist records candidate GitHub mirrors for MEDSL V20 and Ember's monthly CSV. These are **not approved substitutions**: the MEDSL mirror is third-party (its README records the Dataverse V20 MD5 and CC0 source licence); the Ember mirror is third-party and snapshots the official CSV on 16 November 2026, while Ember's official page reports an 18 November 2026 update. Owner approval must identify exact repo, commit, file, version and licence before use. M5 remains owner-supplied via Kaggle and its competition rules.
+
+No dataset has been downloaded or approved for use. The protocol's canonical publishers and licence terms remain authoritative; mirror reachability does not change the source or grant permission.
+
 ## 9. Sources
 
 - FiveThirtyEight polls data repository and file index: https://github.com/fivethirtyeight/data/tree/master/polls
