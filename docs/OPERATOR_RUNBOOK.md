@@ -86,9 +86,7 @@ Claude's exact 23:43 IST entry confirms M2 reached on main `7432a10674a531d866d8
 
 The following interface is present in the merged CLI parser:
 
-```bash
-agora run <project> --governed-input <IMPORT_ID> --binding <binding-file> --pack <ontology-pack-file> --mapping <mapping-file>
-```
+Syntax (inline, deliberately not a fenced command: this path is blocked and is not part of the executed command inventory in `docs/M2_RUNBOOK_COMMAND_INVENTORY.md`): `agora run <project> --governed-input <IMPORT_ID> --binding <binding-file> --pack <ontology-pack-file> --mapping <mapping-file>`
 
 The import identifier must be exact; `latest` is rejected. `--force` is refused with governed input. Supplying `--binding`, `--pack` or `--mapping` without `--governed-input` is refused. Engine-level governed-input refusals are returned as exit code 3.
 
