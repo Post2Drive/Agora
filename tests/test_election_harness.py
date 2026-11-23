@@ -135,3 +135,19 @@ def test_test_predict_stage_never_opens_outcome_file(tmp_path, monkeypatch):
     man.write_text(f"package,file,bytes,sha256\nx,polls/pres_pollaverages_1968-2016.csv,{polls.stat().st_size},{h.sha256_file(polls)}\n")
     monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: (_ for _ in ()).throw(AssertionError("labels opened")))
     assert d.main(["test-predict", "--polls", str(polls), "--manifest", str(man), "--out", str(tmp_path / "o"), "--k", "0.19"]) == 0
+
+
+def test_test_evaluate_checks_seal_before_touching_labels(tmp_path, monkeypatch):
+    from agora.validation import run_election_validation as d
+    polls = tmp_path / "pres_pollaverages_1968-2016.csv"; polls.write_text("cycle,state,modeldate,candidate_name,pct_estimate\n")
+    medsl = tmp_path / "countypres_2000-2024.csv"; medsl.write_text("not the manifest file\n")
+    man = tmp_path / "m.csv"
+    man.write_text(f"package,file,bytes,sha256\nx,polls/pres_pollaverages_1968-2016.csv,{polls.stat().st_size},{h.sha256_file(polls)}\n"
+                   "x,medsl/countypres_2000-2024.csv,1,deadbeef\n")
+    out = tmp_path / "o"; out.mkdir(); (out / "test_outputs.json").write_text("[]")
+    opened = []
+    monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: opened.append(1))
+    monkeypatch.setattr(h, "sha256_file", lambda p, _o=h.sha256_file: (opened.append(str(p)) if "countypres" in str(p) else None) or _o(p))
+    with pytest.raises(SystemExit, match="SEAL_MISMATCH"):
+        d.main(["test-evaluate", "--polls", str(polls), "--medsl", str(medsl), "--manifest", str(man), "--out", str(out), "--sealed-sha", "0" * 64])
+    assert opened == []                                  # label file neither hashed nor loaded
