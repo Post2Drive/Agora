@@ -1,8 +1,8 @@
 # Operator Runbook — Governed Synthetic Pilot
 
-**Status:** Runbook exercised in Claude's logged M2 synthetic dress rehearsal; not production authorisation. Main `7432a10674a531d866d851de78402520e6a4eee8` includes #157/#159/#160/#161 and Claude's M2 confirmation (23:43 IST, 22 November 2026). CI #157/#159/#160/#161: 4/4 each; M2 confirmation run `45052033418`: 4/4.
+**Status:** M2 synthetic pilot rehearsal is historical evidence, not production authorisation. M3 governed-input code slices #163/#164/#171/#172/#173 are merged on main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026); exact-head CI for #171/#172/#173 passed 4/4 each. The governed CLI is currently **blocked by design**: `agora/cli.py::_governed_policy()` returns `None` until an approved identity/policy adapter is wired, so policy-required construction denies before snapshot bytes are opened.
 
-**Assessment base:** main `7432a10674a531d866d851de78402520e6a4eee8` (22 November 2026).
+**Assessment base:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026).
 **Milestone dependency:** `docs/MILESTONE_OPERATOR_PILOT.md` records Claude's exact M2 confirmation; `docs/M2_RUNBOOK_COMMAND_INVENTORY.md` is the command-test contract and `docs/M2_DRESS_REHEARSAL_PLAN.md` contains the logged evidence. This runbook is an operator reference, not production authorisation.
 
 ## 1. Scope and safety
