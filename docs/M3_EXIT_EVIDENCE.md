@@ -1,6 +1,6 @@
 # M3 Exit Evidence — Claude Milestone Declaration Checklist
 
-**Status:** Working checklist, not a milestone declaration. Main assessed at `4a0607f8946e32ef828b47183099ead4f8ae2bd7` (23 November 2026); Claude's latest entry says M3 NOT reached. The owner's one-run approval is received but dormant. The owner freeze sentence was received but is incomplete because its manifest field is the literal `<sha>` placeholder and the complete manifest/parameter values are absent. The owner named ChatGPT as a separate-process evaluator, but private-repository access and label/output custody are not established. No dataset has been run, no protocol is frozen, and only Claude's exact collaboration-log entry may declare M3 reached.
+**Status:** Working checklist, not a milestone declaration. Main assessed at `4a0607f8946e32ef828b47183099ead4f8ae2bd7` (23 November 2026); Claude's latest entry says M3 NOT reached. The owner's one-run approval is received but dormant. The owner approved five design values on 23 November (B=2000, bootstrap seed 20261123, percentile interval, one preregistered seed per configuration, temperature 0 with cache on); they become effective only when merged into the protocol and frozen. The freeze sentence remains incomplete because its manifest field is the literal `<sha>` placeholder and the per-file manifest is absent. The owner named ChatGPT as a separate-process evaluator, but private-repository access and label/output custody are not established. No dataset has been run, no protocol is frozen, and only Claude's exact collaboration-log entry may declare M3 reached.
 
 **Post-#197/#198/#199 status:** #197 RT06 read-side held-descriptor SQLite snapshot merged at exact head `5d67cb4ceed8200a9a952b05ae1db9a58c3b0ba6`, merge `5cbe4cfbb82039543d408ab5c67e045e17e10a99`, exact-head CI `45167913607` passed 4/4. #198 Principal-bound authorization receipt merged at exact head `d3a8435bbabc28a1e488d87b752b1350b99c687d`, merge `4a55f2efd44da7aea54adda6ca7787471dd97cba`, CI `45170449040` passed 4/4. #199 adapter-origin check merged at exact head `851bbf1a217f018695133ee9c42f1c538fa088f0`, merge/current main `4a0607f8946e32ef828b47183099ead4f8ae2bd7`, CI `45173316190` passed 4/4. ChatGPT docs #196 merged at exact head `f9d34afa5914ee1cd2ccfd39a722fbb791ac4591`, merge `34e5cc39b2bb9f53ca6be0dc057de53e5aa5532c`, CI `45170530846` passed 4/4 (seven docs-only paths). #197 is read-side only; AuditChainStore writer opens remain path-based and Python <3.11 fails closed. #198/#199 leave an in-process trust limitation: `_ISSUED`/`_MINT` are accessible, receipt construction accepts the sentinel, `object.__setattr__` bypasses immutability, and the fixture adapter is caller-configurable/test-only. Production CLI remains default-deny.
 
@@ -73,9 +73,10 @@ Claude must state these residuals accurately and must not declare M3 reached whi
 ## 5. Owner decisions and external inputs
 
 - [x] Owner accepted Claude's A–D design decisions on 23 November 2026. This is design acceptance, not expanded path authorization; only `agora/sim/engine.py` is approved under `agora/sim/**`.
+- [x] Owner confirmed that the synthetic-fixture Principal is acceptable for strictly local validation on approved public datasets only. Production CLI remains blocked/default-deny.
+- [x] Owner approved the five protocol design values: bootstrap B=2000; bootstrap RNG seed 20261123; percentile interval; one preregistered seed per configuration; LLM temperature 0 with cache on. These become effective only when merged into `docs/VALIDATION_PROTOCOL.md` and covered by a complete owner freeze sentence.
 - [ ] Owner completes the four outstanding FiveThirtyEight CSVs and supplies the election-return, retail and adoption source files with exact per-file bytes, SHA-256, immutable source version and licence/terms records in the owner-controlled private repository.
 - [ ] Owner establishes the named ChatGPT separate-process evaluator's restricted private-repository access, output custody and label-release procedure.
-- [ ] Owner and Claude resolve bootstrap B, bootstrap RNG seed, interval method, seed list and LLM sampling/cache parameters; the current proposals are not frozen.
 - [ ] Owner reissues the protocol-freeze sentence with the actual merged protocol commit SHA and complete dataset-manifest SHA. The received sentence used literal `<sha>` and is not effective.
 - [ ] Any simulation/validation run remains dormant until all freeze and data gates are satisfied and Claude has declared M3 reached; the owner's one-run approval does not authorize a run now.
 
@@ -98,12 +99,39 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 
 ## 7. Dataset handoff status — 23 November 2026
 
-The owner reports a partial FiveThirtyEight import in private `Post2Drive/Post2Drive` PR #5, import commit `15c9a053291925813ef568466a92fc5460f6b554`, from source commit `4c1ff5e3aef1816ae04af63218015066e186c147`. Eight `old_model/*.csv` files plus README/licence are reported present; four large CSVs remain outstanding. No per-file SHA-256 values are recorded. The private repository and raw bytes were not inspected through the permitted Agora GitHub connector, so this remains owner-reported metadata.
+The private Post2Drive data repository main is `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR #5 is still open/unmerged at branch commit `15c9a053291925813ef568466a92fc5460f6b554`; the eight files below exist only on that PR branch at `validation-data/elections/fivethirtyeight-polls/old_model/`. The owner-reported/connector-inspected inventory lists no SHA-256 for any of them. Git blob IDs are not SHA-256 file checksums.
 
-The MEDSL V20 county presidential returns exact file and bytes remain to be pinned and hashed. M5 Walmart remains conditional on the owner's review of Kaggle Competition Rules. The Ember monthly EV file remains a candidate source whose exact official release and licence must be verified. No complete manifest for any of the three packages is available.
+| File in Post2Drive/Post2Drive PR #5 branch | Bytes | SHA-256 recorded? |
+|---|---:|---|
+| `old_model/2024_presidential_primary_averages_old_model.csv` | 23,289 | No |
+| `old_model/donald_trump_favorability_old_model.csv` | 82,705 | No |
+| `old_model/generic_ballot_averages_old_model.csv` | 229,659 | No |
+| `old_model/joe_biden_approval_old_model.csv` | 105,827 | No |
+| `old_model/kamala_harris_approval_old_model.csv` | 84,376 | No |
+| `old_model/mike_pence_favorability_old_model.csv` | 46,274 | No |
+| `old_model/nikki_haley_favorability_old_model.csv` | 23,681 | No |
+| `old_model/ron_desantis_favorability_old_model.csv` | 48,231 | No |
 
-The owner named ChatGPT as a separate-process evaluator restricted to the frozen protocol, manifest and raw outputs; private-repository access and output/label custody are not established. No protocol freeze has occurred, no dataset run has occurred, and no permission to import or run is inferred from the partial handoff.
+The eight CSVs total 644,042 bytes. The PR also includes README/licence/import notes. None of these files is in Post2Drive main or Agora main.
 
+Four additional FiveThirtyEight files are missing from PR #5 and both main trees. Their byte counts below are upstream-reported sizes, not measured destination sizes; none has a SHA-256 recorded:
+
+| Missing upstream-relative path | Reported bytes | SHA-256 recorded? |
+|---|---:|---|
+| `polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv` | 1,604,311 | No |
+| `polls/2024-averages/presidential_primary_averages_2024.csv` | 11,407,331 | No |
+| `polls/pres_pollaverages_1968-2016.csv` | 50,438,309 | No |
+| `polls/pres_primary_avgs_1980-2016.csv` | 30,087,513 | No |
+
+The uncorrected 2024 general file is not a substitute for corrected 2024 averages. Other 2020 polling files are linked in the import README but were not imported. The import README states CC BY 4.0 and the PR includes the upstream licence text.
+
+**Other benchmark packages:**
+
+- **MEDSL V20:** no CSV or codebook in Post2Drive main, PR #5 changed-file set, or Agora main. External candidate only: `mathis-group/cas-201-data-project` commit `1358bc6047f0c22989d37fa64ac03ee755bd17e`, `data/medsl/countypres_2000-2024.csv` (10,222,208 bytes) plus codebook. Not present in either target repository; only MD5 `bd6661282936006b4ef4f5ee71418f3e` is recorded for the candidate, not SHA-256. Candidate CC0 1.0; not owner-approved.
+- **M5 Walmart / Rossmann:** no `calendar.csv`, `sales_train_validation.csv`, `sell_prices.csv`, `sales_train_evaluation.csv` or Rossmann files in either target repository. No hashes. M5 remains blocked on owner review of Kaggle competition terms.
+- **Ember monthly EV:** no Ember file in either target repository. External candidate only: `Awes0mer/fuel-cars-pollution` commit `2c21f1edced7aae884314ebc28c89ab212f30563`, `data/raw/ember_ev_monthly/monthly_ev_sales.csv` (7,695,642 bytes). SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2` is recorded in Agora docs for this external 16-Nov candidate snapshot, not for a file in either target repository; the official Ember source had a newer 18-Nov update. Candidate CC BY 4.0; not owner-approved.
+
+No raw benchmark files were downloaded by ChatGPT. The Agora main tree contains no raw benchmark files. No complete per-file manifest exists; no dataset has been run.
 
 ## 8. Owner approvals received — 23 November 2026 (status, not milestone completion)
 
