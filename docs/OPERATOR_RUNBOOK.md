@@ -1,8 +1,8 @@
 # Operator Runbook — Governed Synthetic Pilot
 
-**Status:** Runbook exercised in Claude's logged M2 synthetic dress rehearsal; not production authorisation. Main `7432a10674a531d866d851de78402520e6a4eee8` includes #157/#159/#160/#161 and Claude's M2 confirmation (23:43 IST, 22 November 2026). CI #157/#159/#160/#161: 4/4 each; M2 confirmation run `45052033418`: 4/4.
+**Status:** M2 synthetic pilot rehearsal is historical evidence, not production authorisation. M3 governed-input code slices #163/#164/#171/#172/#173 are merged on main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026); exact-head CI for #171/#172/#173 passed 4/4 each. The governed CLI is currently **blocked by design**: `agora/cli.py::_governed_policy()` returns `None` until an approved identity/policy adapter is wired, so policy-required construction denies before snapshot bytes are opened.
 
-**Assessment base:** main `7432a10674a531d866d851de78402520e6a4eee8` (22 November 2026).
+**Assessment base:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026).
 **Milestone dependency:** `docs/MILESTONE_OPERATOR_PILOT.md` records Claude's exact M2 confirmation; `docs/M2_RUNBOOK_COMMAND_INVENTORY.md` is the command-test contract and `docs/M2_DRESS_REHEARSAL_PLAN.md` contains the logged evidence. This runbook is an operator reference, not production authorisation.
 
 ## 1. Scope and safety
@@ -80,3 +80,31 @@ Never repair a reconciliation gap by rewriting a decision version or audit event
 The completed rehearsal evidence is recorded in `M2_DRESS_REHEARSAL_PLAN.md` and Claude's 23:43 IST collaboration-log entry. The log does not specify OS/Python/CLI versions, the operator sign-off or full source/backup hash comparison; do not invent those fields. For any future separately approved rehearsal, record the repository SHA, exact command and CLI version, operator identity reference, synthetic fixture IDs and hashes, schema/binding/ontology fingerprints, import ID, scenario-input hash, decision ID/version/fingerprint, policy version and denial codes, audit chain ID/head, anchor verification result, run-record hash, report ID/mode and backup/restore/tamper outcomes. Do not log raw rows, sensitive values, credentials or unrestricted free text. This runbook does not authorise another rehearsal.
 
 Claude's exact 23:43 IST entry confirms M2 reached on main `7432a10674a531d866d851de78402520e6a4eee8` with exact-head CI `45052033418` (4/4). This runbook records the commands and the completed synthetic rehearsal; it does not authorise a new rehearsal, simulation or production use.
+
+
+## 7. M3 governed-input CLI — implemented, not yet operator-usable
+
+The following interface is present in the merged CLI parser:
+
+Syntax (inline, deliberately not a fenced command: this path is blocked and is not part of the executed command inventory in `docs/M2_RUNBOOK_COMMAND_INVENTORY.md`): `agora run <project> --governed-input <IMPORT_ID> --binding <binding-file> --pack <ontology-pack-file> --mapping <mapping-file>`
+
+The import identifier must be exact; `latest` is rejected. `--force` is refused with governed input. Supplying `--binding`, `--pack` or `--mapping` without `--governed-input` is refused. Engine-level governed-input refusals are returned as exit code 3.
+
+**Current gate:** `agora/cli.py::_governed_policy()` returns `None` because no production identity adapter is wired. The policy-required scenario-input builder therefore denies the request before opening the snapshot. Do not run this command expecting success, do not pass an ad hoc permissive policy, and do not weaken the default-deny path. The next operator step is blocked until the owner decides whether a narrowly scoped synthetic Principal is acceptable for local public-data validation and Claude implements/reviews the approved adapter.
+
+**Do not substitute the legacy command.** `agora run <project>` without `--governed-input` remains the legacy scenario-file simulation path. It does not prove governed tabular-input provenance and must not be used for the benchmark packages in `VALIDATION_PROTOCOL.md`.
+
+No M3 simulation or validation run has been authorized or performed. Keep `VALIDATED_PREDICTION_ENABLED=False`; reports remain exploratory and simulated. The exact operator invocation, environment and evaluator steps must be frozen in a new approved protocol revision before any run.
+
+## 8. M3 operator readiness checklist
+
+- [ ] Owner decision recorded on synthetic Principal versus production identity requirements.
+- [ ] Approved adapter is Principal-bound, scoped, expiring and fail-closed.
+- [ ] Policy denial occurs before source snapshot bytes are opened.
+- [ ] Direct `Simulation(..., governed_input=...)` cannot bypass the authorization boundary.
+- [ ] Original `base_scenario_hash` and effective `projected_scenario_hash` are distinct and tested.
+- [ ] Exact input, mapping, row and projection hashes are persisted append-once and checked on resume.
+- [ ] Reports/exports retain full provenance and explicit exploratory label.
+- [ ] Dataset files, licences, exact headers, privacy review and SHA-256 register are owner-supplied.
+- [ ] Validation protocol is explicitly approved and frozen.
+- [ ] Separate owner approval exists for any simulation/validation run.

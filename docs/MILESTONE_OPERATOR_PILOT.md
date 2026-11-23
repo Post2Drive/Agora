@@ -70,3 +70,10 @@ The following companion documents remain reference material for the completed lo
 - [Backup, restore and tamper-drill plan](M2_BACKUP_RESTORE_TAMPER_PLAN.md)
 - [Runbook command inventory and test contract](M2_RUNBOOK_COMMAND_INVENTORY.md)
 - [Dress rehearsal plan and evidence record](M2_DRESS_REHEARSAL_PLAN.md)
+
+
+## 7. Relationship to M3 — separate milestone
+
+M2 remains the completed local synthetic operator-pilot milestone described above. It does not imply M3 completion. M3 is tracked separately in [M3 Design](M3_DESIGN.md), [Rung Status](RUNG_STATUS.md) and [M3 Exit Evidence](M3_EXIT_EVIDENCE.md).
+
+As of main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026), M3 implementation slices #163/#164/#171/#172/#173 are merged, but Claude has not declared M3 reached. The production CLI still denies governed input because the policy source returns `None`; the provenance hash naming/trust-boundary review remains open; the validation protocol is draft and no benchmark files or run approval are recorded here. This M2 document is not an M3 sign-off.

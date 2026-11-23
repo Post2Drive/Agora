@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #139 B13 path normalization is merged (CI `45011493565`, 4/4). #138 implements exact sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; single-read manifest validation and deterministic concurrent-writer proof remain open. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
+**Baseline:** main `e3b0a58004298af05f9242795715b62d566941b7` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The dataset-independent metric helpers from #175 are merged at this base; exact PR-head CI `45105990141` passed 4/4. Main review found the merged `rmsse()` implementation trims leading zeros before calculating the M5 scale denominator, whereas the standard M5 denominator uses all adjacent training observations; `weighted_poll_margin()` also lacks strict positive-integer window/date validation, and `two_party_margin()` accepts booleans as numeric percentages. The M5 metric contract below states the standard denominator; do not use the helper for M5 evaluation until these defects are corrected and tested. The CLI still denies governed runs because `_governed_policy()` returns `None` until an approved identity adapter exists. This protocol remains draft; no dataset has been run and no validation is authorized.
 
 ## 1. Purpose, scope and non-claims
 
@@ -16,7 +16,7 @@ No P2D, NCC, Nutrivance, customer, driver, personal, private or owner operationa
 
 Before the first run:
 
-1. Confirm Claude's exact M2 completion entry and exact M3 implementation/confirmation entry.
+1. Confirm Claude's exact M2 completion entry and a distinct M3 implementation-complete entry. Merged M3 slices do not by themselves freeze this validation protocol or authorize a validation run.
 2. Freeze this protocol in a merged documentation commit. Record the commit SHA and approved run scope in the collaboration log.
 3. Resolve each dataset's licence/terms and save source URL, licence text/version, access date, citation, source release/version and local file SHA-256 in a dataset register.
 4. Freeze dataset field allow-lists, exclusions, time cutoffs, transformations, output targets, metrics, baselines, uncertainty procedure and stop rules.
@@ -105,7 +105,9 @@ The owner-approved domains are election results and polls, retail sales (M5 Walm
 
 - Target: daily unit sales per item/store series over the 28-day horizon.
 - Primary metric: M5 Weighted Root Mean Squared Scaled Error (WRMSSE), implemented from the published M5 hierarchy/weights with an independent calculation check.
-- Secondary metrics: WAPE and RMSSE. Report aggregate and category/store-level metrics; disclose zero-denominator handling before the run.
+- Secondary metrics: WAPE and RMSSE. For RMSSE, the scale denominator is the mean squared first difference over the **entire training series**, including leading zero observations; do not trim leading zeros. A zero scale is not estimable and must not be imputed. Report aggregate and category/store-level metrics; disclose zero-denominator handling before the run.
+
+**Current implementation gap:** main `agora/validation/benchmark_metrics.py::rmsse()` still slices the training series from its first non-zero value before calculating the scale. This does not implement the denominator specified above. The metric must remain blocked for M5 reporting until a regression test proves leading zero intervals are included and the corrected exact-head CI passes.
 - If AGORA engine output cannot be mapped to a numeric item/store/day prediction without inventing a conversion rule, classify the benchmark as not evaluable.
 
 **Naive baseline**
@@ -181,6 +183,8 @@ The exact M3 run invocation and evaluator command are intentionally not invented
 
 ## 5. Common metrics and reporting rules
 
+The merged helper module is a starting point, not a frozen evaluator. Before use, require `weighted_poll_margin()` to reject malformed date types and non-positive/non-integer windows as `NotEstimable`, and require `two_party_margin()` to reject boolean shares rather than treating `True`/`False` as numeric percentages. The evaluator must preserve the protocol's cutoff and denominator rules and must not silently coerce malformed inputs.
+
 - Compare AGORA output with declared naive baseline on exactly the same eligible observations.
 - Report numerator, denominator, units, coverage and exclusions with every metric.
 - Provide absolute error and relative-to-baseline difference; do not select best metric after results.
@@ -203,26 +207,48 @@ A stop is recorded as a failed/blocked attempt, not silently retried. Protocol c
 | R — M5 Walmart | TBD | Subject to Kaggle Competition Rules; explicit review required | TBD | TBD | No |
 | A — Ember Monthly EV Sales | TBD | CC BY 4.0; preserve source-country notes | TBD | TBD | No |
 
+## 8.1 Freeze-blocking review findings
+
+This review is documentation-only. The protocol remains **Draft 0.1**, is not frozen, and has not been approved for execution. Resolve each item in a versioned revision before any owner freeze decision:
+
+1. **Run-count and randomness contract is incomplete.** The preregistration table leaves random seeds and number of runs as TBD. Specify the exact seed list, runs per dataset/split/configuration, whether any LLM sampling is deterministic, generation temperature/top-p/timeout/retry/cache settings, and the rule for failed/interrupted attempts. Bootstrap replicate counts and bootstrap RNG seeds are also unspecified. These values must be fixed before outputs are observed.
+2. **Exact source assets and field names are not pinned.** Package E's 2024 poll-file availability and exact file names/columns are not demonstrated by this draft. Pin immutable source commits/Dataverse versions, exact filenames and observed headers; do not assume candidate field labels are literal CSV headers. If 2024 pre-election coverage is inadequate, stop as already specified. Package R must list every source file needed for the chosen split, including the evaluation file if the reserved `d_1914`–`d_1941` window is retained. Package A must pin the exact monthly export and methodology release.
+3. **M5 file/split alignment needs a source-file check.** The stated `d_1914`–`d_1941` reserve is not in `sales_train_validation.csv` (which ends at `d_1913`); if that reserve is retained, the acquisition register must include the corresponding `sales_train_evaluation.csv` release and explicitly protect those labels. Otherwise remove the reserve claim in a new preregistration revision. Verify all day/date mappings against the pinned calendar.
+4. **Output-target compatibility is unproven.** The current projection converts tabular rows into social-simulation segment parameters; the three benchmarks require election-margin, item/store/day sales, or country/month registration outputs. No evidence yet demonstrates that the simulation emits these exact target units. A package must be marked **not evaluable** unless a deterministic, predeclared mapping exists without post-hoc proxy conversion. Do not run the engine to discover a mapping under this draft.
+5. **Uncertainty procedures need executable parameters.** Fix bootstrap replicate count, sampling algorithm, cluster/block definitions, replacement policy, RNG seed, handling of sparse clusters, and whether intervals are percentile, basic or bias-corrected. State the exact independently checked implementation/version.
+6. **Evaluator and label custody are unresolved.** Name the independent evaluator, specify how held-out labels are kept inaccessible, who controls release, and what immutable evidence proves output freeze preceded label release. A TBD evaluator is a stop condition, not an administrative detail.
+7. **Licence and privacy review must be per-file.** M5 Competition Rules must be checked against intended use and derived outputs before download/use. For every package, inspect headers and representative rows for personal identifiers, free-text fields or sensitive data; record the result and exclude disallowed fields. Public availability does not remove privacy or licence obligations.
+8. **Identity/policy is not ready.** The current CLI policy source returns `None`, so governed CLI construction is denied before snapshot bytes are opened. The owner must decide whether a synthetic Principal is acceptable for a strictly local public-data evaluation. Any accepted adapter must be Principal-bound, scoped, expiring, fail-closed and proven to deny before source bytes are opened. Direct engine construction must not bypass the policy authorization boundary.
+9. **Provenance semantics need correction.** Pin distinct original `base_scenario_hash` and effective `projected_scenario_hash` values; include the row-bound `instances_hash` and mapping/projection hashes in the immutable record. Verify reports/exports expose the complete required provenance and exploratory label.
+
+Do not freeze by merely replacing TBD with assumptions. Record source evidence and owner decisions first. No protocol change here authorizes a dataset import, simulation or validation run.
+
 ## 8. Preregistration record
 
 | Field | Value |
 |---|---|
 | Protocol version | Draft 0.1 |
 | Protocol commit SHA | Not yet frozen |
-| M2 confirmation entry | Pending Claude |
-| M3 confirmation entry | Pending Claude |
+| M2 confirmation entry | Claude confirmed 23:43 IST, 22 November 2026; link exact log entry at freeze |
+| M3 confirmation entry | Pending Claude; implementation slices alone do not establish M3 reached |
 | Dataset register SHA | TBD |
 | Repository SHA | TBD |
 | M3 adapter SHA/version | TBD |
 | Python/runtime/dependency lock | TBD |
 | Scenario/configuration hashes | TBD |
 | Model/backend/version and parameters | TBD |
-| Random seeds and number of runs | TBD |
+| Random seeds and number of runs | TBD — freeze blocker; exact list and count required per package/split/configuration |
 | Evaluation script SHA | TBD |
-| Independent evaluator | TBD |
+| Independent evaluator | TBD — freeze blocker; name evaluator and label-release procedure |
 | Dataset-specific owner approval references | 12:52 IST named approval; confirm scope at freeze |
 | First run date | Not scheduled |
 | Validation results | None recorded in this draft |
+
+## 8.2 Acquisition reachability and mirror approval
+
+Claude's 09:05 IST reachability check reports FiveThirtyEight GitHub data fetchable, but Harvard Dataverse, Kaggle and Ember's official host blocked by its workspace allowlist. The dataset checklist records candidate GitHub mirrors for MEDSL V20 and Ember's monthly CSV. These are **not approved substitutions**: the MEDSL mirror is third-party (its README records the Dataverse V20 MD5 and CC0 source licence); the Ember mirror is third-party and snapshots the official CSV on 16 November 2026, while Ember's official page reports an 18 November 2026 update. Owner approval must identify exact repo, commit, file, version and licence before use. M5 remains owner-supplied via Kaggle and its competition rules.
+
+No dataset has been downloaded or approved for use. The protocol's canonical publishers and licence terms remain authoritative; mirror reachability does not change the source or grant permission.
 
 ## 9. Sources
 
