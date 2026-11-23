@@ -269,7 +269,7 @@ The owner's freeze sentence received 23 November names evaluator ChatGPT but use
 | Model/backend/version and parameters | LLM temperature 0 and cache on (owner-approved 23 Nov; effective at freeze); model/backend/version and remaining generation parameters TBD |
 | Random seeds and number of runs | One preregistered seed per configuration (owner-approved 23 Nov; exact seed/configuration list must be frozen) |
 | Evaluation script SHA | TBD |
-| Independent evaluator | ChatGPT, owner-named separate process; private-repository access and label/output custody still to be established |
+| Independent evaluator | ChatGPT, owner-named separate process; restricted scope, output custody and label-release procedure still to be established |
 | Dataset-specific owner approval references | 12:52 IST named approval; confirm scope at freeze |
 | First run date | Not scheduled |
 | Validation results | None recorded in this draft |
