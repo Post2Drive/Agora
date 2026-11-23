@@ -105,12 +105,15 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
         segments.append(Segment(name=name, share=len(rows) / total, persona=persona, **fields))
 
     derived = dataclasses.replace(base, segments=segments)
+    # scenario_hash covers only the manifest payload, not the rows; bind the actual rows (order-independent).
+    instances_hash = _hash(sorted(_hash({"property_values": dict(i["property_values"]), "property_sensitivity": dict(i["property_sensitivity"])}) for i in instances))
     record = {
         "scenario_hash": manifest["scenario_hash"],
+        "instances_hash": instances_hash,
         "mapping_hash": _hash(dict(mapping)),
         "projection_hash": _hash({
-            "scenario_hash": manifest["scenario_hash"], "mapping": dict(mapping),
-            "segments": [dataclasses.asdict(s) for s in segments],
+            "scenario_hash": manifest["scenario_hash"], "instances_hash": instances_hash,
+            "mapping": dict(mapping), "segments": [dataclasses.asdict(s) for s in segments],
         }),
         "assumptions": [
             "segment share = row count / total rows",
