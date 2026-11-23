@@ -93,3 +93,24 @@ Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kagg
 - Ember monthly CSV in `Awes0mer/fuel-cars-pollution`, whose manifest records the official Ember source URL, CC BY 4.0, 7,695,642 bytes and SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`; this is a 16-Nov snapshot, while the official Ember page now reports an 18-Nov update.
 
 Both are third-party mirrors and require explicit owner approval of exact repository/commit/file/version before acquisition. M5 remains owner-supplied through Kaggle terms. No mirror was downloaded, imported or run by ChatGPT.
+
+
+## 8. Owner approvals received — 23 November 2026 (status, not milestone completion)
+
+### A–D design acceptance
+
+The owner explicitly accepted Claude's written 23 November A–D design approval in the owner's chat message. This is acceptance of the design decisions, not an expansion of repository-path authorization. Within `agora/sim/**`, the only authorized path remains `agora/sim/engine.py`; no additional `agora/sim/**` path is authorized.
+
+### Run approval — received, dormant
+
+**Owner's run approval received 23 November 2026; status: RECEIVED, DORMANT.** The owner's approved scope is exactly one run per frozen configuration on the election, retail and adoption public datasets named in the frozen protocol, no tuning and no reruns for better numbers, all results reported including losses to the naive baseline, and no NCC, Nutrivance or P2D data.
+
+This approval remains dormant until all preconditions are met: the protocol is separately frozen by the owner's freeze approval below; the complete selected datasets and per-file SHA-256 manifest are committed in the owner-controlled private repository; required implementation slices are merged and Claude records M3 reached; and the independent evaluator and custody are in place. The four outstanding FiveThirtyEight CSVs remain an acquisition blocker. This record does not authorize a run now, a second run, prediction enablement or any data outside the named public sets. No run has been made.
+
+### Owner freeze sentence — template only; not approved or executed
+
+Once the protocol PR is merged and the complete manifest and evaluator are ready, the owner may paste the following sentence with only the three values supplied:
+
+“I approve freezing `docs/VALIDATION_PROTOCOL.md` as merged at commit [protocol commit sha], with dataset manifest [manifest sha] and evaluator [evaluator name]. This approves no run and no flag change.”
+
+The blanks are intentionally limited to the protocol commit SHA, manifest SHA and evaluator name. This is a template, not a freeze decision. The protocol remains draft/unfrozen; M3 has not been declared reached; no dataset or simulation run has occurred; `VALIDATED_PREDICTION_ENABLED=False` remains unchanged.
