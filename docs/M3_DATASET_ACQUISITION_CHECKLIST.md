@@ -2,9 +2,9 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:16 IST)
+## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:42 IST)
 
-Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded during that check. Claude's 15:40 IST note records that the owner shared the FiveThirtyEight `polls/` folder listing, but no polling files are in hand. The owner is asked to download the exact GitHub-hosted files listed in `DATASET_DOWNLOAD_GUIDE.md`, try each of the four README live URLs once, and report every success/failure. Claude's 16:16 IST round confirms no new owner files or decisions. The 15:40 and 16:16 notes are owner-log updates, not a new host-reachability test, file handoff, source approval or protocol decision. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
+Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded during that check. The owner shared the FiveThirtyEight `polls/` folder listing at 15:40 IST and relayed a partial private-repository import at 16:31 IST; this does not change the 09:05 host-reachability result. The latest 16:42 IST Claude round records no additional files or owner decisions. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
 
 | Package | Candidate route and evidence | Access status / caveat |
 |---|---|---|
@@ -13,7 +13,37 @@ Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kagg
 | R — M5 | Official [Kaggle M5 data page](https://www.kaggle.com/c/m5-forecasting-accuracy/data). | Owner-supplied; requires Kaggle access and review/acceptance of competition terms. No third-party mirror is recommended. |
 | A — Ember | Third-party GitHub candidate [Awes0mer/fuel-cars-pollution](https://github.com/Awes0mer/fuel-cars-pollution) at commit `2c21f1edced7aae884314ebc28c89ab212f30563`, file `data/raw/ember_ev_monthly/monthly_ev_sales.csv`. Its manifest records source URL `https://files.ember-energy.org/public-downloads/transport/outputs/monthly_ev_sales.csv`, retrieval 2026-11-16 05:54:52 UTC, 7,695,642 bytes, SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`; `fcp/sources.py` records CC BY 4.0 and the official source URL. The repo MIT licence covers code; its LICENSE says `data/raw` files retain publisher licences. | GitHub candidate, not an official Ember-hosted mirror. This is a 16-Nov snapshot; Claude reports Ember's official page had a newer update on 18-Nov-2026. Do not treat it as the latest release or silently replace the official 18-Nov source. Owner must approve this exact snapshot/version or supply the newer official file; verify its SHA-256 against the official source before acceptance. |
 
-No mirror is approved by inclusion in this checklist. Claude must not download or use any candidate until the owner approves the exact repository, commit, path, version and licence evidence. The owner-operated handoff is a separate private GitHub repository (suggested name `agora-validation-data`) kept separate from AGORA and from ChatGPT/Notion; follow `DATASET_DOWNLOAD_GUIDE.md`. The owner may instead retain official source files locally until an approved handoff is available.
+No mirror is approved by inclusion in this checklist. Claude must not download or use any candidate until the owner approves the exact repository, commit, path, version and licence evidence. The owner-operated handoff is a separate private GitHub repository kept separate from AGORA and from ChatGPT/Notion; follow `DATASET_DOWNLOAD_GUIDE.md`. The owner-reported FiveThirtyEight partial import is recorded below, but it is not accepted as complete until every required file has an exact per-file SHA-256 manifest committed in that private repository.
+
+## Owner-reported private-repository handoff — 23 November 2026, 16:31 IST
+
+This status is relayed from the collaboration log and has **not** been independently verified against the private repository. The owner reported a partial FiveThirtyEight import into private repository `Post2Drive/Post2Drive`, branch `data/import-fivethirtyeight-polls-2026-11-23`, PR #5, import commit `15c9a053`; the pinned FiveThirtyEight source commit is `4c1ff5e3aef1816ae04af63218015066e186c147`. The `old_model/` folder and polls README were reported present. Four files remained outstanding and no SHA-256 values were recorded:
+
+| Owner-reported file | Approximate size | Status at 16:31 IST |
+|---|---:|---|
+| 2024 general averages CSV | 1.6 MB | Outstanding; verify this is the corrected general-election release, not the uncorrected file |
+| 2024 primary averages CSV | 11.4 MB | Outstanding; preserve as a distinct primary-election asset |
+| Presidential averages 1968–2016 CSV | 50.4 MB | Outstanding; exact original filename/version must be recorded |
+| Primary averages 1980–2016 CSV | 30.1 MB | Outstanding; exact original filename/version must be recorded |
+
+The reported import commit `15c9a053` is the private-repository handoff commit, not the FiveThirtyEight source commit. Preserve both identities separately. Record exact original filenames, byte sizes and full SHA-256 values after the files are pushed. ChatGPT has not accessed the private repository, downloaded or read dataset bytes, or verified the reported file contents. The four-file list is not an acceptance decision: the corrected 2024 general file must be confirmed, and the uncorrected 2024 file remains prohibited as a substitute.
+
+## Required per-file SHA-256 manifest — hard pre-run gate
+
+Commit one manifest in the owner-controlled private data repository before any dataset import, simulation or validation. Every file, including each of the four outstanding polls files, must have all of these fields:
+
+| Manifest field | Required value |
+|---|---|
+| `file` | Exact original filename and relative path in the private repository |
+| `bytes` | Exact integer byte length of the original file (not rounded MB) |
+| `sha256` | Full SHA-256 digest of those exact bytes |
+| `source_commit` | Full immutable Git source commit for GitHub assets; for non-Git publishers record `N/A — non-Git source` and the exact publisher release/version/DOI in the release field |
+| `licence` | Exact licence name/version or competition-rules reference applying to that file |
+| `source_url` | Canonical publisher URL or DOI |
+| `release` | Immutable release/version and access date |
+| `citation` | Required attribution/citation text |
+
+No dataset run before the complete manifest is committed in the private repository and reconciled against the owner-approved source, file list, split and licence. A private-repository commit is not itself permission to import or run.
 
 ## Important distinction
 
@@ -85,6 +115,7 @@ For every file, record:
 | Licence / terms | Exact licence name/version or competition rules |
 | Citation / attribution | Publisher's required wording |
 | Release / version | Exact release, commit or Dataverse version |
+| Source commit | Full immutable source commit for GitHub files; for non-Git sources record N/A and pin the publisher release/version/DOI |
 | Access date | Local date downloaded |
 | Original filename | Do not rename before hashing |
 | File size | Bytes |
@@ -93,13 +124,13 @@ For every file, record:
 
 ## Handoff and stop conditions
 
-1. Owner downloads the exact publisher files manually, retains the source archives and licence evidence, and completes the per-file register (source/version, licence/citation, access date, original filename, byte size and SHA-256).
+1. Owner downloads the exact publisher files manually, retains the source archives and licence evidence, and completes the per-file register for every file: exact source/release or source commit, licence/citation, access date, original filename, byte size and SHA-256. Commit the complete manifest to the separate private repository before any import, simulation or validation run.
 2. After owner review of the exact sources and terms, push only the approved, licence-permitted files to a separate **private** GitHub repository (suggested name `agora-validation-data`) using the steps in `DATASET_DOWNLOAD_GUIDE.md`. Keep it separate from the AGORA source repository.
 3. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to AGORA. Do not include credentials, personal/customer/driver data or unrelated files. Claude receives read access only through the owner's GitHub authorization; never send passwords, tokens or cookies in chat.
 4. **M5 gate:** do not push M5 files until the owner has personally reviewed the Kaggle competition terms and confirmed the private collaborator handoff is permitted. If unclear, leave M5 local and stop.
 5. Before any import, reconcile the owner-approved files against the dataset register and the field allow-lists/time splits in `VALIDATION_PROTOCOL.md`. The private-repository handoff is not approval to import.
-6. **No validation run yet:** the current CLI policy source `_governed_policy()` returns `None` because a production identity adapter is not implemented. The policy-required builder therefore denies governed input before opening snapshot bytes. Do not bypass this guard or inject a permissive policy.
-7. Validation also requires explicit owner approval to freeze the protocol in a merged docs commit. Dataset availability alone is not authorization to run.
+6. **No validation run yet:** the owner selected the synthetic-fixture Principal for local validation on public datasets only, but the direct-engine opaque receipt is not implemented. The production CLI policy source `_governed_policy()` still returns `None`, so the policy-required builder denies governed input before opening snapshot bytes. Do not bypass this guard or inject a permissive policy.
+7. Validation also requires the complete per-file manifest committed in the private repository, the direct-engine receipt and TOCTOU hardening to be implemented/reviewed, and explicit owner approval to freeze the protocol in a merged docs commit. Dataset availability alone is not authorization to run.
 8. Keep `VALIDATED_PREDICTION_ENABLED=False`; report any future outputs as exploratory simulations, not observed demand or validated predictions.
 
 ## Personal-data and data-minimisation gate
