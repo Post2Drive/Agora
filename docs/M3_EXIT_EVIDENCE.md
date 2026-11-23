@@ -66,3 +66,12 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 8. Use the exact phrase **"M3 reached"** only if all required acceptance gates are satisfied; otherwise state **"M3 not yet reached"** and name the remaining blockers.
 
 **No dataset was acquired, no simulation or validation was run, and no prediction-validity claim is made by this document.**
+
+
+## 7. Dataset reachability update — 23 November 2026
+
+Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the workspace allowlist. No data was downloaded. The acquisition checklist now records two third-party GitHub mirror candidates:
+- MEDSL V20 county returns in `mathis-group/cas-201-data-project`, whose README records the same MD5 as Dataverse V20, 94,151 rows and CC0 1.0.
+- Ember monthly CSV in `Awes0mer/fuel-cars-pollution`, whose manifest records the official Ember source URL, CC BY 4.0, 7,695,642 bytes and SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`; this is a 16-Nov snapshot, while the official Ember page now reports an 18-Nov update.
+
+Both are third-party mirrors and require explicit owner approval of exact repository/commit/file/version before acquisition. M5 remains owner-supplied through Kaggle terms. No mirror was downloaded, imported or run by ChatGPT.
