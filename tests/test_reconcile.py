@@ -375,7 +375,9 @@ def test_anchor_verification_opens_audit_read_only(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sqlite3, "connect", spy)
     _run(tmp_path, anchor=False)
-    assert uris and all("mode=ro" in u for u in uris)
+    # audit is now read via a held-descriptor snapshot (":memory:" + deserialize); any path open stays mode=ro
+    assert uris and all(u == ":memory:" or "mode=ro" in u for u in uris)
+    assert not any("audit.sqlite3" in u and "mode=ro" not in u for u in uris)
 
 
 def test_concurrent_append_is_blocked_between_verification_and_classification(tmp_path, monkeypatch):
