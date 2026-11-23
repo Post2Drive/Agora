@@ -2,6 +2,19 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
+## Owner-reported FiveThirtyEight polls handoff — 23 November 2026
+
+This update supersedes earlier checklist statements that no polling files were in hand. The owner reports a **partial** import in the separate private repository Post2Drive/Post2Drive, branch data/import-fivethirtyeight-polls-2026-11-23, draft PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5), commit 15c9a053291925813ef568466a92fc5460f6b554. The imported material includes the upstream polls README/licence and the complete old_model/ directory. It is not a complete benchmark package and is not in the Agora source repository.
+
+Four large source files remain outstanding and must be transferred and hashed before the polling package can pass acquisition review:
+
+- polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv — 1,604,311 bytes (uncorrected; **not** a substitute for corrected 2024 averages).
+- polls/2024-averages/presidential_primary_averages_2024.csv — 11,407,331 bytes.
+- polls/pres_pollaverages_1968-2016.csv — 50,438,309 bytes.
+- polls/pres_primary_avgs_1980-2016.csv — 30,087,513 bytes.
+
+No SHA-256 values were recorded for the imported files in the reported handoff. Keep PR #5 open until the four outstanding files are transferred and a per-file SHA-256 manifest is committed. The source snapshot reported for the import is FiveThirtyEight/data commit 4c1ff5e3aef1816ae04af63218015066e186c147; verify the source commit, exact file bytes and licence record for every file rather than treating the PR description or Git blob IDs as SHA-256 evidence. This partial handoff does not establish adequate 2020 or corrected-2024 poll coverage, owner approval for use, or permission to run a benchmark.
+
 ## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:16 IST)
 
 Claude's 09:05 IST check reports GitHub reachable, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded during that check. Claude's 15:40 IST note records that the owner shared the FiveThirtyEight `polls/` folder listing, but no polling files are in hand. The owner is asked to download the exact GitHub-hosted files listed in `DATASET_DOWNLOAD_GUIDE.md`, try each of the four README live URLs once, and report every success/failure. Claude's 16:16 IST round confirms no new owner files or decisions. The 15:40 and 16:16 notes are owner-log updates, not a new host-reachability test, file handoff, source approval or protocol decision. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
@@ -84,14 +97,14 @@ For every file, record:
 | Source URL / DOI | Canonical source |
 | Licence / terms | Exact licence name/version or competition rules |
 | Citation / attribution | Publisher's required wording |
-| Release / version | Exact release, commit or Dataverse version |
+| Release / version | Exact release or Dataverse version |\n| Source commit | Full immutable source commit SHA (or official release/version ID where no Git commit exists) |
 | Access date | Local date downloaded |
 | Original filename | Do not rename before hashing |
 | File size | Bytes |
-| SHA-256 | Hash of the exact downloaded bytes |
+| SHA-256 | Hash of the exact downloaded bytes (64 lowercase hexadecimal characters) |
 | Intended split / role | As preregistered; never infer from filename |
 
-## Handoff and stop conditions
+## Required SHA-256 manifest (hard acquisition gate)\n\nBefore any dataset import, create and commit a machine-readable manifest (CSV or JSON) in the separate private data repository. It must contain one row/object for **every** source file, including every file in a multi-file bundle and all four outstanding FiveThirtyEight files, with these exact fields: package, relative_path, original_filename, bytes, sha256, source_url, source_commit_or_release, licence_and_version, access_date, and citation. Calculate SHA-256 from the final downloaded bytes (for example, Get-FileHash -Algorithm SHA256 on Windows); do not substitute Git blob IDs, MD5 values, or a hash of an archive for the hash of each extracted file. Recompute after transfer and compare source and destination hashes. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. The manifest itself must be committed before any import or run; no validation is authorized by this checklist.\n\n## Handoff and stop conditions
 
 1. Owner downloads the exact publisher files manually, retains the source archives and licence evidence, and completes the per-file register (source/version, licence/citation, access date, original filename, byte size and SHA-256).
 2. After owner review of the exact sources and terms, push only the approved, licence-permitted files to a separate **private** GitHub repository (suggested name `agora-validation-data`) using the steps in `DATASET_DOWNLOAD_GUIDE.md`. Keep it separate from the AGORA source repository.
