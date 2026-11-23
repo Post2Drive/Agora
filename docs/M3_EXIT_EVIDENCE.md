@@ -1,10 +1,10 @@
 # M3 Exit Evidence — Claude Milestone Declaration Checklist
 
-**Status:** Working checklist, not a milestone declaration. As of 23 November 2026, M3 has not been declared reached. The owner's 23 November run approval is recorded below as received, dormant; no freeze approval has been given, no run has occurred, and only Claude's explicit collaboration-log entry may declare M3 reached.
+**Status:** Working checklist, not a milestone declaration. Main assessed at `4a0607f8946e32ef828b47183099ead4f8ae2bd7` (23 November 2026); Claude's latest entry says M3 NOT reached. The owner's one-run approval is received but dormant. The owner freeze sentence was received but is incomplete because its manifest field is the literal `<sha>` placeholder and the complete manifest/parameter values are absent. The owner named ChatGPT as a separate-process evaluator, but private-repository access and label/output custody are not established. No dataset has been run, no protocol is frozen, and only Claude's exact collaboration-log entry may declare M3 reached.
 
-**Post-#192/#195 status:** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes verification/restore record findings. #192 (RT05d) merged at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, merge commit `3e55e5505cda38a2ccfdc93a3e9996120ebb659e`, run `45150068645`, 4/4; it closes source-side strict-record preflight before destination creation/copy and re-checks copied bytes. #195 is the latest docs-only merge at exact head `fedab29c7d1e5b3d67e252d73bb97c9ae37acf93`, current main `e29ee4b1428fbc27458b547cc8c68bd4833c6ff2`, exact-head CI `45160887328`, 4/4 (six paths all under `docs/**`). Path-based SQLite reopen (TOCTOU) remains owner-gated.
+**Post-#197/#198/#199 status:** #197 RT06 read-side held-descriptor SQLite snapshot merged at exact head `5d67cb4ceed8200a9a952b05ae1db9a58c3b0ba6`, merge `5cbe4cfbb82039543d408ab5c67e045e17e10a99`, exact-head CI `45167913607` passed 4/4. #198 Principal-bound authorization receipt merged at exact head `d3a8435bbabc28a1e488d87b752b1350b99c687d`, merge `4a55f2efd44da7aea54adda6ca7787471dd97cba`, CI `45170449040` passed 4/4. #199 adapter-origin check merged at exact head `851bbf1a217f018695133ee9c42f1c538fa088f0`, merge/current main `4a0607f8946e32ef828b47183099ead4f8ae2bd7`, CI `45173316190` passed 4/4. ChatGPT docs #196 merged at exact head `f9d34afa5914ee1cd2ccfd39a722fbb791ac4591`, merge `34e5cc39b2bb9f53ca6be0dc057de53e5aa5532c`, CI `45170530846` passed 4/4 (seven docs-only paths). #197 is read-side only; AuditChainStore writer opens remain path-based and Python <3.11 fails closed. #198/#199 leave an in-process trust limitation: `_ISSUED`/`_MINT` are accessible, receipt construction accepts the sentinel, `object.__setattr__` bypasses immutability, and the fixture adapter is caller-configurable/test-only. Production CLI remains default-deny.
 
-**Assessment base:** main `e29ee4b1428fbc27458b547cc8c68bd4833c6ff2` (23 November 2026; latest docs-only merge #195 at exact head `fedab29c7d1e5b3d67e252d73bb97c9ae37acf93`, exact-head CI `45160887328` passed 4/4; latest code merge #192 at exact head `bdf13a0663e5498c9d2e857817769985a8419e94`, exact-head CI `45150068645` passed 4/4).
+**Assessment base:** main `4a0607f8946e32ef828b47183099ead4f8ae2bd7` (23 November 2026; latest code merge #199, latest docs merge #196). Exact-head CI: #197 run `45167913607` 4/4; #198 run `45170449040` 4/4; #199 run `45173316190` 4/4; #196 run `45170530846` 4/4.
 
 ## 1. Merged implementation slices
 
@@ -16,6 +16,9 @@
 | 4.3 governed CLI | #172 | `agora/cli.py` plus tests; exact import ID, binding/pack/mapping args, `--force` refusal, exit 3 on engine refusal | Run `45093439437`, 4/4 |
 | 4.4 instance-row integrity | #173 | `agora/scenario_projection.py` plus tests; order-independent `instances_hash` included in `projection_hash` | Run `45096233966`, 4/4 |
 | 4.6 base/projected scenario hashes | #178 | `agora/sim/engine.py` plus tests only, within the owner's named scope; original `scenario.yaml` hash is `base_scenario_hash`, separate `projected_scenario_hash` binds it to `projection_hash` | Run `45113858688`, 4/4 |
+| RT06 read-side SQLite snapshot | #197 | Held-descriptor read-side snapshots for audit chain, anchor and run-record/seal checks; writer opens remain path-based; Python <3.11 fails closed | Run `45167913607`, 4/4 |
+| 4.7 Principal-bound authorization receipt | #198 | Receipt minted after Principal-bound allow and revalidated in the engine; in-process sentinel and `object.__setattr__` limitations remain | Run `45170449040`, 4/4 |
+| 4.7a adapter-origin provenance | #199 | Hand-built Principals without adapter-origin marker denied; same-process sentinel access remains possible | Run `45173316190`, 4/4 |
 
 For #171–#173 and #178, 4/4 means Ubuntu/Windows × Python 3.11/3.12 jobs all completed successfully. Claude's log reports 15 new engine tests, 7 CLI tests, 2 row-hash tests and four hash-split regression cases, plus local full-suite/mutation results; ChatGPT did not run or independently reproduce those local tests. For #178, exact head `a620feb98d342250e29ded132781630fcb31f395` passed run `45113858688` 4/4. Its diff changes only `agora/sim/engine.py` and `tests/test_engine_governed_input.py`; the sole `agora/sim/**` path remains the owner-approved `engine.py`. Confirm exact merge-head and workflow evidence for every implementation PR; do not rely on a branch-head result if the merged SHA differs.
 
@@ -46,12 +49,16 @@ These supporting security, metrics and documentation merges do not resolve the p
 
 These are not waived by merged PRs or green CI:
 
-Resolved by #178: `base_scenario_hash` is captured from the original `scenario.yaml` before projection; `projected_scenario_hash` is separate and bound to `projection_hash`. The exact-head CI passed 4/4 and merged tests cover row/mapping changes plus unchanged-envelope resume refusal. Claude reports local mutation proofs; ChatGPT did not reproduce them.
-1. **Policy authorization boundary:** the CLI currently calls `_governed_policy()`, which returns `None`; the policy-required builder therefore denies before opening snapshot bytes. Do not weaken this. The owner must decide whether a bounded synthetic Principal is acceptable for local public-data validation or a production identity adapter is required. Any accepted adapter must be Principal-bound, scoped, expiring, fail-closed, and prove denial precedes source reads.
-2. **Direct engine constructor:** a self-consistent package/hash is not proof of a successful policy decision. Prove direct `Simulation(..., governed_input=...)` cannot bypass the policy-built input boundary, or require a trusted capability that arbitrary callers cannot forge. Include a mutation proof.
-3. **Provenance/report completeness:** verify manifest, projection, mapping, instances, original/projected scenario hashes and report/export fields agree. Keep append-once semantics and ensure `--force` cannot alter the envelope.
+Resolved by #178: `base_scenario_hash` is captured from the original `scenario.yaml` before projection; `projected_scenario_hash` is separate and bound to `projection_hash`. Exact-head CI passed 4/4.
 
-Claude must explicitly resolve each item or record a justified, owner-approved deferral before declaring the implementation milestone. A deferral cannot be used to claim an operator-usable governed workflow while the CLI still denies.
+1. **Production policy source remains absent.** `agora/cli.py::_governed_policy()` returns `None`; the policy-required scenario-input builder denies before snapshot bytes are opened. Preserve this default-deny behaviour. Do not inject a permissive callback or bypass it.
+2. **Receipt/Principal provenance has a same-process limitation.** #198 requires an exact-type Principal-bound receipt and #199 rejects hand-built Principals without the adapter-origin marker. However `_ISSUED` and `_MINT` are reachable module objects in the same Python process; the public receipt constructor accepts `_MINT`, and `object.__setattr__` bypasses the setter. The synthetic fixture adapter accepts caller-supplied fixture definitions and is test-only. No production identity adapter or process-isolated trust boundary exists. Do not describe this as production authentication.
+3. **Read/write path-race coverage is incomplete.** #197 adds held-descriptor, identity-checked read-side snapshots for audit-chain, anchor and run-record/seal verification. `AuditChainStore` writer opens remain path-based. Python <3.11 fails closed because `Connection.deserialize` is unavailable; no path-reopen fallback is permitted.
+4. **Dataset and protocol gates remain open.** The FiveThirtyEight handoff is partial, four large CSVs remain outstanding, and no complete per-file SHA-256/source/licence manifest is recorded. Election, retail and adoption package files and licences remain to be pinned. The owner freeze sentence contains literal `<sha>`; bootstrap count/seed/interval and LLM sampling settings are not frozen. The owner-named evaluator is ChatGPT in a separate process, but access/custody is not established.
+5. **Run approval is dormant.** The owner's one-run approval is received but applies only after an effective protocol freeze, complete data manifest, implementation gates and Claude's M3-reached confirmation. No dataset, simulation or validation run is authorized now.
+
+Claude must state these residuals accurately and must not declare M3 reached while required milestone gates remain incomplete.
+
 
 ## 4. Documentation and validation gates
 
@@ -65,10 +72,13 @@ Claude must explicitly resolve each item or record a justified, owner-approved d
 
 ## 5. Owner decisions and external inputs
 
-- [ ] Owner confirms whether a synthetic Principal is acceptable for local public-data validation or requires production identity.
-- [ ] Owner supplies/approves the exact three benchmark packages and source terms; each file has a dataset-register row with source/version, licence/citation, access date, filename, bytes and SHA-256.
-- [ ] Owner explicitly approves freezing a specific version/SHA of the validation protocol.
-- [ ] Any simulation/validation run has separate explicit owner authorization naming scope, data, project and run purpose. M3 code merge is not run authorization.
+- [x] Owner accepted Claude's A–D design decisions on 23 November 2026. This is design acceptance, not expanded path authorization; only `agora/sim/engine.py` is approved under `agora/sim/**`.
+- [ ] Owner completes the four outstanding FiveThirtyEight CSVs and supplies the election-return, retail and adoption source files with exact per-file bytes, SHA-256, immutable source version and licence/terms records in the owner-controlled private repository.
+- [ ] Owner establishes the named ChatGPT separate-process evaluator's restricted private-repository access, output custody and label-release procedure.
+- [ ] Owner and Claude resolve bootstrap B, bootstrap RNG seed, interval method, seed list and LLM sampling/cache parameters; the current proposals are not frozen.
+- [ ] Owner reissues the protocol-freeze sentence with the actual merged protocol commit SHA and complete dataset-manifest SHA. The received sentence used literal `<sha>` and is not effective.
+- [ ] Any simulation/validation run remains dormant until all freeze and data gates are satisfied and Claude has declared M3 reached; the owner's one-run approval does not authorize a run now.
+
 
 ## 6. Claude's final declaration requirements
 
@@ -88,11 +98,12 @@ Before declaring M3 reached, Claude's collaboration-log entry must:
 
 ## 7. Dataset handoff status — 23 November 2026
 
-The owner reports a partial FiveThirtyEight import in private `Post2Drive/Post2Drive` PR #5, import commit `15c9a053291925813ef568466a92fc5460f6b554`, from FiveThirtyEight/data source commit `4c1ff5e3aef1816ae04af63218015066e186c147`. The PR's changed-file list shows the upstream polls README/licence and eight `old_model/*.csv` files. Four larger CSVs remain outstanding: the uncorrected 2024 general averages, 2024 primary averages, 1968–2016 presidential poll averages and 1980–2016 presidential primary averages. Their reported byte counts and per-file manifest rows are in `DATASET_MANIFEST_TEMPLATE.md`. No per-file SHA-256 values are recorded; the handoff metadata does not establish raw-byte verification, complete 2020/2024 coverage, licence approval or permission to run.
+The owner reports a partial FiveThirtyEight import in private `Post2Drive/Post2Drive` PR #5, import commit `15c9a053291925813ef568466a92fc5460f6b554`, from source commit `4c1ff5e3aef1816ae04af63218015066e186c147`. Eight `old_model/*.csv` files plus README/licence are reported present; four large CSVs remain outstanding. No per-file SHA-256 values are recorded. The private repository and raw bytes were not inspected through the permitted Agora GitHub connector, so this remains owner-reported metadata.
 
-The MEDSL V20 county presidential returns source is Harvard Dataverse DOI 10.7910/DVN/VOQCHQ, Version 20.0, CC0 1.0; the exact source file and bytes still need to be pinned and hashed. M5 Walmart remains conditional on the owner's review of Kaggle Competition Rules; do not acquire or use it before that review. The Ember monthly EV file remains a candidate public-adoption source whose exact official release and licence must be verified; a third-party 16-Nov snapshot is not presumed current. Any Rossmann replacement requires explicit selection and its own per-file licence review.
+The MEDSL V20 county presidential returns exact file and bytes remain to be pinned and hashed. M5 Walmart remains conditional on the owner's review of Kaggle Competition Rules. The Ember monthly EV file remains a candidate source whose exact official release and licence must be verified. No complete manifest for any of the three packages is available.
 
-No raw dataset bytes were downloaded or inspected by ChatGPT in this documentation task. No complete manifest is present, no protocol freeze has occurred, and no dataset, simulation or validation run has occurred.
+The owner named ChatGPT as a separate-process evaluator restricted to the frozen protocol, manifest and raw outputs; private-repository access and output/label custody are not established. No protocol freeze has occurred, no dataset run has occurred, and no permission to import or run is inferred from the partial handoff.
+
 
 ## 8. Owner approvals received — 23 November 2026 (status, not milestone completion)
 
@@ -106,10 +117,12 @@ The owner explicitly accepted Claude's written 23 November A–D design approval
 
 This approval remains dormant until all preconditions are met: the protocol is separately frozen by the owner's freeze approval below; the complete selected datasets and per-file SHA-256 manifest are committed in the owner-controlled private repository; required implementation slices are merged and Claude records M3 reached; and the independent evaluator and custody are in place. The four outstanding FiveThirtyEight CSVs remain an acquisition blocker. This record does not authorize a run now, a second run, prediction enablement or any data outside the named public sets. No run has been made.
 
-### Owner freeze sentence — template only; not approved or executed
+### Owner freeze sentence — received but incomplete; protocol NOT frozen
 
-Once the protocol PR is merged and the complete manifest and evaluator are ready, the owner may paste the following sentence with only the three values supplied:
+The owner supplied this sentence on 23 November 2026:
 
-“I approve freezing `docs/VALIDATION_PROTOCOL.md` as merged at commit [protocol commit sha], with dataset manifest [manifest sha] and evaluator [evaluator name]. This approves no run and no flag change.”
+“I approve freezing `docs/VALIDATION_PROTOCOL.md` as merged at commit 34e5cc39b2bb9f53ca6be0dc057de53e5aa5532c, with dataset manifest `<sha>` and evaluator ChatGPT (separate process, sees only the frozen protocol, manifest and raw outputs). This approves no run and no flag change.”
 
-The blanks are intentionally limited to the protocol commit SHA, manifest SHA and evaluator name. This is a template, not a freeze decision. The protocol remains draft/unfrozen; M3 has not been declared reached; no dataset or simulation run has occurred; `VALIDATED_PREDICTION_ENABLED=False` remains unchanged.
+The evaluator name is recorded as ChatGPT. The sentence is **not effective** because the manifest value is the literal placeholder `<sha>`, no complete committed per-file manifest is available, and the protocol still has freeze-blocking parameter decisions: bootstrap replicate count, bootstrap RNG seed, interval construction, seed list and LLM sampling settings. Claude's proposed values (B=2000, seed 20261123, percentile interval, one preregistered seed per configuration, temperature 0 with cache on) remain proposals for review. The protocol stays draft/unfrozen.
+
+To make a freeze effective, the owner must re-paste the freeze sentence with the new merged protocol commit SHA and actual complete dataset-manifest SHA after all files, licences, parameters and evaluator custody are verified. This approves no run and no flag change. `VALIDATED_PREDICTION_ENABLED=False` remains unchanged.
