@@ -2,7 +2,7 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Owner-reported FiveThirtyEight polls handoff — 23 November 2026 (read-only inventory of P2D PR #5)
+## FiveThirtyEight polls handoff — 23 November 2026 (read-only GitHub tree inventory of P2D PR #5)
 
 The private `Post2Drive/Post2Drive` repository main is `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR #5 remains open/unmerged at branch commit `15c9a053291925813ef568466a92fc5460f6b554`; the import branch is `data/import-fivethirtyeight-polls-2026-11-23`. The eight CSVs below exist only on the PR branch at `validation-data/elections/fivethirtyeight-polls/old_model/`; they are not in P2D main or Agora main (`4a0607f8946e32ef828b47183099ead4f8ae2bd7`). The PR also includes README/licence/import notes. These paths and byte sizes were read from the Git tree; no raw file contents were downloaded. Git blob IDs are not SHA-256 file checksums.
 
