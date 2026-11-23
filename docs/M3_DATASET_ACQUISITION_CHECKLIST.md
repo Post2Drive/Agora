@@ -2,9 +2,9 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Claude reachability check — 23 November 2026, 09:05 IST
+## Claude reachability check — 23 November 2026, 09:05 IST (latest direct access check; owner gates rechecked 13:46 IST)
 
-Claude reports that GitHub is reachable from its workspace, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded by Claude during that check. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
+Claude reports that GitHub is reachable from its workspace, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded by Claude during that check. The latest collaboration-log tail (13:46 IST) records no owner-supplied benchmark files, approved mirror selections, licence/version approvals or protocol-freeze approval; this is an owner-gate recheck, not a new host-reachability test. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
 
 | Package | Candidate route and evidence | Access status / caveat |
 |---|---|---|
