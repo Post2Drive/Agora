@@ -95,7 +95,7 @@ The owner delegated the identity and TOCTOU design choices for the stated object
 - **Authorization proof:** the direct engine path must require an opaque, Principal-bound authorization receipt minted only after a successful allow decision by the trusted synthetic-fixture adapter. Bind it to issuer, subject, role, expiry and the exact project, import ID, binding ID, dataset/schema and scenario/manifest hashes. Revalidate allow, scope and expiry before Store construction, provenance writes or population creation.
 - **Untrusted inputs:** reject missing, forged, wrong-type, denied, expired, cross-project, wrong-import/binding and tampered-package receipts. A caller-supplied mapping, plain dictionary or self-asserted allow flag is not proof.
 - **Production boundary:** keep production CLI fail-closed. _governed_policy() continues to return None; do not add a permissive production fallback or weaken the denial. A production identity adapter requires a separate approval and design.
-- **Code scope:** Claude's planned receipt slice is restricted to the already owner-approved agora/sim/engine.py path. If minting or verification requires any additional source or test path, stop and obtain separate written owner approval naming that exact path. No implementation is claimed in this documentation update.
+- **Code scope (accepted design B):** the opaque Principal-bound receipt slice spans `agora/principal.py`, `agora/scenario_inputs.py`, `agora/cli.py` and `agora/sim/engine.py` only. No other `agora/sim/**` path is included. Claude owns implementation; no implementation is claimed in this documentation update.
 
 ### 10.2 TOCTOU threat-model decision
 
