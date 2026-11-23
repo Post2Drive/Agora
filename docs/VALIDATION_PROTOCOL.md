@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Baseline:** main `400666bd90da5834c68bfdcb4dbc135640f99aa0` (22 November 2026). #139 B13 path normalization is merged (CI `45011493565`, 4/4). #138 implements exact sequence/head comparison and manifest binding (CI `45009045175`, 4/4), but no writer-side lock; single-read manifest validation and deterministic concurrent-writer proof remain open. #144 proves clean-checkout install/start (head 38884bc8; exact-head CI 45015043801 passed 4/4).
+**Baseline:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The CLI still denies governed runs because `_governed_policy()` returns `None` until a production identity adapter exists. This protocol remains draft; no dataset has been run and no validation is authorized.
 
 ## 1. Purpose, scope and non-claims
 
@@ -16,7 +16,7 @@ No P2D, NCC, Nutrivance, customer, driver, personal, private or owner operationa
 
 Before the first run:
 
-1. Confirm Claude's exact M2 completion entry and exact M3 implementation/confirmation entry.
+1. Confirm Claude's exact M2 completion entry and a distinct M3 implementation-complete entry. Merged M3 slices do not by themselves freeze this validation protocol or authorize a validation run.
 2. Freeze this protocol in a merged documentation commit. Record the commit SHA and approved run scope in the collaboration log.
 3. Resolve each dataset's licence/terms and save source URL, licence text/version, access date, citation, source release/version and local file SHA-256 in a dataset register.
 4. Freeze dataset field allow-lists, exclusions, time cutoffs, transformations, output targets, metrics, baselines, uncertainty procedure and stop rules.
