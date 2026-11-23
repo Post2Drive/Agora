@@ -2,6 +2,19 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation.
 
+## Claude reachability check — 23 November 2026, 09:05 IST
+
+Claude reports that GitHub is reachable from its workspace, while Harvard Dataverse, Kaggle and Ember's official host are blocked by the current network allowlist. No files were downloaded by Claude during that check. The following GitHub-hosted snapshots are **candidates for owner approval only**, not approved substitutions:
+
+| Package | Candidate route and evidence | Access status / caveat |
+|---|---|---|
+| E polls | Official FiveThirtyEight repository, commit reported by Claude as `4c1ff5e3`; Claude identified the `2024-averages` directory and `pres_pollaverages_1968-2016.csv` (about 50 MB). | GitHub fetchable by Claude. Before acquisition, pin the full commit SHA and exact files within `2024-averages`; confirm that the selected 2024 poll files support the preregistered cutoffs. |
+| E returns | Third-party GitHub mirror: [mathis-group/cas-201-data-project](https://github.com/mathis-group/cas-201-data-project), file `data/medsl/countypres_2000-2024.csv` and `data/medsl/codebook.md`. Its `data/README.md` records 94,151 rows, MD5 `bd6661282936006b4ef4f5ee71418f3e` (stated to match Dataverse), V20 released 2026-02-25, original format/unmodified, CC0 1.0; source DOI 10.7910/DVN/VOQCHQ. | GitHub candidate; not an official MEDSL-hosted mirror. Verify downloaded MD5 and SHA-256 against the owner-approved V20 source record and codebook before acceptance. The repo's MIT code licence does not replace the data's stated CC0 source licence. |
+| R — M5 | Official [Kaggle M5 data page](https://www.kaggle.com/c/m5-forecasting-accuracy/data). | Owner-supplied; requires Kaggle access and review/acceptance of competition terms. No third-party mirror is recommended. |
+| A — Ember | Third-party GitHub mirror: [Awes0mer/fuel-cars-pollution](https://github.com/Awes0mer/fuel-cars-pollution), raw source file `data/raw/ember_ev_monthly/monthly_ev_sales.csv`. Its manifest records source URL `https://files.ember-energy.org/public-downloads/transport/outputs/monthly_ev_sales.csv`, retrieval 2026-11-16 05:54:52 UTC, 7,695,642 bytes, SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`, CC BY 4.0. The repo licence states `data/raw` files retain publisher licences. | GitHub candidate, not an official Ember-hosted mirror. This is a 16-Nov snapshot; Ember's official page reports a newer update on 18-Nov-2026. Do not treat it as the latest release or silently replace the official 18-Nov source. Owner must approve the exact snapshot/version or supply the newer official file. |
+
+No mirror is approved by inclusion in this checklist. Claude must not download or use any candidate until the owner approves the exact repository, commit, path, version and licence evidence. The owner can instead supply the official source files manually.
+
 ## Important distinction
 
 There are **three benchmark packages, not three individual files**:
