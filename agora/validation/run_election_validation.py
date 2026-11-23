@@ -61,6 +61,12 @@ def main(argv=None) -> int:
         print(json.dumps({"stage": a.stage, "k": a.k, "records": len(recs), "outputs_sha256": sha}))
         return 0
 
+    if a.stage == "test-evaluate":                     # the seal is checked BEFORE the label file is hashed or opened
+        import hashlib
+        blob = (a.out / "test_outputs.json").read_bytes()
+        got = hashlib.sha256(blob).hexdigest()
+        if not a.sealed_sha or got != a.sealed_sha:
+            raise SystemExit("SEAL_MISMATCH: outputs hash differs from --sealed-sha; labels stay closed")
     if a.medsl is None:
         raise SystemExit("--medsl required for this stage")
     _verify(a.manifest, a.medsl, "countypres_2000-2024.csv")
@@ -80,11 +86,6 @@ def main(argv=None) -> int:
         (a.out / "validation_result.json").write_text(json.dumps({"outputs_sha256": sha, **res}, sort_keys=True, indent=1), encoding="utf-8")
         print(json.dumps({"stage": a.stage, "outputs_sha256": sha, **res}))
     else:
-        blob = (a.out / "test_outputs.json").read_bytes()
-        import hashlib
-        got = hashlib.sha256(blob).hexdigest()
-        if not a.sealed_sha or got != a.sealed_sha:
-            raise SystemExit("SEAL_MISMATCH: outputs hash differs from --sealed-sha; labels stay closed")
         recs = json.loads(blob)
         res = h.evaluate(recs, outcomes, previous=outcomes)
         (a.out / "test_result.json").write_text(json.dumps({"outputs_sha256": got, **res}, sort_keys=True, indent=1), encoding="utf-8")
