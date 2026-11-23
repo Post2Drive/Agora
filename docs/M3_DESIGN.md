@@ -1,6 +1,8 @@
 # M3 Design — Governed Scenario Input to the Simulation Engine
 
-**Status:** Design and implementation record (23 November 2026; assessed main `e3b0a58004298af05f9242795715b62d566941b7`). The owner gave written approval at 05:54 IST for the exact `agora/sim/engine.py`-only scope in section 3. That slice is merged in #171; the non-simulation CLI and projection follow-ups are merged in #172 and #173 (with #163/#164 implementing and hardening the pure projection). This document and those merges do not authorize a simulation/validation run, dataset use, real or personal data, connectors, credentials, write-back, or validated prediction. The production CLI currently denies governed runs because no production identity adapter exists.
+**Status:** Design and implementation record (23 November 2026; assessed main `6a6f75d4c88ec5ff1598d2c1bb4282ce511d12a0`). The owner gave written approval at 05:54 IST for the exact `agora/sim/engine.py`-only scope in section 3. That slice is merged in #171; the non-simulation CLI and projection follow-ups are merged in #172 and #173 (with #163/#164 implementing and hardening the pure projection). Supporting dataset-independent metrics #175/#176 are merged separately; they do not expand the approved simulation-engine scope or constitute a validation run. This document and those merges do not authorize a simulation/validation run, dataset use, real or personal data, connectors, credentials, write-back, or validated prediction. The production CLI currently denies governed runs because no production identity adapter exists.
+
+
 
 ## 1. What M3 proves (and nothing more)
 
