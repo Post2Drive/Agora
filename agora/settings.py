@@ -42,9 +42,20 @@ def load() -> dict:
 def save(d: dict) -> None:
     home().mkdir(parents=True, exist_ok=True)
     p = settings_path()
-    p.write_text(json.dumps(d, indent=1), encoding="utf-8")
+    # Created owner-only from the start (no window where the key is world-readable), then swapped in atomically.
+    tmp = p.with_name(p.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.chmod(p, 0o600)            # only you can read the key (limited effect on Windows)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(d, indent=1))
+        os.replace(tmp, p)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    try:
+        os.chmod(p, 0o600)            # limited effect on Windows
     except OSError:
         pass
 
