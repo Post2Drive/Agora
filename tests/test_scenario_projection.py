@@ -113,3 +113,77 @@ def test_instances_hash_is_row_order_independent():
     pkg = _pkg()
     rev = copy.deepcopy(pkg); rev["instances"].reverse()
     assert project_segments(pkg, MAP, _base())[1]["instances_hash"] == project_segments(rev, MAP, _base())[1]["instances_hash"]
+
+
+# ---- optional per-option leaning (validation harness; docs/VALIDATION_RUN_SPEC.md) ----
+from agora.scenario import Choice
+
+LD, LR = "x:lean_d", "x:lean_r"
+
+
+def _lpkg(rows):
+    """rows: (segment, activity, lean_d, lean_r)"""
+    return {"manifest": {"scenario_hash": GOOD_HASH}, "validated_prediction_enabled": False,
+            "instances": [{"row_id": i, "property_values": {S: s, A: a, LD: d, LR: r},
+                           "property_sensitivity": {S: "public", A: "public", LD: "public", LR: "public"}}
+                          for i, (s, a, d, r) in enumerate(rows)]}
+
+
+def _lbase():
+    return Scenario(name="n", topic="t", question="q", context="c", choice=Choice(options=["D", "R"]))
+
+
+LMAP = {**MAP, "personas": {"a": "Alpha"}, "leaning": {"D": LD, "R": LR}}
+LROWS = [("a", 0.3, 0.2, -0.2), ("a", 0.3, 0.4, -0.4)]
+
+
+def test_leaning_is_projected_as_mean_per_option_and_hashed():
+    sc, rec = project_segments(_lpkg(LROWS), LMAP, _lbase())
+    assert sc.segments[0].leaning == {"D": pytest.approx(0.3), "R": pytest.approx(-0.3)}
+    other = [("a", 0.3, 0.2, -0.2), ("a", 0.3, 0.6, -0.4)]
+    assert project_segments(_lpkg(other), LMAP, _lbase())[1]["projection_hash"] != rec["projection_hash"]
+
+
+def test_without_leaning_key_behaviour_is_unchanged():
+    sc, _ = project_segments(_pkg(), MAP, _base())
+    assert all(s.leaning == {} for s in sc.segments)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda m: m["leaning"].pop("R"),                      # option missing from mapping
+    lambda m: m["leaning"].update(X=LD),                  # option not in base choice
+    lambda m: m.update(leaning={}),                       # empty mapping
+    lambda m: m["leaning"].update(R=""),                  # blank property id
+])
+def test_bad_leaning_mapping_refused(mutate):
+    m = copy.deepcopy(LMAP); mutate(m)
+    with pytest.raises(ProjectionError):
+        project_segments(_lpkg(LROWS), m, _lbase())
+
+
+def test_leaning_requires_base_choice():
+    with pytest.raises(ProjectionError):
+        project_segments(_lpkg(LROWS), LMAP, _base())
+
+
+@pytest.mark.parametrize("rows", [
+    [("a", 0.3, 1.4, -0.2), ("a", 0.3, 1.2, -0.4)],       # mean > 1
+    [("a", 0.3, 0.2, -1.5), ("a", 0.3, 0.4, -1.5)],       # mean < -1
+])
+def test_leaning_out_of_bounds_refused(rows):
+    with pytest.raises(ProjectionError):
+        project_segments(_lpkg(rows), LMAP, _lbase())
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), "0.2"])
+def test_leaning_non_numeric_refused(bad):
+    rows = [("a", 0.3, bad, -0.2), ("a", 0.3, 0.4, -0.4)]
+    with pytest.raises(ProjectionError):
+        project_segments(_lpkg(rows), LMAP, _lbase())
+
+
+def test_leaning_property_needs_projectable_sensitivity():
+    pkg = _lpkg(LROWS)
+    pkg["instances"][0]["property_sensitivity"][LD] = "restricted"
+    with pytest.raises(ProjectionError):
+        project_segments(pkg, LMAP, _lbase())

@@ -46,7 +46,7 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
     instances = package.get("instances")
     if not isinstance(manifest, Mapping) or not _valid_hash(manifest.get("scenario_hash")) or not isinstance(instances, list) or not instances:
         raise ProjectionError("package has no manifest hash or no rows")
-    if not isinstance(mapping, Mapping) or set(mapping) - {"segment_property", "numeric", "personas"}:
+    if not isinstance(mapping, Mapping) or set(mapping) - {"segment_property", "numeric", "personas", "leaning"}:
         raise ProjectionError("mapping has unknown keys")
     seg_prop = mapping.get("segment_property")
     numeric = mapping.get("numeric")
@@ -55,7 +55,17 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
         raise ProjectionError("mapping needs segment_property, numeric and personas")
     if set(numeric) != set(_BOUNDS):
         raise ProjectionError(f"numeric must map exactly the segment fields {sorted(_BOUNDS)}")
-    used = {seg_prop, *numeric.values()}
+    # optional: per-option leaning (-1..1), each option bound to one declared property; needs a base choice
+    leaning_map = mapping.get("leaning")
+    if leaning_map is not None:
+        choice = getattr(base, "choice", None)
+        if not isinstance(leaning_map, Mapping) or not leaning_map or choice is None:
+            raise ProjectionError("leaning needs a non-empty option->property mapping and a base scenario choice")
+        if set(leaning_map) != set(choice.options):
+            raise ProjectionError("leaning must map exactly the base choice options")
+        if any(not isinstance(p, str) or not p for p in leaning_map.values()):
+            raise ProjectionError("leaning property ids must be non-empty text")
+    used = {seg_prop, *numeric.values(), *(leaning_map.values() if leaning_map else ())}
     if any(not isinstance(p, str) or not p for p in used):
         raise ProjectionError("mapping property ids must be non-empty text")
 
@@ -99,10 +109,22 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
             if not lo <= mean <= hi:
                 raise ProjectionError(f"{fld} for segment {name} is out of bounds")
             fields[fld] = mean
+        leaning: dict[str, float] = {}
+        for opt, pid in sorted((leaning_map or {}).items()):
+            nums = []
+            for row in rows:
+                x = row[pid]
+                if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+                    raise ProjectionError(f"{pid} must be a finite number")
+                nums.append(float(x))
+            mean = math.fsum(nums) / len(nums)
+            if not -1.0 <= mean <= 1.0:
+                raise ProjectionError(f"leaning for option {opt} in segment {name} is out of bounds")
+            leaning[opt] = mean
         persona = personas[name]
         if not isinstance(persona, str) or not persona.strip():
             raise ProjectionError("persona must be non-empty text")
-        segments.append(Segment(name=name, share=len(rows) / total, persona=persona, **fields))
+        segments.append(Segment(name=name, share=len(rows) / total, persona=persona, leaning=leaning, **fields))
 
     derived = dataclasses.replace(base, segments=segments)
     # scenario_hash covers only the manifest payload, not the rows; bind the actual rows (order-independent).
@@ -121,6 +143,7 @@ def project_segments(package: Mapping[str, Any], mapping: Mapping[str, Any], bas
             "personas are declared by the mapping, not inferred",
             "every segment numeric field is explicitly mapped; none keeps a default",
             "only public/internal classified properties are projected (allow-list)",
+            "leaning (optional) = arithmetic mean of the mapped property per option, bounded -1..1; absent means no leaning",
         ],
         "validated_prediction_enabled": False,
     }
