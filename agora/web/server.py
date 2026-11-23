@@ -750,7 +750,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(obj, default=str).encode(), "application/json; charset=utf-8")
 
     def _body(self) -> dict:
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise ApiError(400, "Bad Content-Length")
+        if n < 0:                                # a negative length would make read() wait for EOF
+            raise ApiError(400, "Bad Content-Length")
         if n > MAX_BODY:
             raise ApiError(413, "Upload too large (300 MB max).")
         if not n:

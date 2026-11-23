@@ -223,3 +223,18 @@ def test_redraft_redoes_setup_from_the_graph(web):
     p = wait_job(base, pid)
     assert p["job"]["state"] == "done", p["job"]
     assert p["has_scenario"] and not p["run"]["started"]
+
+
+def test_bad_content_length_is_refused_not_hung(web):
+    import http.client
+    base, app = web
+    for val in ("-1", "abc"):
+        c = http.client.HTTPConnection("127.0.0.1", app.port, timeout=5)
+        c.putrequest("POST", "/api/settings", skip_host=True)
+        c.putheader("Host", f"127.0.0.1:{app.port}")
+        c.putheader("X-Agora", "1")
+        c.putheader("Content-Type", "application/json")
+        c.putheader("Content-Length", val)
+        c.endheaders()
+        assert c.getresponse().status == 400
+        c.close()

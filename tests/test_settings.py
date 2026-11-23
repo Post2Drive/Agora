@@ -76,3 +76,13 @@ def test_unknown_profile_is_a_clear_error():
     run_wizard("1", "llama3.2:3b", "")
     with pytest.raises(settings.SettingsError):
         settings.use("cloud")
+
+
+def test_settings_file_is_owner_only_and_leaves_no_temp(tmp_path):
+    import os, stat
+    settings.save({"profiles": {"x": {"api_key": "sk-test"}}})
+    p = settings.settings_path()
+    assert p.exists() and not list(p.parent.glob("*.tmp"))
+    if os.name == "posix":
+        assert stat.S_IMODE(p.stat().st_mode) == 0o600
+    assert settings.load()["profiles"]["x"]["api_key"] == "sk-test"

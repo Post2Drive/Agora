@@ -1,21 +1,9 @@
-# Security Policy
+# Security
 
-## Supported Versions
+Agora is built to run on your own machine. The web UI binds to 127.0.0.1, checks the Host header, and requires an `X-Agora` header on every change. Remote model endpoints are refused unless you turn them on in Settings.
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+## Reporting a vulnerability
+Please do not open a public issue. Use GitHub's private vulnerability reporting on this repository ("Security" tab → "Report a vulnerability"). Include the version, steps to reproduce and the impact. We aim to acknowledge within 7 days.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
-
-## Reporting a Vulnerability
-
-Use this section to tell people how to report a vulnerability.
-
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+## Secrets
+Never commit API keys or tokens. The settings file holding a saved key is created owner-only (0600). Use the `AGORA_API_KEY` environment variable where you can.
