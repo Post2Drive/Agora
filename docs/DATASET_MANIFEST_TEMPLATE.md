@@ -1,6 +1,6 @@
 # Dataset Manifest — M3 Public Benchmark Packages
 
-**Status: partial.** This register has exact per-file rows for the 12 FiveThirtyEight CSVs on the open, draft P2D PR #5 branch. It is not a complete benchmark manifest or an approval to use datasets. The additional required 2020 poll assets, corrected 2024 general averages, MEDSL, retail and Ember rows remain incomplete or gated. Keep raw files in the separate private data repository; do not commit them to Agora.
+**Status: partial.** This register contains 12 FiveThirtyEight CSV rows on the open/draft P2D PR #5 branch plus two owner-approved mirror rows reported hash-verified by Claude (MEDSL V20.0 and Ember 16-Nov snapshot). The two mirror files remain in Claude's session workspace only; they are not staged in P2D or Agora. The complete all-package manifest remains incomplete because M5 is still awaiting the owner's Kaggle-terms decision (acquire or drop retail). The selected election window is 2000–2016; 2020 and 2024 files are out of scope, and the 2024 general-average file is explicitly uncorrected and excluded. This is a manifest template and evidence record, not approval to use datasets or run validation. Keep raw files in the separate private data repository; do not commit them to Agora.
 
 **Required fields:** package, exact repository path and filename, bytes, SHA-256, immutable source commit or release, licence/version, and source URL.
 
@@ -10,7 +10,7 @@ Publisher source commit: `4c1ff5e3aef1816ae04af63218015066e186c147`. Licence: CC
 
 The exact 4,679-byte `DATASET_MANIFEST.csv` has SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`, computed over its committed bytes and recorded in the private import README. Claude's STEP 5 report states that all 12 committed CSVs and Windows checked-out files matched the pinned publisher byte counts and SHA-256 values. ChatGPT inspected the manifest and import README through GitHub metadata only; it did not fetch raw CSV bytes or independently reproduce that verification. This is a partial FiveThirtyEight sub-manifest, not the complete all-package manifest.
 
-| Package | Path (exact in private repository) | Bytes | SHA-256 | Source commit/release | Licence | Source URL |
+| Package | Path (exact source-repository path; private staging status in notes) | Bytes | SHA-256 | Source commit/release | Licence | Source URL |
 |---|---|---:|---|---|---|---|
 | FiveThirtyEight polls | `validation-data/elections/fivethirtyeight-polls/old_model/2024_presidential_primary_averages_old_model.csv` | 23289 | `fb6d3f09936126651d60f30bc1559703611dc6b3cf28ef6185116d3e952a4c26` | `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 | [source](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/polls/old_model/2024_presidential_primary_averages_old_model.csv) |
 | FiveThirtyEight polls | `validation-data/elections/fivethirtyeight-polls/old_model/donald_trump_favorability_old_model.csv` | 82705 | `4c39fe81a0d753551395c5436aa920546e1c4caf4611fed481b6ac98955c973a` | `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 | [source](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/polls/old_model/donald_trump_favorability_old_model.csv) |
@@ -24,29 +24,32 @@ The exact 4,679-byte `DATASET_MANIFEST.csv` has SHA-256 `bd7434240765c1d368bd087
 | FiveThirtyEight polls | `validation-data/elections/fivethirtyeight-polls/polls/2024-averages/presidential_primary_averages_2024.csv` | 11407331 | `0d22110875abddbed1b0709553ba9e2c20e459f0ca8254961e321c9ac18791cc` | `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 | [source](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/polls/2024-averages/presidential_primary_averages_2024.csv) |
 | FiveThirtyEight polls | `validation-data/elections/fivethirtyeight-polls/polls/pres_pollaverages_1968-2016.csv` | 50438309 | `b897a8bc5f17ad0a2e959422cb8ec480dab5fcf25555b8eaaed60472ce68efcd` | `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 | [source](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/polls/pres_pollaverages_1968-2016.csv) |
 | FiveThirtyEight polls | `validation-data/elections/fivethirtyeight-polls/polls/pres_primary_avgs_1980-2016.csv` | 30087513 | `d30dd11829cd8748cbe3bfbb326d7708f03f3c3abe323edf43d29c0f7501944d` | `4c1ff5e3aef1816ae04af63218015066e186c147` | CC BY 4.0 | [source](https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/polls/pres_primary_avgs_1980-2016.csv) |
+| MEDSL County Presidential Returns V20.0 | `data/medsl/countypres_2000-2024.csv` (owner-approved mirror; Claude workspace only) | 10222208 | `9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8` | `mathis-group/cas-201-data-project@1358bc6047f0c22989d37fa64ac03ee755bd17e7`; Dataverse V20.0 | CC0 1.0 for dataset (mirror repo MIT applies to code only) | [approved mirror](https://github.com/mathis-group/cas-201-data-project/tree/1358bc6047f0c22989d37fa64ac03ee755bd17e7/data/medsl) / [Dataverse DOI](https://doi.org/10.7910/DVN/VOQCHQ) |
+| Ember Monthly EV Sales — 16-Nov-2026 snapshot (not 18-Nov update) | `data/raw/ember_ev_monthly/monthly_ev_sales.csv` (owner-approved mirror; Claude workspace only) | 7695642 | `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2` | `Awes0mer/fuel-cars-pollution@2c21f1edced7aae884314ebc28c89ab212f30563`; source manifest retrieved 2026-11-16 | CC BY 4.0 for data (mirror repo MIT applies to code only) | [approved mirror](https://github.com/Awes0mer/fuel-cars-pollution/tree/2c21f1edced7aae884314ebc28c89ab212f30563/data/raw/ember_ev_monthly) / [Ember source](https://files.ember-energy.org/public-downloads/transport/outputs/monthly_ev_sales.csv) |
 
-## Required but unavailable or held files
+## Not selected or still gated files
 
 Blank values below mean the file has not been acquired and hashed. The official publisher source and terms must be checked before adding data.
 
 | Package | Path / filename | Bytes | SHA-256 | Source commit/release | Licence / terms |
 |---|---|---:|---|---|---|
-| FiveThirtyEight 2020 historical polls | `polls/president_polls_historical.csv` |  |  | Exact FiveThirtyEight/data revision to pin | CC BY 4.0 |
-| FiveThirtyEight 2020 general averages | `presidential_poll_averages_2020.csv` |  |  | Exact 2020 release to pin | CC BY 4.0 |
-| FiveThirtyEight corrected 2024 general averages | `presidential_general_averages.csv` |  |  | Exact official correction/release to pin | CC BY 4.0 |
-| MEDSL County Presidential Returns V20.0 | `countypres_2000-2024.tab` |  |  | Harvard Dataverse DOI `10.7910/DVN/VOQCHQ`, Version 20.0 | CC0 1.0; download requires a Dataverse guestbook response |
+
+
+
+
+| FiveThirtyEight individual-poll option b | `polls/president_polls_historical.csv` |  |  | Only if the owner explicitly asks Claude to try live links | CC BY 4.0; not selected by default |
 | M5 Walmart | `calendar.csv` |  |  | Exact Kaggle competition release to record | Kaggle Competition Rules; owner review required |
 | M5 Walmart | `sales_train_validation.csv` |  |  | Exact Kaggle competition release to record | Kaggle Competition Rules; owner review required |
 | M5 Walmart | `sell_prices.csv` |  |  | Exact Kaggle competition release to record | Kaggle Competition Rules; owner review required |
 | M5 Walmart reserve | `sales_train_evaluation.csv` |  |  | Exact Kaggle competition release to record | Kaggle Competition Rules; owner review required |
-| Ember monthly EV sales | `monthly_ev_sales.csv` |  |  | Official monthly release page updated 2026-11-18; exact publisher revision to record | CC BY 4.0; owner approval for source/acquisition pending |
+
 | Rossmann alternative | `<exact publisher filename — one row per file only if selected>` |  |  | Exact immutable release to pin | Not selected; licence/terms review required |
 
-The official MEDSL V20 record reports CC0 1.0, but the file endpoint required a guestbook response and no response was submitted. The official Ember page reports CC BY 4.0 and a latest update of 18 November 2026; no file was acquired because owner approval for the exact source/candidate is not recorded. M5 has not been acquired pending personal review of the Kaggle terms. Rossmann is not an automatic substitute.
+The owner explicitly approved both exact mirrors in the 23 November Claude log. Claude reports the MEDSL CSV (10,222,208 bytes; SHA-256 `9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8`) and Ember CSV (7,695,642 bytes; SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2`) fetched and verified in Claude's workspace; neither is committed to P2D or Agora. ChatGPT inspected public GitHub trees, README/codebook and Ember manifest metadata only, not raw data bytes, and did not independently reproduce those hashes. The MEDSL data licence is CC0 1.0 per the dataset README; the mirror repository's MIT licence covers code, not the dataset. Ember data is CC BY 4.0 per its manifest/README; the mirror repository's MIT licence covers code, not the dataset. The Ember file is a 16-Nov snapshot, not the 18-Nov update. M5 remains the only pending owner download/terms decision (acquire under Kaggle rules or drop retail); Rossmann is not selected.
 
 ## FiveThirtyEight handoff status
 
-The 12 imported CSVs total 94,181,506 bytes and are on P2D PR #5's open draft branch at head `b06b29cb2071f048f0c234f65c1014ea4677d33d`; the branch includes the per-file `DATASET_MANIFEST.csv`. The manifest file itself is 4,679 bytes with SHA-256 `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`. Claude's STEP 5 report states that all 12 exact file byte counts, SHA-256 values and source blob IDs were verified against the pinned FiveThirtyEight commit. A package-scoped `.gitattributes` disables CSV line-ending conversion; Claude reports the checked-out files also matched the manifest byte counts and SHA-256 values after this change. ChatGPT did not fetch raw CSV bytes or independently reproduce these checks. These files are not in P2D main or Agora main. The four large files previously marked outstanding are now included. The 2024 general asset remains explicitly uncorrected and cannot replace corrected averages. Required 2020 polling assets and the corrected 2024 general file are still outstanding.
+The 12 FiveThirtyEight CSVs total 94,181,506 bytes and are on P2D PR #5's open draft branch at head `b06b29cb2071f048f0c234f65c1014ea4677d33d`; the branch includes the per-file `DATASET_MANIFEST.csv`, whose 4,679-byte file SHA-256 is `bd7434240765c1d368bd0874f84e4290a40e677751d5448d5c7cbe42996925cb`. Claude reports source/committed-destination and Windows checkout verification complete. The selected polls window is 2000–2016 using `pres_pollaverages_1968-2016.csv`; 2020 and 2024 are out of scope, and the uncorrected 2024 general file is excluded. Claude also reports the owner-approved MEDSL V20.0 and Ember 16-Nov mirror files fetched and SHA-256 verified in Claude's workspace; the two rows are listed above, but neither file is committed to P2D or Agora. ChatGPT inspected mirror metadata only, not raw CSV bytes, and did not independently reproduce any of the three package hashes. M5 remains the only pending owner download/terms decision. The complete all-package manifest is still not committed.
 
 ## Completion rules
 
@@ -54,7 +57,7 @@ The 12 imported CSVs total 94,181,506 bytes and are on P2D PR #5's open draft br
 2. Record exact downloaded bytes and compute SHA-256 for every file; recompute after transfer. Do not use Git blob IDs or MD5 as a substitute.
 3. Pin a full Git commit or immutable publisher release/version for every file and record the exact licence/version or terms.
 4. Stop any dataset whose source requires owner approval, whose download requires an unanswered guestbook, or whose licence/terms remain unresolved.
-5. A complete per-file manifest for every required package must be committed in the private data repository before any dataset use or run. The current 12-file polling manifest alone does not meet this gate.
+5. A complete per-file manifest for every required package must be committed in the private data repository before any dataset use or run. The 12-file FiveThirtyEight manifest plus the two Claude-reported MEDSL/Ember mirror rows do not meet this gate: the mirror files are only in Claude's workspace and M5 is unresolved.
 6. No raw data in Agora; documentation and checksum references only.
 7. No protocol freeze, M3-reached claim or run is authorized by this register. Keep `VALIDATED_PREDICTION_ENABLED=False`.
 
