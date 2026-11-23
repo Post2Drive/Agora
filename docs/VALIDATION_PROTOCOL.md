@@ -30,7 +30,7 @@ If any field, split, metric, baseline, dataset version, adapter, model, seed, sc
 
 ## 2.1 Bias controls and evaluator rule — proposed for freeze
 
-These controls follow the owner's 23 November design delegation and Claude's written proposal C/D. The suggested owner acceptance paste for the broader A–D bundle is not present. They are **proposed for freeze**, not frozen or owner-approved as an execution protocol. This document remains a draft and this section does not authorize data acquisition, import, simulation, validation or prediction enablement.
+These controls reflect the owner's 23 November delegation of design choices to Claude and Claude's written proposal C/D. The suggested owner acceptance paste for the broader A–D bundle is not present in the collaboration log. They are **proposed for freeze**, not frozen or owner-approved as an execution protocol. Design delegation does not authorize data acquisition, import, simulation, validation or prediction enablement; this document remains a draft.
 
 | Package | Fixed time split / cutoffs | Naive baseline | Metrics to report | Uncertainty for every metric | Stop rule |
 |---|---|---|---|---|---|
