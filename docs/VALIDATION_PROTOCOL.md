@@ -2,7 +2,7 @@
 
 **Status:** Draft preregistration. This document is written before any validation run. It is not yet frozen or committed as a protocol, and no dataset has been run through AGORA under this protocol. Do not report validation results or claim validation reached.
 
-**Baseline:** main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The CLI still denies governed runs because `_governed_policy()` returns `None` until a production identity adapter exists. Claude's dataset-independent metric helpers are in draft PR #175 (head `eb49dd4c7850252494326ac539cab994333664cd`; exact-head CI `45105990141`, 4/4), not on main. Review identified an M5 RMSSE scale mismatch: the draft skips leading-zero training observations, while the standard M5 scale uses all adjacent training observations. It also needs stricter poll-date/window and numeric-type validation. Do not rely on #175 until corrected and merged. This protocol remains draft; no dataset has been run and no validation is authorized.
+**Baseline:** main `e3b0a58004298af05f9242795715b62d566941b7` (23 November 2026). M3 slices 4.1–4.4 are merged: #163/#164 deterministic fail-closed projection, #171 governed-input engine path, #172 CLI entry point, and #173 order-independent instance-row hashing. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). The dataset-independent metric helpers from #175 are merged at this base; exact PR-head CI `45105990141` passed 4/4. Main review found the merged `rmsse()` implementation trims leading zeros before calculating the M5 scale denominator, whereas the standard M5 denominator uses all adjacent training observations; `weighted_poll_margin()` also lacks strict positive-integer window/date validation, and `two_party_margin()` accepts booleans as numeric percentages. The M5 metric contract below states the standard denominator; do not use the helper for M5 evaluation until these defects are corrected and tested. The CLI still denies governed runs because `_governed_policy()` returns `None` until an approved identity adapter exists. This protocol remains draft; no dataset has been run and no validation is authorized.
 
 ## 1. Purpose, scope and non-claims
 
@@ -106,6 +106,8 @@ The owner-approved domains are election results and polls, retail sales (M5 Walm
 - Target: daily unit sales per item/store series over the 28-day horizon.
 - Primary metric: M5 Weighted Root Mean Squared Scaled Error (WRMSSE), implemented from the published M5 hierarchy/weights with an independent calculation check.
 - Secondary metrics: WAPE and RMSSE. For RMSSE, the scale denominator is the mean squared first difference over the **entire training series**, including leading zero observations; do not trim leading zeros. A zero scale is not estimable and must not be imputed. Report aggregate and category/store-level metrics; disclose zero-denominator handling before the run.
+
+**Current implementation gap:** main `agora/validation/benchmark_metrics.py::rmsse()` still slices the training series from its first non-zero value before calculating the scale. This does not implement the denominator specified above. The metric must remain blocked for M5 reporting until a regression test proves leading zero intervals are included and the corrected exact-head CI passes.
 - If AGORA engine output cannot be mapped to a numeric item/store/day prediction without inventing a conversion rule, classify the benchmark as not evaluable.
 
 **Naive baseline**
@@ -180,6 +182,8 @@ For each package, after all gates pass:
 The exact M3 run invocation and evaluator command are intentionally not invented here: they must match merged M3 CLI/API and be inserted into a versioned protocol revision before first run. Existing `agora run <project>` is the current simulation CLI, but it does not yet prove governed tabular-input wiring.
 
 ## 5. Common metrics and reporting rules
+
+The merged helper module is a starting point, not a frozen evaluator. Before use, require `weighted_poll_margin()` to reject malformed date types and non-positive/non-integer windows as `NotEstimable`, and require `two_party_margin()` to reject boolean shares rather than treating `True`/`False` as numeric percentages. The evaluator must preserve the protocol's cutoff and denominator rules and must not silently coerce malformed inputs.
 
 - Compare AGORA output with declared naive baseline on exactly the same eligible observations.
 - Report numerator, denominator, units, coverage and exclusions with every metric.
