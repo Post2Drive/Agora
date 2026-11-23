@@ -199,3 +199,63 @@ def test_governed_run_opens_no_network_and_keeps_prediction_disabled(project, mo
 @pytest.fixture()
 def project(tmp_path):
     return make_project(tmp_path)
+
+
+def _envelope(project):
+    import json
+    return json.loads(provenance_bytes(project))["input_manifest"]
+
+
+def _yaml_hash(project):
+    from agora import scenario as scenario_mod
+    return hashlib.sha256(__import__("json").dumps(scenario_mod.load(project / "scenario.yaml").raw, sort_keys=True, default=str)
+                          .encode()).hexdigest()[:16]
+
+
+def test_slice_4_6_base_hash_is_scenario_yaml_and_projected_hash_is_separate(project):
+    prepare(project, gi())
+    env = _envelope(project)
+    assert env["base_scenario_hash"] == _yaml_hash(project)           # original scenario.yaml, pre-projection
+    assert env["projected_scenario_hash"] != env["base_scenario_hash"]  # projection changed the effective scenario
+    sim = Simulation(project, governed_input=gi())
+    try:
+        assert env["projected_scenario_hash"] == sim._projected_scenario_hash(sim.governed["manifest"]["projection"])
+        assert env["base_scenario_hash"] == sim.base_scenario_hash
+    finally:
+        sim.close()
+
+
+def test_slice_4_6_row_change_alters_projected_but_not_base_hash(tmp_path_factory):
+    envs = []
+    for vals in ((0.2, 0.4, 0.5, 0.6), (0.3, 0.4, 0.5, 0.6)):
+        from conftest import make_project as mk
+        proj = mk(tmp_path_factory.mktemp("p"))
+        prepare(proj, gi(make_package(values=vals)))
+        envs.append(_envelope(proj))
+    assert envs[0]["base_scenario_hash"] == envs[1]["base_scenario_hash"]
+    assert envs[0]["projected_scenario_hash"] != envs[1]["projected_scenario_hash"]
+
+
+def test_slice_4_6_mapping_change_alters_projected_hash(tmp_path_factory):
+    from conftest import make_project as mk
+    envs = []
+    for persona in ("Synthetic persona health_conscious_parents", "Changed persona"):
+        proj = mk(tmp_path_factory.mktemp("m"))
+        g = gi()
+        g["mapping"]["personas"][NAMES[0]] = persona
+        prepare(proj, g)
+        envs.append(_envelope(proj))
+    assert envs[0]["base_scenario_hash"] == envs[1]["base_scenario_hash"]
+    assert envs[0]["projected_scenario_hash"] != envs[1]["projected_scenario_hash"]
+
+
+def test_slice_4_6_changed_input_resume_refused_envelope_untouched(project):
+    prepare(project, gi())
+    before = provenance_bytes(project)
+    sim = Simulation(project, governed_input=gi(make_package(values=(0.3, 0.4, 0.5, 0.6))))
+    try:
+        with pytest.raises(GovernedInputError):
+            sim.prepare(force=True)
+    finally:
+        sim.close()
+    assert provenance_bytes(project) == before

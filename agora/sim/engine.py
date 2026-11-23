@@ -78,6 +78,7 @@ class Simulation:
         self.dir = Path(project)
         self.sc = scenario_mod.load(self.dir / SCENARIO_FILE)
         self.governed: dict | None = None
+        self.base_scenario_hash = self.scenario_hash  # scenario.yaml as loaded, before any projection
         if governed_input is not None:
             self.governed = self._verify_governed(governed_input, self.sc)
             self.sc = self.governed["scenario"]
@@ -104,6 +105,15 @@ class Simulation:
     def scenario_hash(self) -> str:
         return hashlib.sha256(json.dumps(self.sc.raw, sort_keys=True, default=str)
                               .encode()).hexdigest()[:16]
+
+    def _projected_scenario_hash(self, projection: Mapping) -> str:
+        """Effective-scenario hash: scenario.yaml hash bound to the projection (rows, mapping, segments).
+
+        scenario.raw does not carry the projected segments, so self.scenario_hash alone cannot see them.
+        """
+        return hashlib.sha256(json.dumps({"base_scenario_hash": self.base_scenario_hash,
+                                          "projection_hash": projection["projection_hash"]},
+                                         sort_keys=True).encode()).hexdigest()[:16]
 
     @staticmethod
     def _verify_governed(governed_input: Mapping, base) -> dict:
@@ -135,7 +145,9 @@ class Simulation:
             if stored is not None:
                 raise GovernedInputError("this run is governed: resume it with its governed input")
             return
-        manifest = {**self.governed["manifest"], "base_scenario_hash": self.scenario_hash}
+        manifest_projection = self.governed["manifest"]["projection"]
+        manifest = {**self.governed["manifest"], "base_scenario_hash": self.base_scenario_hash,
+                    "projected_scenario_hash": self._projected_scenario_hash(manifest_projection)}
         if self.store.is_initialised():
             if self.store.get_input_provenance().get("provenance_status") != "verified":
                 raise GovernedInputError("legacy run has no input provenance and cannot resume as governed")
