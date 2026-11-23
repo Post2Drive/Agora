@@ -2,20 +2,41 @@
 
 **Purpose:** prepare the three public benchmark packages named in `VALIDATION_PROTOCOL.md`. This is an acquisition checklist only. It does not authorize importing data into AGORA, launching a simulation, or beginning validation. For non-technical, owner-operated download steps, use [`DATASET_DOWNLOAD_GUIDE.md`](DATASET_DOWNLOAD_GUIDE.md); this checklist remains the source-of-record for approved source/version/hash and licence gates.
 
-## Owner-reported FiveThirtyEight polls handoff — 23 November 2026 (latest log confirmation 17:57 IST)
+## Owner-reported FiveThirtyEight polls handoff — 23 November 2026 (read-only inventory of P2D PR #5)
 
-The owner reports a **partial** import in the separate private repository `Post2Drive/Post2Drive`, branch `data/import-fivethirtyeight-polls-2026-11-23`, draft PR [#5](https://github.com/Post2Drive/Post2Drive/pull/5), commit `15c9a053291925813ef568466a92fc5460f6b554`. The reported contents are the upstream polls README/licence and eight `polls/old_model/*.csv` files. This remains owner-reported handoff metadata only; this review did not inspect the private repository or raw data bytes, and no per-file SHA-256 values are recorded.
+The private `Post2Drive/Post2Drive` repository main is `5c8787a410a1aacaa9be9933b1c725a0b12e9689`. FiveThirtyEight import PR #5 remains open/unmerged at branch commit `15c9a053291925813ef568466a92fc5460f6b554`; the import branch is `data/import-fivethirtyeight-polls-2026-11-23`. The eight CSVs below exist only on the PR branch at `validation-data/elections/fivethirtyeight-polls/old_model/`; they are not in P2D main or Agora main (`4a0607f8946e32ef828b47183099ead4f8ae2bd7`). The PR also includes README/licence/import notes. These paths and byte sizes were read from the Git tree; no raw file contents were downloaded. Git blob IDs are not SHA-256 file checksums.
 
-Four large source files remain outstanding and must be transferred and hashed before the polling package can pass acquisition review:
+| File path in Post2Drive/Post2Drive PR #5 | Bytes | SHA-256 recorded in repo? |
+|---|---:|---|
+| `validation-data/elections/fivethirtyeight-polls/old_model/2024_presidential_primary_averages_old_model.csv` | 23,289 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/donald_trump_favorability_old_model.csv` | 82,705 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/generic_ballot_averages_old_model.csv` | 229,659 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/joe_biden_approval_old_model.csv` | 105,827 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/kamala_harris_approval_old_model.csv` | 84,376 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/mike_pence_favorability_old_model.csv` | 46,274 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/nikki_haley_favorability_old_model.csv` | 23,681 | No |
+| `validation-data/elections/fivethirtyeight-polls/old_model/ron_desantis_favorability_old_model.csv` | 48,231 | No |
 
-- `polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv` — 1,604,311 bytes (uncorrected; **not** a substitute for corrected 2024 averages).
-- `polls/2024-averages/presidential_primary_averages_2024.csv` — 11,407,331 bytes.
-- `polls/pres_pollaverages_1968-2016.csv` — 50,438,309 bytes.
-- `polls/pres_primary_avgs_1980-2016.csv` — 30,087,513 bytes.
+The eight CSVs total 644,042 bytes. The P2D PR #5 import README states CC BY 4.0 and the PR includes the upstream licence text. This is still an unmerged partial handoff, not a completed dataset package.
 
-The owner must commit a per-file manifest containing exact relative path, bytes, SHA-256, immutable source commit/release and licence/version. The source snapshot reported for the import is FiveThirtyEight/data commit `4c1ff5e3aef1816ae04af63218015066e186c147`; verify exact source and destination bytes rather than treating the PR description or Git blob IDs as SHA-256 evidence. The private repository is not available through this round's permitted Agora GitHub connector, so no independent verification is claimed. The partial handoff does not establish complete 2020/corrected-2024 coverage, licence approval or permission to run.
+Four additional FiveThirtyEight files are missing from PR #5 and both repositories. The byte counts below are upstream-reported values from the import README, not measured destination sizes; none has a SHA-256 recorded:
 
-The owner has named ChatGPT as a separate-process evaluator limited to the frozen protocol, manifest and raw outputs, but private-repository access and label/output custody are not yet established. The owner freeze sentence contains a literal `<sha>` placeholder, so the protocol remains draft. The one-run approval is dormant. No dataset import or run is authorized.
+| Missing upstream-relative path | Reported bytes | SHA-256 recorded? |
+|---|---:|---|
+| `polls/2024-averages/presidential_general_averages_2024-09-12_uncorrected.csv` | 1,604,311 | No |
+| `polls/2024-averages/presidential_primary_averages_2024.csv` | 11,407,331 | No |
+| `polls/pres_pollaverages_1968-2016.csv` | 50,438,309 | No |
+| `polls/pres_primary_avgs_1980-2016.csv` | 30,087,513 | No |
+
+The uncorrected 2024 general file is not a substitute for corrected 2024 averages. Other 2020 polling files are linked in the import README but were not imported. No raw benchmark files are in Agora main.
+
+**Other packages, repository presence and hashes:**
+
+- **MEDSL V20:** no CSV or codebook in P2D main, P2D PR #5 changed-file set or Agora main. External candidate only: `mathis-group/cas-201-data-project` commit `1358bc6047f0c22989d37fa64ac03ee755bd17e`, `data/medsl/countypres_2000-2024.csv` (10,222,208 bytes) plus codebook. Not present in either target repository. The candidate has MD5 `bd6661282936006b4ef4f5ee71418f3e` only, not SHA-256; source licence recorded as CC0 1.0. Not owner-approved.
+- **M5 Walmart / Rossmann:** no `calendar.csv`, `sales_train_validation.csv`, `sell_prices.csv`, `sales_train_evaluation.csv` or Rossmann files in either target repository. No hashes. M5 remains blocked on the owner's Kaggle competition-terms review.
+- **Ember monthly EV:** no Ember file in either target repository. External candidate only: `Awes0mer/fuel-cars-pollution` commit `2c21f1edced7aae884314ebc28c89ab212f30563`, `data/raw/ember_ev_monthly/monthly_ev_sales.csv` (7,695,642 bytes). SHA-256 `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2` is recorded in Agora docs for this external 16-Nov candidate snapshot, not a file in either target repository; the official Ember source had a newer 18-Nov update. Candidate CC BY 4.0; not owner-approved.
+
+No per-file SHA-256 is recorded for the eight present FiveThirtyEight CSVs or four missing files; the MEDSL candidate has MD5 only; no M5/Rossmann files or hashes exist; the only SHA-256 in the docs is for the external Ember candidate, not a target-repository file.
 
 ## Claude reachability check — 23 November 2026, 09:05 IST (latest direct host check; owner-log recheck at 16:42 IST)
 
@@ -115,12 +136,13 @@ Before any dataset import, create and commit a machine-readable manifest (CSV or
 ## Handoff and stop conditions
 
 1. Keep the source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
-2. The reported FiveThirtyEight import is partial: eight `old_model/*.csv` files and README/licence are owner-reported present; four large CSVs remain outstanding. No per-file SHA-256 manifest is available.
+2. The only current in-repository dataset files are eight FiveThirtyEight old-model CSVs on unmerged P2D PR #5; exact paths, Git-tree byte sizes and no-SHA status are listed above. Four large poll files are missing from P2D PR #5 and both main trees.
 3. Supply the exact election-return, retail and adoption files, immutable source releases, byte sizes, SHA-256 values and licence evidence. M5 remains blocked on the owner's Kaggle terms review.
 4. The owner named ChatGPT as a separate-process evaluator, but private-repository read access and label/output custody are not established. Establish the restricted custody path before freeze.
-5. Resolve the proposed validation parameters, commit the complete per-file manifest, and obtain a new owner freeze sentence naming the actual merged protocol commit and manifest SHA. The previously received sentence used the literal `<sha>` placeholder and is not effective.
-6. The owner's one-run approval is received but dormant. Do not import or run any dataset until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
-7. Keep `VALIDATED_PREDICTION_ENABLED=False`; this checklist authorizes no acquisition, import, simulation, validation or write-back.
+5. The owner approved B=2000, bootstrap RNG seed 20261123, percentile interval, one preregistered seed per configuration, and LLM temperature 0 with cache on. These are owner-approved design values, effective only after they are merged into `VALIDATION_PROTOCOL.md` and the owner supplies a complete freeze sentence naming the actual manifest SHA. The received sentence used literal `<sha>` and is not effective.
+6. The owner confirmed the synthetic-fixture Principal is acceptable for local public-data validation only; production CLI remains blocked/default-deny.
+7. The owner's one-run approval is received but dormant. Do not import or run any dataset until the protocol is frozen, the required implementation gates are satisfied, Claude has recorded M3 reached, and the separate run-approval preconditions are met.
+8. Keep `VALIDATED_PREDICTION_ENABLED=False`; this checklist authorizes no acquisition, import, simulation, validation or write-back.
 
 ## Personal-data and data-minimisation gate
 
