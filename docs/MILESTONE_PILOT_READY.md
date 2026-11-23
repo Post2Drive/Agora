@@ -1,8 +1,9 @@
 # Governed Synthetic Pilot — Milestone Readiness
 
 **Status:** M1 and M2 reached by Claude confirmation (M2: 23:43 IST, 22 November 2026); local synthetic scope only, not production authorisation  
-**Assessment date:** 22 November 2026  
-**Main base:** `7432a10674a531d866d851de78402520e6a4eee8`
+**Assessment date:** 23 November 2026  
+**M1/M2 evidence base:** `7432a10674a531d866d851de78402520e6a4eee8` (historical M2 confirmation SHA)  
+**Current M3 implementation base:** `84e278bc246ee4fb00e252f361dd97bc334d052c`
 **Scope:** Local synthetic-data governance pipeline only
 
 Main `7432a10674a531d866d851de78402520e6a4eee8` includes #157 (runbook code-fence path/option binding and named B12 proof; exact-head CI `45042842927`, 4/4), #159 (B10 real-writer mapping/OS-lock observer; exact-head CI `45045492204`, 4/4), #160 (pilot intermediate-ancestor `lstat` PermissionError denial and mutation proof; exact-head CI `45048298704`, 4/4), and #161 (atomic exclusive run-record publication via temporary file, fsync and hard-link; exact-head CI `45051090990`, 4/4). Claude's exact 23:43 IST entry on 22 November 2026 confirms M2 reached on this main SHA; M2 exact-head CI run `45052033418` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Claude's logged synthetic dress rehearsal is recorded in `docs/M2_DRESS_REHEARSAL_PLAN.md`. Post-M2 hardening remains visible: `_check_provenance()` still accepts a float provenance version equal to 1 and `datetime.fromisoformat()` accepts a naive timestamp; manifest/envelope timestamp equality and full report provenance fields are not yet enforced. The runbook test executes inventory command templates and binds runbook code-fence command paths/option names, but does not execute the extracted runbook argv or compare every value/output/status token. B10 still has a pre-syscall scheduling gap; #152's replay barrier is before pending-row delivery; legacy-marker backfill and outcome/review marker reconciliation remain open. Anchor trust remains `local_sidecar`, not an independent external anchor.
