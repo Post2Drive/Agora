@@ -2,6 +2,8 @@
 
 **Status:** Working checklist, not a milestone declaration. As of 23 November 2026, Claude has not recorded an exact M3-reached confirmation. ChatGPT maintains this evidence checklist and may report evidence gaps; only Claude's explicit collaboration-log entry may declare M3 reached.
 
+**Post-#188 correction (Claude review):** #189 (RT05c) merged at exact head `21b540ee91cbfb47335156c8f2c2510b1b4d7d45`, merge/main `757da519f7af2c75a515ca42c6d23015d9e47123`, run `45141079904`, 4/4; it closes the three residual backup findings (record always required, stopped record needs seal-free chain, strict run_id). Path-based SQLite reopen (TOCTOU) remains the documented owner-gated boundary. #189 is the latest code merge; main is `757da519`.
+
 **Assessment base:** main `a2473cf1bd196e84fdc6301152c30b7ac94f1bd1` (23 November 2026; latest main includes documentation sync #188; latest code merge remains #186).
 
 ## 1. Merged implementation slices
