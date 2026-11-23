@@ -120,7 +120,7 @@ The private Post2Drive data repository main remains `5c8787a410a1aacaa9be9933b1c
 | `polls/pres_pollaverages_1968-2016.csv` | 50,438,309 | `b897a8bc5f17ad0a2e959422cb8ec480dab5fcf25555b8eaaed60472ce68efcd` |
 | `polls/pres_primary_avgs_1980-2016.csv` | 30,087,513 | `d30dd11829cd8748cbe3bfbb326d7708f03f3c3abe323edf43d29c0f7501944d` |
 
-The 2024 general-average file is explicitly uncorrected. The 12 rows do not establish corrected 2024 or 2020 coverage. These files are not in P2D main or Agora main until PR #5 is merged; no raw data was added to Agora.
+The selected election window is 2000–2016; 2020/2024 are out of scope. The 2024 general-average file is explicitly uncorrected and excluded. The 12 FiveThirtyEight files remain on unmerged P2D PR #5 and are not in P2D main or Agora main; no raw data was added to Agora.
 
 **Other packages:** MEDSL V20.0 and Ember 16-Nov mirror sources are owner-approved and Claude reports both files hash-verified in its workspace; neither file is committed to P2D/Agora. MEDSL dataset licence is CC0 1.0; Ember data is CC BY 4.0 (the mirror repos' MIT licences apply to code only). M5 remains the only pending owner download/terms decision; acquire under Kaggle rules or drop retail. Rossmann was not selected. No complete all-package manifest exists.
 
