@@ -203,3 +203,17 @@ This assessment is refreshed against main `7432a10674a531d866d851de78402520e6a4e
 - Do not use real data, personal/customer records, credentials, real drivers, network access or external write-back.
 - Do not edit `agora/sim/**`; scenario-input-to-engine wiring remains blocked pending Claude's written approval and separate owner approval.
 - A green CI run does not authorise a PR merge, ready-for-review transition or external action.
+
+
+## 7. M3 is a separate, unreached milestone
+
+M1 and M2 confirmation recorded above remains unchanged. M3 must be assessed separately; neither the M2 synthetic rehearsal nor its readiness evidence declares M3 reached.
+
+**M3 implementation evidence on main `84e278bc246ee4fb00e252f361dd97bc334d052c` (23 November 2026):**
+- #163/#164: deterministic, fail-closed scenario projection.
+- #171: governed-input engine path, limited to the owner-approved `agora/sim/engine.py` edit.
+- #172: `agora run --governed-input` CLI path, currently denied because `_governed_policy()` returns `None`.
+- #173: order-independent `instances_hash` included in the projection hash.
+- Exact-head CI for #171, #172 and #173 passed all four Ubuntu/Windows × Python 3.11/3.12 jobs (runs `45089066900`, `45093439437`, `45096233966`).
+
+**M3 remains incomplete:** policy identity/capability trust boundary and owner decision on synthetic identity; original versus projected scenario hash semantics; dataset acquisition/licence/privacy/hash register; validation protocol freeze and owner run approval; and Claude's exact M3 completion declaration. No dataset or simulation run is authorized. See [M3 Exit Evidence](M3_EXIT_EVIDENCE.md). Keep `VALIDATED_PREDICTION_ENABLED=False`.
