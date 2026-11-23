@@ -133,6 +133,29 @@ For every file, record:
 
 Before any dataset import, create and commit a machine-readable manifest (CSV or JSON) in the separate private data repository. It must contain one row/object for **every** source file, including every file in a multi-file bundle and all four outstanding FiveThirtyEight files, with at least these fields: package, relative_path, original_filename (file), bytes, sha256, source_url, source_commit, publisher_release, licence_and_version, access_date, and citation. The SHA-256 must be a 64-character lowercase hexadecimal digest of that exact file's downloaded bytes. Calculate SHA-256 from the final downloaded bytes (for example, Get-FileHash -Algorithm SHA256 on Windows); do not substitute Git blob IDs, MD5 values, or a hash of an archive for the hash of each extracted file. Recompute after transfer and compare source and destination hashes. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. The manifest itself must be committed before any import or run; no validation is authorized by this checklist.
 
+### Blank per-file manifest rows for owner paste
+
+| package | repository / branch | relative_path | bytes | sha256 | source commit / release | licence / version |
+|---|---|---|---:|---|---|---|
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+|  |  |  |  |  |  |
+
+For the eight files already on P2D PR #5, check out `data/import-fivethirtyeight-polls-2026-11-23` and run `Get-FileHash -LiteralPath $fullPath -Algorithm SHA256` for each exact relative path in the PowerShell inventory above. For the four missing files, run the same command only after the owner transfers the exact approved source files. Paste one row per file; do not put Git blob IDs or the MEDSL candidate MD5 in the SHA-256 column.
+
 ## Handoff and stop conditions
 
 1. Keep the source files in the owner-controlled private data repository, separate from AGORA. Do not attach raw benchmark files to ChatGPT or Notion, and do not commit them to the AGORA source repository.
