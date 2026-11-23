@@ -121,8 +121,8 @@ Before any dataset import, the owner-controlled private data repository must con
 
 | package | repository / branch | relative_path | bytes | sha256 | source commit / release | licence / version |
 |---|---|---|---:|---|---|---|
-|  |  |  |  |  |  |
-|  |  |  |  |  |  |
+| E — MEDSL V20.0 | `mathis-group/cas-201-data-project` (owner-approved; Claude workspace only) | `data/medsl/countypres_2000-2024.csv` | 10222208 | `9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8` | `1358bc6047f0c22989d37fa64ac03ee755bd17e7`; Dataverse V20.0 | CC0 1.0 dataset; mirror MIT is code only |
+| A — Ember 16-Nov-2026 snapshot | `Awes0mer/fuel-cars-pollution` (owner-approved; Claude workspace only) | `data/raw/ember_ev_monthly/monthly_ev_sales.csv` | 7695642 | `76e241d07d2086477ef0279d4ce20cd6a02c7869b5152ecc016bf132d2734fb2` | `2c21f1edced7aae884314ebc28c89ab212f30563`; source manifest 2026-11-16 | CC BY 4.0 data; mirror MIT is code only |
 |  |  |  |  |  |  |
 |  |  |  |  |  |  |
 |  |  |  |  |  |  |
