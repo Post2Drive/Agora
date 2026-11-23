@@ -97,14 +97,19 @@ For every file, record:
 | Source URL / DOI | Canonical source |
 | Licence / terms | Exact licence name/version or competition rules |
 | Citation / attribution | Publisher's required wording |
-| Release / version | Exact release or Dataverse version |\n| Source commit | Full immutable source commit SHA (or official release/version ID where no Git commit exists) |
+| Release / version | Exact release or Dataverse version |
+| Source commit | Full immutable source commit SHA (or official release/version ID where no Git commit exists) |
 | Access date | Local date downloaded |
 | Original filename | Do not rename before hashing |
 | File size | Bytes |
 | SHA-256 | Hash of the exact downloaded bytes (64 lowercase hexadecimal characters) |
 | Intended split / role | As preregistered; never infer from filename |
 
-## Required SHA-256 manifest (hard acquisition gate)\n\nBefore any dataset import, create and commit a machine-readable manifest (CSV or JSON) in the separate private data repository. It must contain one row/object for **every** source file, including every file in a multi-file bundle and all four outstanding FiveThirtyEight files, with these exact fields: package, relative_path, original_filename, bytes, sha256, source_url, source_commit_or_release, licence_and_version, access_date, and citation. Calculate SHA-256 from the final downloaded bytes (for example, Get-FileHash -Algorithm SHA256 on Windows); do not substitute Git blob IDs, MD5 values, or a hash of an archive for the hash of each extracted file. Recompute after transfer and compare source and destination hashes. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. The manifest itself must be committed before any import or run; no validation is authorized by this checklist.\n\n## Handoff and stop conditions
+## Required SHA-256 manifest (hard acquisition gate)
+
+Before any dataset import, create and commit a machine-readable manifest (CSV or JSON) in the separate private data repository. It must contain one row/object for **every** source file, including every file in a multi-file bundle and all four outstanding FiveThirtyEight files, with these exact fields: package, relative_path, original_filename, bytes, sha256, source_url, source_commit_or_release, licence_and_version, access_date, and citation. Calculate SHA-256 from the final downloaded bytes (for example, Get-FileHash -Algorithm SHA256 on Windows); do not substitute Git blob IDs, MD5 values, or a hash of an archive for the hash of each extracted file. Recompute after transfer and compare source and destination hashes. A missing file, blank hash, byte-count mismatch, unknown source revision or unresolved licence is a failed acquisition gate. The manifest itself must be committed before any import or run; no validation is authorized by this checklist.
+
+## Handoff and stop conditions
 
 1. Owner downloads the exact publisher files manually, retains the source archives and licence evidence, and completes the per-file register (source/version, licence/citation, access date, original filename, byte size and SHA-256).
 2. After owner review of the exact sources and terms, push only the approved, licence-permitted files to a separate **private** GitHub repository (suggested name `agora-validation-data`) using the steps in `DATASET_DOWNLOAD_GUIDE.md`. Keep it separate from the AGORA source repository.
