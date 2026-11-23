@@ -203,23 +203,39 @@ A stop is recorded as a failed/blocked attempt, not silently retried. Protocol c
 | R — M5 Walmart | TBD | Subject to Kaggle Competition Rules; explicit review required | TBD | TBD | No |
 | A — Ember Monthly EV Sales | TBD | CC BY 4.0; preserve source-country notes | TBD | TBD | No |
 
+## 8.1 Freeze-blocking review findings
+
+This review is documentation-only. The protocol remains **Draft 0.1**, is not frozen, and has not been approved for execution. Resolve each item in a versioned revision before any owner freeze decision:
+
+1. **Run-count and randomness contract is incomplete.** The preregistration table leaves random seeds and number of runs as TBD. Specify the exact seed list, runs per dataset/split/configuration, whether any LLM sampling is deterministic, generation temperature/top-p/timeout/retry/cache settings, and the rule for failed/interrupted attempts. Bootstrap replicate counts and bootstrap RNG seeds are also unspecified. These values must be fixed before outputs are observed.
+2. **Exact source assets and field names are not pinned.** Package E's 2024 poll-file availability and exact file names/columns are not demonstrated by this draft. Pin immutable source commits/Dataverse versions, exact filenames and observed headers; do not assume candidate field labels are literal CSV headers. If 2024 pre-election coverage is inadequate, stop as already specified. Package R must list every source file needed for the chosen split, including the evaluation file if the reserved `d_1914`–`d_1941` window is retained. Package A must pin the exact monthly export and methodology release.
+3. **M5 file/split alignment needs a source-file check.** The stated `d_1914`–`d_1941` reserve is not in `sales_train_validation.csv` (which ends at `d_1913`); if that reserve is retained, the acquisition register must include the corresponding `sales_train_evaluation.csv` release and explicitly protect those labels. Otherwise remove the reserve claim in a new preregistration revision. Verify all day/date mappings against the pinned calendar.
+4. **Output-target compatibility is unproven.** The current projection converts tabular rows into social-simulation segment parameters; the three benchmarks require election-margin, item/store/day sales, or country/month registration outputs. No evidence yet demonstrates that the simulation emits these exact target units. A package must be marked **not evaluable** unless a deterministic, predeclared mapping exists without post-hoc proxy conversion. Do not run the engine to discover a mapping under this draft.
+5. **Uncertainty procedures need executable parameters.** Fix bootstrap replicate count, sampling algorithm, cluster/block definitions, replacement policy, RNG seed, handling of sparse clusters, and whether intervals are percentile, basic or bias-corrected. State the exact independently checked implementation/version.
+6. **Evaluator and label custody are unresolved.** Name the independent evaluator, specify how held-out labels are kept inaccessible, who controls release, and what immutable evidence proves output freeze preceded label release. A TBD evaluator is a stop condition, not an administrative detail.
+7. **Licence and privacy review must be per-file.** M5 Competition Rules must be checked against intended use and derived outputs before download/use. For every package, inspect headers and representative rows for personal identifiers, free-text fields or sensitive data; record the result and exclude disallowed fields. Public availability does not remove privacy or licence obligations.
+8. **Identity/policy is not ready.** The current CLI policy source returns `None`, so governed CLI construction is denied before snapshot bytes are opened. The owner must decide whether a synthetic Principal is acceptable for a strictly local public-data evaluation. Any accepted adapter must be Principal-bound, scoped, expiring, fail-closed and proven to deny before source bytes are opened. Direct engine construction must not bypass the policy authorization boundary.
+9. **Provenance semantics need correction.** Pin distinct original `base_scenario_hash` and effective `projected_scenario_hash` values; include the row-bound `instances_hash` and mapping/projection hashes in the immutable record. Verify reports/exports expose the complete required provenance and exploratory label.
+
+Do not freeze by merely replacing TBD with assumptions. Record source evidence and owner decisions first. No protocol change here authorizes a dataset import, simulation or validation run.
+
 ## 8. Preregistration record
 
 | Field | Value |
 |---|---|
 | Protocol version | Draft 0.1 |
 | Protocol commit SHA | Not yet frozen |
-| M2 confirmation entry | Pending Claude |
-| M3 confirmation entry | Pending Claude |
+| M2 confirmation entry | Claude confirmed 23:43 IST, 22 November 2026; link exact log entry at freeze |
+| M3 confirmation entry | Pending Claude; implementation slices alone do not establish M3 reached |
 | Dataset register SHA | TBD |
 | Repository SHA | TBD |
 | M3 adapter SHA/version | TBD |
 | Python/runtime/dependency lock | TBD |
 | Scenario/configuration hashes | TBD |
 | Model/backend/version and parameters | TBD |
-| Random seeds and number of runs | TBD |
+| Random seeds and number of runs | TBD — freeze blocker; exact list and count required per package/split/configuration |
 | Evaluation script SHA | TBD |
-| Independent evaluator | TBD |
+| Independent evaluator | TBD — freeze blocker; name evaluator and label-release procedure |
 | Dataset-specific owner approval references | 12:52 IST named approval; confirm scope at freeze |
 | First run date | Not scheduled |
 | Validation results | None recorded in this draft |
