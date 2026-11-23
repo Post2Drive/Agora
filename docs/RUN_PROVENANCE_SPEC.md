@@ -1,6 +1,8 @@
 # Run Provenance for Scenario Inputs — Rung 4
 
-**Status:** Normative contract; M3 governed-input implementation slices 4.1–4.4 are merged on main `e3b0a58004298af05f9242795715b62d566941b7` (23 November 2026). #171 adds the opt-in `Simulation(..., governed_input=...)` engine path; #172 adds `agora run --governed-input` with exact import ID and fail-closed policy handling; #173 binds instance rows into `projection_hash` with an order-independent `instances_hash`. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). M2 pilot provenance (#142) and atomic run-record publication (#161) remain part of the compatibility baseline.
+**Status:** Normative contract; M3 governed-input implementation slices 4.1–4.4 are merged on main `6a6f75d4c88ec5ff1598d2c1bb4282ce511d12a0` (23 November 2026). #171 adds the opt-in `Simulation(..., governed_input=...)` engine path; #172 adds `agora run --governed-input` with exact import ID and fail-closed policy handling; #173 binds instance rows into `projection_hash` with an order-independent `instances_hash`. Exact-head CI passed 4/4 for #171 (`45089066900`), #172 (`45093439437`) and #173 (`45096233966`). Supporting metric PRs #175/#176 are also merged, but they do not alter the governed provenance contract. M2 pilot provenance (#142) and atomic run-record publication (#161) remain part of the compatibility baseline.
+
+
 
 The governed path is implemented but is not yet usable through the production CLI: `_governed_policy()` currently returns `None` because no production identity adapter exists, and the policy-required scenario-input builder denies the request before opening the snapshot. No validation dataset has been run. `VALIDATED_PREDICTION_ENABLED` remains `False`; this specification does not authorize a simulation or validation run.
 
