@@ -2,8 +2,6 @@
 
 **Assessment base:** main `6a6f75d4c88ec5ff1598d2c1bb4282ce511d12a0` (23 November 2026); M1 and M2 are Claude-confirmed reached. M3 governed-input implementation slices 4.1–4.4 are merged (#163/#164/#171/#172/#173); exact-head CI for #171/#172/#173 passed 4/4. Supporting dataset-independent metrics #175 and input-hardening follow-up #176 are merged, with exact-head runs `45105990141` and `45110601617` each passing all four Ubuntu/Windows × Python 3.11/3.12 jobs. #176 pins the official M5 RMSSE scale from the first non-zero training observation (pre-sale leading zeros are excluded) and hardens poll date/window and boolean input checks. The earlier note that RMSSE should include pre-sale leading zeros was incorrect; the main helper matches the M5 convention and #176 tests it. M3 is not yet complete as an operator-usable/validated workflow: the production identity adapter is absent and the CLI denies governed runs; the raw `Simulation(..., governed_input=...)` constructor does not independently prove that the policy-required builder ran; `base_scenario_hash` currently contains the projected hash; the validation protocol remains draft and no dataset has been run.
 
-
-
 **Status terms:** Demonstrated means merged implementation has direct test/CI evidence for the stated slice. Partial means meaningful contracts or components exist but the rung exit criteria are not complete. Not implemented means no operational capability is claimed.
 
 ## Current six-rung assessment
@@ -105,9 +103,7 @@ Earlier merged foundations remain as recorded in the prior rung assessment: #23�
 
 This assessment is refreshed against main `6a6f75d4c88ec5ff1598d2c1bb4282ce511d12a0` after #174 and #176. Documentation PR #174 exact-head run `45107961493` and metric-hardening PR #176 exact-head run `45110601617` each passed all four matrix jobs. M2 is Claude-confirmed reached; Post-M2 hardening remains visible: `_check_provenance()` still accepts a float provenance version equal to 1 and `datetime.fromisoformat()` accepts a naive timestamp; manifest/envelope timestamp equality and full report provenance fields are not yet enforced. The runbook test executes inventory command templates and binds runbook code-fence command paths/option names, but does not execute the extracted runbook argv or compare every value/output/status token. B10 still has a pre-syscall scheduling gap; #152's replay barrier is before pending-row delivery; legacy-marker backfill and outcome/review marker reconciliation remain open. Anchor trust remains `local_sidecar`, not an independent external anchor.
 
-
 Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, exact-head Actions run `44995421141` passed 4/4. It provides baseline required-field/type, synthetic-only, false engine/prediction, hash and non-empty-workdir checks. #142 adds the pilot envelope, but strict legacy/new discrimination, RFC3339/version typing, full manifest/report checks and failure-atomic publication is merged in #161 (CI `45051090990`, 4/4); strict provenance typing/time/report consistency remains follow-up.
-
 
 ## M3 implementation update — 23 November 2026
 
@@ -115,7 +111,6 @@ Merged implementation PR #130: head `4e5ff1c8d3d4a6bdeb385b8aed43b7a9c5da65bd`, 
 - **#172** — `agora/cli.py` plus tests: exact import ID, binding/pack/mapping inputs, `--force` refusal, engine refusal mapped to exit 3. The production policy source is deliberately `None`, so the real CLI denies until an identity adapter exists. Exact-head CI `45093439437` passed 4/4.
 - **#173** — `agora/scenario_projection.py` plus tests: order-independent `instances_hash` included in `projection_hash`, covering row content not represented by the manifest scenario hash. Exact-head CI `45096233966` passed 4/4.
 - **Review follow-up:** `engine.py` currently stores the effective projected scenario hash under `base_scenario_hash`; clarify whether to preserve the original scenario.yaml hash under that name or rename the stored value to `projected_scenario_hash` and pin both with tests.
-
 
 ## M3 documentation and exit-evidence tracking
 
@@ -126,10 +121,3 @@ Claude's dataset-independent metric helper PR #175 merged at exact head `eb49dd4
 The [dataset download guide](DATASET_DOWNLOAD_GUIDE.md) and [acquisition checklist](M3_DATASET_ACQUISITION_CHECKLIST.md) remain current: the owner has not approved exact source files or third-party mirrors, no files have been acquired, and M5 remains subject to owner-only Kaggle terms review. The guide/checklist remain acquisition instructions, not permission to import or run data.
 
 Current M3 blockers remain the direct-engine policy trust boundary/identity decision, original/projected scenario-hash semantics (Claude's next queued slice is 4.6), the still-draft validation protocol and the missing owner-supplied dataset register. No dataset or simulation run is authorized.
-
-
-The current ChatGPT documentation review is tracked in [PR #174](https://github.com/Post2Drive/Agora/pull/174), draft only, current observed head `fb350566345dbdfa07be71c4c80cac03577c507f`. Its ten changed paths are all under `docs/**`, including the owner-facing dataset download guide. The current-head Actions run `45107758326` was queued/in progress at the last check; the earlier failure `45105189916` belongs to superseded head `c6cdc20c`, where the blocked governed CLI reference was still fenced as an executable command. The current branch keeps that syntax inline and outside the M2 executable inventory. This PR is not merged evidence and does not make M3 reached.
-
-Claude's dataset-independent metrics PR #175 is merged at main `e3b0a58004298af05f9242795715b62d566941b7`; its exact PR head was `eb49dd4c7850252494326ac539cab994333664cd`, and exact-head run `45105990141` passed all four Ubuntu/Windows × Python 3.11/3.12 jobs. Review of the merged helper found that `rmsse()` drops leading zero training observations before calculating the M5 scale denominator, contrary to the standard M5 denominator over all adjacent training observations. `weighted_poll_margin()` also needs strict date/window validation, and `two_party_margin()` currently accepts booleans as numeric percentages. These are follow-up correctness items before protocol use.
-
-The [dataset download guide](DATASET_DOWNLOAD_GUIDE.md) gives owner-operated steps while preserving the requirement for exact owner approval of any third-party mirror, file version, licence and intended use. See [M3 exit evidence](M3_EXIT_EVIDENCE.md) for the evidence Claude must verify before making the sole milestone declaration. Current M3 blockers remain the policy trust boundary/identity decision, original/projected scenario-hash semantics, the still-draft validation protocol and missing owner-supplied dataset register. No dataset or simulation run is authorized.
