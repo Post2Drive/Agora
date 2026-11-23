@@ -130,8 +130,8 @@ def cluster_bootstrap_ci(errors_by_cluster: Mapping[str, Sequence[float]], *, sa
 
     Fewer than `min_clusters` clusters -> NotEstimable (never a misleadingly narrow interval).
     """
-    if not isinstance(seed, int) or isinstance(seed, bool):
-        raise NotEstimable("an explicit integer seed is required")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+        raise NotEstimable("an explicit non-negative integer seed is required")
     for name, val in (("samples", samples), ("min_clusters", min_clusters)):
         if not isinstance(val, int) or isinstance(val, bool):
             raise NotEstimable(f"{name} must be an integer")

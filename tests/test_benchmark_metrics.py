@@ -184,3 +184,13 @@ def test_bootstrap_invalid_parameters_are_not_estimable(kw):
     args = {"samples": 500, "seed": 7, "min_clusters": 10, **kw}
     with pytest.raises(NotEstimable):
         cluster_bootstrap_ci(_clusters(), **args)
+
+
+@pytest.mark.parametrize("bad", [-1, -2**40, True, False, 1.0, "7", None])
+def test_bootstrap_rejects_invalid_seed_as_not_estimable(bad):
+    with pytest.raises(NotEstimable):
+        cluster_bootstrap_ci(_clusters(), samples=500, seed=bad)  # type: ignore[arg-type]
+
+
+def test_bootstrap_accepts_zero_seed():
+    assert cluster_bootstrap_ci(_clusters(), samples=500, seed=0)["samples"] == 500
