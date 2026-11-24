@@ -119,7 +119,7 @@ def make_run(year: int, state: str, cutoff: date, margin_pp: float, k: float, fr
                 "binding_fingerprint": h("harness:leaning=k*margin"), "ontology_pack_fingerprint": h("election-two-party"),
                 "transformation_policy_fingerprint": None, "scenario_parameters": {"k": k, "cutoff": cutoff.isoformat()}}
     manifest["scenario_hash"] = recompute_scenario_hash(manifest)
-    package = {"manifest": manifest, "scenario_hash": manifest["scenario_hash"], "instances": [row], "validated_prediction_enabled": False}
+    package = {"manifest": manifest, "scenario_hash": manifest["scenario_hash"], "instances": [row], "validated_prediction_enabled": False, "synthetic_demo": True}
     mapping = {"segment_property": P_SEG, "numeric": {f: f"e:{f}" for f in FIELDS}, "personas": {"electorate": "A voter in the state."},
                "leaning": {"Democratic": P_LD, "Republican": P_LR}}
     scenario = {"name": f"E-{year}-{state}", "topic": "two-party contest", "question": "Who wins?",

@@ -134,6 +134,23 @@ class Simulation:
         except IdentityError as exc:
             raise GovernedInputError(f"authorization refused: {exc}") from exc
 
+    _BUILDER_FIELDS = ("dataset_id", "schema_id", "schema_version", "file_sha256", "data_role", "run_provenance_reference")
+
+    @staticmethod
+    def _input_origin(package: Mapping, manifest: Mapping) -> str:
+        """Where the package came from: 'builder' (carries every field build_scenario_input writes) or 'synthetic_demo'
+        (hand-built and explicitly declared so). Anything else is refused.
+
+        This is a LABEL, not a security boundary: a caller in the same process can imitate either form. It makes a
+        hand-built input visible and un-silent; unforgeable authorization needs a signed receipt from a policy service.
+        """
+        if (all(k in manifest for k in Simulation._BUILDER_FIELDS) and manifest["data_role"] in {"context", "scenario_input"}
+                and manifest["run_provenance_reference"] == f"scenario:{manifest.get('scenario_hash')}"):
+            return "builder"
+        if package.get("synthetic_demo") is True:
+            return "synthetic_demo"
+        raise GovernedInputError("input package was not produced by the scenario-input builder and is not declared synthetic_demo")
+
     @staticmethod
     def _verify_governed(governed_input: Mapping, base, project_id: str) -> dict:
         """Verify the package and derive the scenario here; nothing from the caller is trusted."""
@@ -153,11 +170,12 @@ class Simulation:
             raise GovernedInputError("package scenario_hash does not match its manifest")
         scope = Simulation._receipt_scope(manifest, project_id)
         Simulation._check_receipt(governed_input["receipt"], scope)  # before any projection/write
+        origin = Simulation._input_origin(package, manifest)
         try:
             derived, record = project_segments(package, mapping, base)
         except ProjectionError as exc:
             raise GovernedInputError(f"projection refused: {exc}") from exc
-        return {"scenario": derived, "manifest": {**dict(manifest), "projection": record},
+        return {"scenario": derived, "manifest": {**dict(manifest), "projection": record, "input_origin": origin},
                 "receipt": governed_input["receipt"], "receipt_scope": scope}
 
     def _guard_provenance(self) -> None:

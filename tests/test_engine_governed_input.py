@@ -38,7 +38,7 @@ def make_package(values=(0.2, 0.4, 0.5, 0.6), *, import_id="import-1"):
                 "transformation_policy_fingerprint": None, "scenario_parameters": {}}
     manifest["scenario_hash"] = recompute_scenario_hash(manifest)
     return {"manifest": manifest, "scenario_hash": manifest["scenario_hash"], "instances": rows,
-            "validated_prediction_enabled": False}
+            "validated_prediction_enabled": False, "synthetic_demo": True}
 
 
 NOW_FIXED = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
@@ -281,3 +281,63 @@ def test_slice_4_6_changed_input_resume_refused_envelope_untouched(project):
     finally:
         sim.close()
     assert provenance_bytes(project) == before
+
+
+# ---- input origin: label hand-built packages, refuse unlabelled ones (a label, not a security boundary) ----
+def _origin(project):
+    import json
+    raw = provenance_bytes(project)
+    return json.loads(raw)["input_manifest"]["input_origin"] if raw else None
+
+
+def test_declared_synthetic_demo_runs_and_is_labelled(project):
+    prepare(project, gi())
+    assert _origin(project) == "synthetic_demo"
+
+
+@pytest.mark.parametrize("marker", [None, False, "true", 1, "yes"])
+def test_hand_built_package_without_the_exact_demo_declaration_is_refused_and_writes_nothing(project, marker):
+    package = make_package()
+    package.pop("synthetic_demo")
+    if marker is not None:
+        package["synthetic_demo"] = marker
+    with pytest.raises(GovernedInputError, match="synthetic_demo"):
+        Simulation(project, governed_input=gi(package=package))
+    assert provenance_bytes(project) is None and agent_count(project) == 0 and not (project / "agora.db").exists()
+
+
+def test_partial_builder_fields_do_not_count_as_builder_origin(project):
+    package = make_package()
+    package.pop("synthetic_demo")
+    package["manifest"].update(dataset_id="d", schema_id="s", schema_version="1", file_sha256="f" * 64, data_role="scenario_input")
+    # run_provenance_reference missing, and the manifest edit invalidates the old hash/receipt in any case
+    with pytest.raises(GovernedInputError):
+        Simulation(project, governed_input=gi(package=package))
+    assert provenance_bytes(project) is None
+
+
+def test_builder_shaped_manifest_with_wrong_reference_is_not_builder_origin(project):
+    from agora.scenario_inputs import recompute_scenario_hash
+    package = make_package()
+    package.pop("synthetic_demo")
+    m = package["manifest"]
+    m.update(dataset_id="d", schema_id="s", schema_version="1", file_sha256="f" * 64, data_role="scenario_input",
+             run_provenance_reference="scenario:not-this-package")
+    m["scenario_hash"] = package["scenario_hash"] = recompute_scenario_hash(m)
+    with pytest.raises(GovernedInputError, match="synthetic_demo"):
+        Simulation(project, governed_input=gi(package=package))
+    assert provenance_bytes(project) is None
+
+
+def test_builder_shaped_manifest_is_labelled_builder_and_unlabelled_forgery_known_limit(project):
+    """Documents the limit: a same-process caller who imitates the builder's fields is labelled 'builder'.
+    That is why this is a label; unforgeable origin needs a signed receipt from a policy service."""
+    from agora.scenario_inputs import recompute_scenario_hash
+    package = make_package()
+    package.pop("synthetic_demo")
+    m = package["manifest"]
+    m.update(dataset_id="d", schema_id="s", schema_version="1", file_sha256="f" * 64, data_role="scenario_input")
+    m["scenario_hash"] = package["scenario_hash"] = recompute_scenario_hash(m)
+    m["run_provenance_reference"] = f"scenario:{m['scenario_hash']}"
+    prepare(project, gi(package=package))
+    assert _origin(project) == "builder"
