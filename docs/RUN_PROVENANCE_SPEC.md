@@ -113,3 +113,8 @@ The original verification objectives remain applicable:
 8. validated-prediction mode remains disabled until separately approved.
 
 This specification does not authorize any additional package, data, seed, configuration or rerun beyond the reported Package E stages. Claude reports its one test-evaluate opened 2016 labels only after the output seal matched; ChatGPT independently fetched and verified the exact bytes, byte counts and SHA-256 values of all nine non-sensitive PR #213 output/log artifacts against SHA256SUMS; all matched. No raw source CSVs or held-out labels were accessed and no metrics were recalculated. Any future label-based metric evaluation requires a separately named owner-designated evaluator and explicit authorization. Keep all outputs labelled exploratory and simulated; keep `VALIDATED_PREDICTION_ENABLED=False`.
+
+
+## Current evidence limitations — owner clarification, 24 November 2026
+
+Package E was run once: the 2012 result was a tie and the 2016 held-out result was a loss. This is final; no rerun is authorized. Package A is NOT EVALUABLE; Package R/M5 and retail are dropped. The seven state-cycle exclusions were not listed in the saved evidence and are unrecoverable. The first failed calibration attempt has no retained log or exit code and is unrecoverable from saved files. Full run configuration is only partly recorded: retain evidenced fields and mark all absent fields unavailable. A provenance envelope or this specification must not imply values that were never captured. Do not reconstruct missing exclusions, timestamps, exit codes, logs, partial-output inventories, hashes or configuration values. Frozen protocol, run-spec and manifest contents remain unchanged. VALIDATED_PREDICTION_ENABLED=False.
