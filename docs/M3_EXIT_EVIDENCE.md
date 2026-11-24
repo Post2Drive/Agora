@@ -163,3 +163,19 @@ The owner said “Go, once v0.2 is frozen,” limited to Packages E and A, one r
 Claude's latest 24 Nov entry reports the owner's direction to perform exploratory analysis now and consider a 2020 confirmatory holdout later, with only minimal fundamentals (incumbent party and previous-election state result). The reported leave-one-cycle-out comparison used 2004/2008/2012/2016, and 2016 labels had already been opened. It is therefore exploratory only, not a validation result, not independent evidence of generalisation, and not an M3 acceptance gate. The reported blend did not beat poll alone on mean MAE (4.45 pp versus 4.15 pp); its 2008 error was materially worse. The shared signed poll bias changed sign across cycles, so no post-hoc bias correction is justified.
 
 A separate `VALIDATION_PROTOCOL_V1_DRAFT.md` proposes 2020 as a future held-out election. The 2020 polling-average file has not been downloaded; a new manifest, exact source/licence/hash, model definitions, interval method, bootstrap seed, evaluator custody, owner freeze sentence and separate run authorization remain outstanding. Frozen v0.1/v0.2 files and the 15-row manifest are not amended. This direction does not declare M3 reached or change `VALIDATED_PREDICTION_ENABLED=False`.
+
+
+## 7. Owner's final evidence disposition — 24 November 2026
+
+This section is the current owner clarification and supersedes earlier draft wording in this document where inconsistent.
+
+- **Package E — final:** one run only. The 2012 validation result was a tie; the 2016 held-out result was a loss. This is the final result. No rerun or additional package/run is authorized.
+- **Package A:** not evaluable. No attempt to infer or substitute an evaluation.
+- **Package R/M5 and retail:** dropped.
+- **Seven state-cycle exclusions:** the exclusions were not listed in the saved files and cannot be recovered from the retained evidence. Record them as **unrecoverable / not enumerated**; do not invent state/year pairs or reasons.
+- **First failed calibration attempt:** no retained log or exit code. These are **unrecoverable from saved files**. Do not infer an exit status, timestamps, partial outputs, hashes, disposition or restart rationale that is not evidenced.
+- **Run configuration:** only partly recorded. Preserve the configuration fields actually present in committed artifacts; explicitly mark absent fields unavailable. Do not fill gaps by inference.
+
+The retained successful calibration retry is separate evidence and must not be used to fabricate the missing first-attempt record. The three cutoff-level missing-average rows already identified in output evidence are not a substitute for the separate seven state-cycle exclusions. The 2012 tie and 2016 loss are outcome statements; no new metric calculation or held-out-label access is part of this documentation update.
+
+PR #221 is now merged at 3b5fd8660a397a09126539ccb85f13bc28707de6 (head b259dea49b9304d57c905be48693af87a29a9825). Its seal-order controls and showcase CLI hardening are merged; the old open/in-progress status notes above are historical snapshots. Claude's scope-limited M3 declaration remains conditional on synchronization of the main documentation and is not a claim of predictive validity or production readiness. VALIDATED_PREDICTION_ENABLED=False remains unchanged.
