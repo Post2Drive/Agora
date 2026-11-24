@@ -65,7 +65,7 @@ def _build(delta: float, seed: int):
          "ontology_pack_fingerprint": h("freight-demo-ontology"), "transformation_policy_fingerprint": None,
          "scenario_parameters": {"price_change": delta}}
     m["scenario_hash"] = recompute_scenario_hash(m)
-    package = {"manifest": m, "scenario_hash": m["scenario_hash"], "instances": rows, "validated_prediction_enabled": False}
+    package = {"manifest": m, "scenario_hash": m["scenario_hash"], "instances": rows, "validated_prediction_enabled": False, "synthetic_demo": True}
     mapping = {"segment_property": P_SEG, "numeric": {f: f"f:{f}" for f in FIELDS},
                "personas": {n: f"A {n.lower()} account on the Post2Drive plan (assumed)." for n in SEGMENTS},
                "leaning": {OPT_STAY: P_STAY, OPT_LEAVE: P_LEAVE}}
