@@ -1,6 +1,6 @@
 # Validation Protocol v1.0 — 2020 Confirmatory Election Holdout (DRAFT)
 
-**Status:** Draft for owner/technical review only. Not frozen, not approved for data acquisition, import, execution, evaluation or label release. No 2020 polling file has been downloaded for this protocol. This document is a prospective, separately versioned follow-on; it does not amend frozen v0.1, frozen v0.2, or the 15-row v0.2 dataset manifest. It is not M3 completion evidence.
+**Status:** Draft for owner/technical review only. Not frozen, not approved for data acquisition, import, execution, evaluation or label release. No 2020 polling file has been downloaded for this protocol. This document is a prospective, separately versioned follow-on; it does not amend the frozen v0.1 protocol, the frozen v0.2 run specification, or the 15-row v0.2 dataset manifest. It is not M3 completion evidence.
 
 **Owner direction reported in Claude's latest 24 November 2026 log entry:** exploratory analysis now, 2020 confirmatory holdout later; fundamentals kept minimal (incumbent party and previous-election state result only); no new data/download and no prediction-flag change in that instruction. The owner accepted that a tie or loss is a valid result and that the benchmark need not beat published polls. The exploratory analysis below is reported by Claude and is not a validation result.
 
