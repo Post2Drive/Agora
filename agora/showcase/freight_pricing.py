@@ -1,11 +1,14 @@
-"""Showcase: governed what-if on a freight price change. ALL DATA AND ASSUMPTIONS ARE INVENTED (synthetic demo).
+"""Showcase: governed what-if on Post2Drive plan prices.
 
-Question: if a freight marketplace changes its price by x%, how do customer groups respond, and which price keeps the
-most revenue? Runs the real governed pipeline (package -> projection -> engine with a Principal-bound receipt) on the mock
-backend (crowd agents, no model calls), repeats each scenario over seeds, and writes a plain report plus a JSON record.
+Inputs: the plan prices are the owner's stated Post2Drive plan (Nov 2026; adjustable, not locked). Everything else is
+ASSUMED and marked as such: the account mix, how strongly each group reacts to a price change, and loyalty. No P2D user
+data, no personal data, no real accounts are used.
 
-Not a forecast. The response strengths below are invented assumptions; replace them with the owner's real rate card and
-measured elasticities (needs a named approval) before any claim about a real market.
+Question: if plan prices change by x%, which groups stay subscribed and what happens to monthly revenue? Runs the real
+governed pipeline (package -> projection -> engine with a Principal-bound receipt) on the mock backend (crowd agents, no
+model calls), repeats each scenario over seeds, and writes a plain report plus a JSON record.
+
+Not a forecast. Replace the assumptions with measured pilot behaviour before any claim about the real market.
 """
 from __future__ import annotations
 
@@ -21,15 +24,18 @@ from pathlib import Path
 
 import yaml
 
-OPT_STAY, OPT_LEAVE = "Book on the platform", "Use an alternative"
-SEGMENTS = {   # name: (rows, price sensitivity, loyalty); ALL INVENTED
-    "Small shippers": (40, 2.0, 0.25),
-    "Mid-size businesses": (30, 1.2, 0.30),
-    "Enterprise shippers": (15, 0.5, 0.40),
-    "Marketplace resellers": (15, 1.6, 0.20),
+OPT_STAY, OPT_LEAVE = "Stay subscribed", "Cancel or switch"
+WEEKS_PER_MONTH = 52 / 12
+# name: (accounts in the demo mix [ASSUMED], plan price per month in GBP [owner-stated plan], price sensitivity [ASSUMED], loyalty [ASSUMED])
+SEGMENTS = {
+    "Posters": (60, 12.99, 1.2, 0.30),
+    "Individual drivers": (240, 14.99 * WEEKS_PER_MONTH, 1.5, 0.25),
+    "Small fleets (2-5 vehicles)": (40, 24.99 * WEEKS_PER_MONTH, 1.0, 0.30),
+    "Medium fleets (6-15)": (15, 39.99 * WEEKS_PER_MONTH, 0.7, 0.35),
+    "Large fleets (16-30)": (5, 59.99 * WEEKS_PER_MONTH, 0.5, 0.40),
 }
 PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
-SCALE = 0.6            # how strongly price sensitivity moves preference (invented)
+SCALE = 0.6            # how strongly price sensitivity moves preference (assumed)
 CROWD = 1200
 ROUNDS = 16
 SEEDS = tuple(range(1, 21))
@@ -45,8 +51,8 @@ def _lean(delta: float, sens: float, loyalty: float) -> float:
 def _build(delta: float, seed: int):
     from ..scenario_inputs import recompute_scenario_hash
     h = lambda x: "sha256:" + hashlib.sha256(x.encode()).hexdigest()
-    rows, total = [], sum(n for n, _, _ in SEGMENTS.values())
-    for name, (n, sens, loyalty) in SEGMENTS.items():
+    rows, total = [], sum(v[0] for v in SEGMENTS.values())
+    for name, (n, _price, sens, loyalty) in SEGMENTS.items():
         lean = _lean(delta, sens, loyalty)
         for i in range(n):
             vals = {P_SEG: name, **{f"f:{f}": v for f, v in FIXED.items()}, P_STAY: lean, P_LEAVE: -lean}
@@ -60,18 +66,18 @@ def _build(delta: float, seed: int):
     m["scenario_hash"] = recompute_scenario_hash(m)
     package = {"manifest": m, "scenario_hash": m["scenario_hash"], "instances": rows, "validated_prediction_enabled": False}
     mapping = {"segment_property": P_SEG, "numeric": {f: f"f:{f}" for f in FIELDS},
-               "personas": {n: f"A {n.lower()} customer of a freight marketplace (invented)." for n in SEGMENTS},
+               "personas": {n: f"A {n.lower()} account on the Post2Drive plan (assumed)." for n in SEGMENTS},
                "leaning": {OPT_STAY: P_STAY, OPT_LEAVE: P_LEAVE}}
-    segs = [{"name": n, "share": c / total, "persona": f"{n} (invented)", "stance": {"mean": 0.0, "sd": 0.3},
+    segs = [{"name": n, "share": c / total, "persona": f"{n} (assumed)", "stance": {"mean": 0.0, "sd": 0.3},
              "leaning": {OPT_STAY: 0.0, OPT_LEAVE: 0.0}, "stubbornness": 0.5, "activity": 0.4, "platforms": ["x", "facebook"]}
-            for n, (c, _, _) in SEGMENTS.items()]
-    scenario = {"name": f"freight-price-{tag}", "topic": "freight marketplace price change",
-                "question": "Do customers keep booking on the platform?", "context": "Synthetic demo. All numbers invented.",
+            for n, (c, *_r) in SEGMENTS.items()]
+    scenario = {"name": f"freight-price-{tag}", "topic": "Post2Drive plan price change",
+                "question": "Do accounts stay subscribed?", "context": "Demo: owner-stated plan prices; mix and responses assumed.",
                 "seed": seed, "start": "2026-01-01T08:00:00", "minutes_per_round": 180, "rounds": ROUNDS, "feed_size": 4,
                 "memory_size": 4, "population": {"llm_agents": 0, "crowd_agents": CROWD}, "llm": {"backend": "mock"},
-                "choice": {"name": "booking", "question": "Where will you book your next shipment?", "options": [OPT_STAY, OPT_LEAVE],
+                "choice": {"name": "booking", "question": "Will you keep your plan?", "options": [OPT_STAY, OPT_LEAVE],
                            "open_round": 12, "close_round": 15, "turnout_base": -1.0, "turnout_weight": 3.0,
-                           "undecided_below": 0.0, "weights": {n: c / total for n, (c, _, _) in SEGMENTS.items()}},
+                           "undecided_below": 0.0, "weights": {n: c / total for n, (c, *_r) in SEGMENTS.items()}},
                 "segments": segs}
     return package, mapping, scenario
 
@@ -108,17 +114,21 @@ def sweep(seeds=SEEDS, changes=PRICE_CHANGES, workdir: Path | None = None) -> di
     out = {}
     for d in changes:
         runs = [run_once(d, s, workdir) for s in seeds]
+        rev = lambda r: sum(SEGMENTS[g][0] * SEGMENTS[g][1] * (1 + d) * r["by_segment"][g] for g in SEGMENTS)
         shares = sorted(r["share"] for r in runs)
+        revs = sorted(rev(r) for r in runs)
         seg = {g: statistics.mean(r["by_segment"][g] for r in runs) for g in SEGMENTS}
         out[d] = {"share_mean": statistics.mean(shares), "share_lo": shares[max(0, int(0.05 * len(shares)))],
                   "share_hi": shares[min(len(shares) - 1, int(0.95 * len(shares)))], "by_segment": seg,
-                  "scenario_hash": runs[0]["scenario_hash"], "runs": len(runs)}
-    base = out[0.0]["share_mean"] if 0.0 in out else None
+                  "scenario_hash": runs[0]["scenario_hash"], "runs": len(runs),
+                  "rev_mean": statistics.mean(revs), "rev_lo": revs[max(0, int(0.05 * len(revs)))],
+                  "rev_hi": revs[min(len(revs) - 1, int(0.95 * len(revs)))]}
+    base = out[0.0]["rev_mean"] if 0.0 in out else None
     for d, v in out.items():
         if base:
-            v["revenue_index"] = (1 + d) * v["share_mean"] / base
-            v["revenue_index_lo"] = (1 + d) * v["share_lo"] / base
-            v["revenue_index_hi"] = (1 + d) * v["share_hi"] / base
+            v["revenue_index"] = v["rev_mean"] / base
+            v["revenue_index_lo"] = v["rev_lo"] / base
+            v["revenue_index_hi"] = v["rev_hi"] / base
     return out
 
 
@@ -141,7 +151,7 @@ def report_html(res: dict) -> str:
         + "".join(f"<td>{pct(v['by_segment'][g])}</td>" for g in SEGMENTS) + "</tr>" for d, v in sorted(res.items()))
     heads = "".join(f"<th>{html.escape(g)}</th>" for g in SEGMENTS)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Freight pricing what-if (synthetic demo)</title><style>
+<title>Post2Drive plan price what-if</title><style>
 :root{{--bg:#fff;--fg:#1a1a1a;--mut:#666;--ln:#ddd;--hi:#e8f3ec;--warn:#fff4d6}}
 @media (prefers-color-scheme:dark){{:root{{--bg:#16181a;--fg:#eee;--mut:#aaa;--ln:#333;--hi:#1d3326;--warn:#3a3217}}}}
 body{{background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif;max-width:60rem;margin:0 auto;padding:1rem}}
@@ -149,17 +159,17 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 .best td{{background:var(--hi)}}.warn{{background:var(--warn);padding:.6rem .8rem;border-radius:6px}}small{{color:var(--mut)}}
 .wrap{{overflow-x:auto}}</style></head><body>
 <h1>If we change the price, who stays and what happens to revenue?</h1>
-<p class="warn"><b>Synthetic demo.</b> All customers, numbers and price sensitivities are invented. This shows how the governed pipeline works; it is not a forecast. Replace the invented inputs with your real rate card and measured response before any real decision.</p>
+<p class="warn"><b>Demo on stated plan prices.</b> Plan prices are the owner's stated Post2Drive plan; the account mix and how each group reacts are assumptions. No user data was used. Not a forecast: replace the assumptions with measured pilot behaviour before any real decision.</p>
 <h2>Result</h2>
 <p>{verdict}</p>
-<p>Which customers move most: <b>{html.escape(worst)}</b> lose the most platform bookings at +10%; <b>{html.escape(steady)}</b> hold best. Ranges are the 5th–95th percentile across {res[best]['runs']} simulation seeds, which shows run-to-run noise only, not real-world uncertainty.</p>
-<div class="wrap"><table><tr><th>Price change</th><th>Customers staying (range)</th><th>Revenue index (range)</th>{heads}</tr>{rows}</table></div>
+<p>Which customers move most: <b>{html.escape(worst)}</b> are the most likely to cancel at +10%; <b>{html.escape(steady)}</b> hold best. Ranges are the 5th–95th percentile across {res[best]['runs']} simulation seeds, which shows run-to-run noise only, not real-world uncertainty.</p>
+<div class="wrap"><table><tr><th>Price change</th><th>Accounts staying (range)</th><th>Revenue index (range)</th>{heads}</tr>{rows}</table></div>
 <h2>How it was produced</h2><ul>
 <li>Input package with provenance hashes, projected to customer groups by a fixed, logged mapping.</li>
 <li>Run through the governed engine with a Principal-bound authorization receipt (local synthetic Principal).</li>
 <li>Crowd agents only, no language-model calls; deterministic for a given seed.</li>
 <li>Scenario hashes: {', '.join(f"{d:+.0%}: {v['scenario_hash'][7:19]}" for d, v in sorted(res.items()))}</li></ul>
-<h2>Next step for a real answer</h2><p>Supply the real rate card and a named approval for that exact input; then calibrate the response strengths against observed bookings.</p>
+<h2>Next step for a real answer</h2><p>Run a small price pilot, then replace the assumed mix and responses with what was observed.</p>
 </body></html>"""
 
 
@@ -170,7 +180,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
-    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
+    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
     (a.out / "report.html").write_text(report_html(res), encoding="utf-8")
     print(f"wrote {a.out / 'report.html'}")
     return 0

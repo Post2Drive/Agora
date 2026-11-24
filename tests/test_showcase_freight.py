@@ -1,4 +1,4 @@
-"""Freight pricing showcase: invented data, governed pipeline, deterministic, honest report."""
+"""Post2Drive plan-price showcase: stated prices, assumed behaviour, governed pipeline, deterministic, honest report."""
 import json
 
 import pytest
@@ -20,7 +20,7 @@ def test_higher_price_lowers_staying_share():
 def test_sensitive_segments_react_more_than_enterprise():
     base, up = f.run_once(0.0, 1)["by_segment"], f.run_once(0.15, 1)["by_segment"]
     drop = {g: base[g] - up[g] for g in base}
-    assert drop["Small shippers"] > drop["Enterprise shippers"]
+    assert drop["Individual drivers"] > drop["Large fleets (16-30)"]
 
 
 def test_package_is_governed_and_flag_off():
@@ -32,10 +32,10 @@ def test_package_is_governed_and_flag_off():
 def test_report_labels_synthetic_and_flags_noise(tmp_path):
     res = f.sweep(seeds=(1, 2, 3), changes=(-0.05, 0.0, 0.05))
     html = f.report_html(res)
-    assert "Synthetic demo" in html and "not a forecast" in html
+    assert "Demo on stated plan prices" in html and "Not a forecast" in html
     assert f.main(["--out", str(tmp_path), "--seeds", "2"]) == 0
     data = json.loads((tmp_path / "result.json").read_text())
-    assert data["synthetic"] is True and (tmp_path / "report.html").exists()
+    assert data["synthetic"] is True and data["assumptions_marked"] is True and (tmp_path / "report.html").exists()
 
 
 def test_without_receipt_the_engine_refuses():
