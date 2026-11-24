@@ -600,3 +600,45 @@ def test_two_real_concurrent_replay_callers_append_exactly_one_event(tmp_path):
     assert _chain_count(base) == 1 and base.verify()["valid"]
     assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 1
     assert replay_pending_audits(store, base) == 0
+
+
+def test_two_replay_callers_both_hold_the_same_pending_row_before_either_delivers(tmp_path, monkeypatch):
+    """Overlap proof: a handshake at the delivery boundary means both callers fetched the pending row first."""
+    import threading
+    from agora.decisions import markers
+    from agora.decisions.outcomes import DecisionOutcomeStore
+    from agora.decisions.store import DecisionRecordStore
+    store, approved, out = _disputed(tmp_path)
+    with pytest.raises(MarkerError):
+        _flag(store, approved, out, audit=_FlakyAudit(fail=1))
+    base = _anchored(tmp_path)
+    handshake = threading.Barrier(2, timeout=20)
+    seen, results, errors = [], [], []
+    real_deliver = markers._deliver
+
+    def deliver_after_handshake(s, a, event_id):
+        seen.append(event_id)
+        handshake.wait()  # both callers are here with the pending row in hand, neither has delivered yet
+        return real_deliver(s, a, event_id)
+
+    monkeypatch.setattr(markers, "_deliver", deliver_after_handshake)
+
+    def caller():
+        try:
+            s = DecisionOutcomeStore(DecisionRecordStore(tmp_path / "decisions.db"))
+            a = AnchoredAuditChain(AuditChainStore(tmp_path / "audit.sqlite3"), AnchorStore(tmp_path / "anchor.jsonl", "c1"))
+            results.append(replay_pending_audits(s, a))
+        except BaseException as exc:  # recorded and asserted below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=caller, daemon=True) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    assert not any(t.is_alive() for t in threads)
+    assert not errors, errors
+    assert len(seen) == 2 and seen[0] == seen[1], seen  # the same pending row reached both deliveries
+    assert results == [1, 1]
+    assert _chain_count(base) == 1 and base.verify()["valid"]
+    assert store.db.execute("SELECT COUNT(*) FROM marker_audit_done").fetchone()[0] == 1
