@@ -1,4 +1,4 @@
-# AGORA Decision Cell — Design Spec (DRAFT v0.2)
+# AGORA Decision Cell — Design Spec (DRAFT v0.3)
 
 Status: DRAFT for ChatGPT review and owner approval. Docs only. Approves no code, no engine edit (`agora/sim/**`), no data, no feed, no run, no flag change. `VALIDATED_PREDICTION_ENABLED` stays False.
 
@@ -20,6 +20,8 @@ Non-goals: predicting that an event will occur; autonomous action; targeting or 
 - **Source independence.** Two sources are independent only if neither cites, syndicates or copies the other and they do not share an owner or a single upstream origin (wire service, press release, one original post). Independence is judged per statement and recorded; if it cannot be established the sources count as one.
 - **Minimum evidence.** REPORTED-BY-MULTIPLE needs at least two independent sources for the same statement. CONFIRMED needs either a primary source (the party itself, an official record, original footage with provenance) or at least two independent sources of which one is primary or has a published correction policy.
 - **Event time.** Each item carries event-time (when it happened), received-time (when we got it) and an event-time uncertainty (exact, minutes, hours, day, unknown). An item with unknown event time cannot be injected at a specific round; the human must pick the round and that choice is logged.
+- **Timezone and market close.** All times are stored in UTC with the source's original local time and zone kept alongside. The company client's business time zone is set per project (default Asia/Kolkata). Where an event is tied to a market, the project record names the market calendar; an event after that market's close (or on a non-trading day) is assigned to the next session open for outcome windows, and the rule applied is logged. Ambiguous local times (daylight-saving overlap) are refused and sent to the human.
+- **Auditable source trust.** The trust score is a recorded function of named, versioned inputs (source class, track record from the after-action hit and false-alarm table, correction history, independence group) and is shown with its inputs; each score and each change is audit-logged with the version of the rule used. The primary-source CONFIRMED exception requires the approver to record which primary source and why it qualifies; the exception is flagged in every result that relies on it and counted in review reports.
 - **Corrections and retractions.** A retraction or correction is a new item linked to the original. Anything run on a retracted item is stamped "based on retracted item" in every result and report; the human is shown which branches are affected and can fork without it.
 - **Who may mark CONFIRMED.** Only the named approver for the project (or a delegate listed in the project record) may promote an item to CONFIRMED, with a reason text. The system may propose, never promote. Promotion and demotion are audit-logged.
 
@@ -68,7 +70,7 @@ Anything already approved and bound for the study: the study's own sources, the 
 Default deny stays. Every choice, input and result is written to the audit log and linked to its source. Kill switch per study. Sensitive deployments (defence, security) are limited to decision support: situation awareness, scenario ranges, logistics impact. No targeting, no direction of force.
 
 ## 7. Validation (preregistered before any claim)
-- **Stage A, event study on existing data.** Preregistered before any look at the outcome windows: (a) the dated event list, written from public record and reviewed by ChatGPT; (b) for each event, the expected direction of the move (up, down, none) and the affected segment, fixed and hashed before the comparison; (c) cutoffs: the baseline is the last state average on or before the event date, outcome windows are 7 and 14 days after, and no data after the window is used; (d) overlap rule: events whose 14-day windows overlap are grouped into one cluster and scored once, not counted separately; windows that contain a later listed event are flagged; (e) hit means observed move has the preregistered sign and exceeds the preregistered minimum size; the size threshold is fixed with the list. Report all hits, misses and losses. Uses data already approved; no new data.
+- **Stage A, event study on existing data.** Preregistered before any look at the outcome windows: (a) the dated event list, written from public record; ChatGPT's review is advisory only and is not owner approval (the owner approves and freezes the list); (b) for each event, the expected direction of the move (up, down, none) and the affected segment, fixed and hashed before the comparison; (c) cutoffs: the baseline is the last state average on or before the event date, outcome windows are 7 and 14 days after, and no data after the window is used; (d) overlap rule: events whose 14-day windows overlap are grouped into one cluster and scored once, not counted separately; windows that contain a later listed event are flagged; (e) hit means observed move has the preregistered sign and exceeds the preregistered minimum size; the size threshold is fixed with the list. Report all hits, misses and losses. Uses data already approved; no new data.
 - **Stage B, replay:** archived news streams replayed in time order with no look-ahead; measure alert hit rate, false-alarm rate, time to alert.
 - **Stage C, confirmatory:** a held-out cycle (2020 planned) under a new protocol with the owner's freeze sentence.
 Any tie or loss is a valid result.
@@ -80,7 +82,7 @@ Any tie or loss is a valid result.
 4. Customer deployment: security review and an agreement on what the system may and may not do.
 
 ## 9. Open decisions for the owner
-1. First client type to design for: company, political or defence (Claude recommends company).
-2. Approve the `agora/sim/**` snapshot edit (design first, as done for M3). Not approved; nothing in this spec implies it.
+1. ~~First client type~~ **Decided 24 Nov 2026 (owner): company.** Political and defence/security are out of scope until a hosted company pilot works.
+2. **Engine snapshot edit: approved in principle by the owner, 24 Nov 2026, for the single path `agora/sim/engine.py` only.** It is implemented in its own PR after this spec is final, with mutation proofs, and no other `agora/sim/**` path is covered. This spec itself changes no code.
 3. Response windows and who the approvers are per project.
 4. Hosting for live feeds.
