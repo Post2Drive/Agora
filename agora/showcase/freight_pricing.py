@@ -39,7 +39,7 @@ PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
 SCALE = 0.6            # how strongly price sensitivity moves preference (assumed)
 CROWD = 1200
 ROUNDS = 16
-SEEDS = tuple(range(1, 71))
+SEEDS = tuple(range(1, 101))
 P_SEG, P_STAY, P_LEAVE = "f:segment", "f:lean_stay", "f:lean_leave"
 FIELDS = ("stance_mean", "stance_sd", "stubbornness", "activity", "influence", "openness")
 FIXED = {"stance_mean": 0.0, "stance_sd": 0.3, "stubbornness": 0.5, "activity": 0.4, "influence": 1.0, "openness": 0.5}
@@ -77,7 +77,7 @@ def _build(delta: float, seed: int):
                 "seed": seed, "start": "2026-01-01T08:00:00", "minutes_per_round": 180, "rounds": ROUNDS, "feed_size": 4,
                 "memory_size": 4, "population": {"llm_agents": 0, "crowd_agents": CROWD}, "llm": {"backend": "mock"},
                 "choice": {"name": "booking", "question": "Will you keep your plan?", "options": [OPT_STAY, OPT_LEAVE],
-                           "open_round": 12, "close_round": 15, "turnout_base": -1.0, "turnout_weight": 3.0,
+                           "open_round": ROUNDS - 4, "close_round": ROUNDS - 1, "turnout_base": -1.0, "turnout_weight": 3.0,
                            "undecided_below": 0.0, "weights": {n: c / total for n, (c, *_r) in SEGMENTS.items()}},
                 "segments": segs}
     return package, mapping, scenario
@@ -177,8 +177,12 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--seeds", type=int, default=len(SEEDS))
+    ap.add_argument("--seeds", type=int, default=70)
+    ap.add_argument("--crowd", type=int, default=CROWD)
+    ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
+    global CROWD, ROUNDS
+    CROWD, ROUNDS = a.crowd, a.rounds
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
     (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
