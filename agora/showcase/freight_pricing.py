@@ -65,7 +65,7 @@ def _build(delta: float, seed: int):
          "ontology_pack_fingerprint": h("freight-demo-ontology"), "transformation_policy_fingerprint": None,
          "scenario_parameters": {"price_change": delta}}
     m["scenario_hash"] = recompute_scenario_hash(m)
-    package = {"manifest": m, "scenario_hash": m["scenario_hash"], "instances": rows, "validated_prediction_enabled": False}
+    package = {"manifest": m, "scenario_hash": m["scenario_hash"], "instances": rows, "validated_prediction_enabled": False, "synthetic_demo": True}
     mapping = {"segment_property": P_SEG, "numeric": {f: f"f:{f}" for f in FIELDS},
                "personas": {n: f"A {n.lower()} account on the Post2Drive plan (assumed)." for n in SEGMENTS},
                "leaning": {OPT_STAY: P_STAY, OPT_LEAVE: P_LEAVE}}
@@ -174,6 +174,13 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 </body></html>"""
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a temp file in the same folder, then replace: a failed run never leaves a half-written report."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
 def main(argv=None) -> int:
     global CROWD, ROUNDS
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
@@ -182,11 +189,13 @@ def main(argv=None) -> int:
     ap.add_argument("--crowd", type=int, default=CROWD)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
+    if not 1 <= a.seeds <= len(SEEDS):
+        raise SystemExit(f"--seeds must be between 1 and {len(SEEDS)}")
     CROWD, ROUNDS = a.crowd, a.rounds
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
-    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
-    (a.out / "report.html").write_text(report_html(res), encoding="utf-8")
+    _atomic_write(a.out / "result.json", json.dumps({"synthetic": True, "assumptions_marked": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True))
+    _atomic_write(a.out / "report.html", report_html(res))
     print(f"wrote {a.out / 'report.html'}")
     return 0
 

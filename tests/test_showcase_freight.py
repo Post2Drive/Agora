@@ -44,5 +44,18 @@ def test_without_receipt_the_engine_refuses():
     package, mapping, scenario = f._build(0.0, 1)
     d = pathlib.Path(tempfile.mkdtemp()) / "proj"; d.mkdir()
     (d / "scenario.yaml").write_text(yaml.safe_dump(scenario), encoding="utf-8")
-    with pytest.raises(Exception):
+    from agora.sim.engine import GovernedInputError
+    with pytest.raises(GovernedInputError, match="authorization"):
         Simulation(d, {"backend": "mock"}, governed_input={"package": package, "mapping": mapping, "receipt": None}).run()
+
+
+@pytest.mark.parametrize("bad", ["0", "-3", "101"])
+def test_bad_seed_counts_are_refused_before_any_run(tmp_path, bad):
+    with pytest.raises(SystemExit, match="--seeds"):
+        f.main(["--out", str(tmp_path), "--seeds", bad])
+    assert not (tmp_path / "result.json").exists() and not (tmp_path / "report.html").exists()
+
+
+def test_outputs_are_written_atomically_and_leave_no_temp(tmp_path):
+    assert f.main(["--out", str(tmp_path), "--seeds", "1"]) == 0
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["report.html", "result.json"]
