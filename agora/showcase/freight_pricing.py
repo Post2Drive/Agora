@@ -47,6 +47,15 @@ ALT_MONTHLY = {
     "Large fleets (16-30)": 259.99 * VAT,
     "Fleets (31-55)": 259.99 * VAT,
 }
+MIXES = {  # accounts per group [ASSUMED]; order matches SEGMENTS
+    "driver-heavy": (60, 240, 40, 15, 5, 2),
+    "balanced": (100, 100, 60, 40, 20, 10),
+    "fleet-heavy": (80, 80, 100, 60, 30, 12),
+}
+# Months of paid plan in year 1 after the planned free windows: posters free 12 months; drivers/fleets free first 3 months.
+PAID_MONTHS_Y1 = {"Posters": 0, "Individual drivers": 9, "Small fleets (2-5 vehicles)": 9, "Medium fleets (6-15)": 9,
+                  "Large fleets (16-30)": 9, "Fleets (31-55)": 9}
+LOSS = 1.0   # >1: a price RISE on existing accounts hurts more than the same-size cut helps (loss aversion) [ASSUMED]
 PULL = 0.3             # how strongly being dearer than the alternative pushes accounts out [ASSUMED]
 COMPETITORS = False
 PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
@@ -63,7 +72,8 @@ def _lean(delta: float, sens: float, loyalty: float, price: float = 0.0, alt: fl
     pull = 0.0
     if COMPETITORS and alt:
         pull = PULL * sens * max(0.0, price * (1 + delta) / alt - 1.0)
-    return max(-1.0, min(1.0, loyalty - SCALE * sens * delta - pull))
+    eff = delta * (LOSS if delta > 0 else 1.0)
+    return max(-1.0, min(1.0, loyalty - SCALE * sens * eff - pull))
 
 
 def _build(delta: float, seed: int):
@@ -132,6 +142,7 @@ def sweep(seeds=SEEDS, changes=PRICE_CHANGES, workdir: Path | None = None) -> di
     out = {}
     for d in changes:
         runs = [run_once(d, s, workdir) for s in seeds]
+        rev12 = lambda r: sum(SEGMENTS[g][0] * SEGMENTS[g][1] * (1 + d) * PAID_MONTHS_Y1[g] * r["by_segment"][g] for g in SEGMENTS)
         rev = lambda r: sum(SEGMENTS[g][0] * SEGMENTS[g][1] * (1 + d) * r["by_segment"][g] for g in SEGMENTS)
         shares = sorted(r["share"] for r in runs)
         revs = sorted(rev(r) for r in runs)
@@ -139,10 +150,13 @@ def sweep(seeds=SEEDS, changes=PRICE_CHANGES, workdir: Path | None = None) -> di
         out[d] = {"share_mean": statistics.mean(shares), "share_lo": shares[max(0, int(0.05 * len(shares)))],
                   "share_hi": shares[min(len(shares) - 1, int(0.95 * len(shares)))], "by_segment": seg,
                   "scenario_hash": runs[0]["scenario_hash"], "runs": len(runs),
-                  "rev_mean": statistics.mean(revs), "rev_lo": revs[max(0, int(0.05 * len(revs)))],
+                  "rev12_mean": statistics.mean(rev12(r) for r in runs), "rev_mean": statistics.mean(revs), "rev_lo": revs[max(0, int(0.05 * len(revs)))],
                   "rev_hi": revs[min(len(revs) - 1, int(0.95 * len(revs)))]}
     base = out[0.0]["rev_mean"] if 0.0 in out else None
+    base12 = out[0.0]["rev12_mean"] if 0.0 in out else None
     for d, v in out.items():
+        if base12:
+            v["year1_revenue_index"] = v["rev12_mean"] / base12
         if base:
             v["revenue_index"] = v["rev_mean"] / base
             v["revenue_index_lo"] = v["rev_lo"] / base
@@ -192,20 +206,27 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 
 
 def main(argv=None) -> int:
-    global CROWD, ROUNDS
+    global CROWD, ROUNDS, COMPETITORS, PULL, LOSS
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seeds", type=int, default=70)
     ap.add_argument("--competitors", action="store_true")
+    ap.add_argument("--mix", choices=sorted(MIXES), default="driver-heavy")
+    ap.add_argument("--pull", type=float, default=PULL)
+    ap.add_argument("--alt-driver", type=float, default=None, help="monthly GBP incl VAT of cheapest rival for individual drivers")
+    ap.add_argument("--loss", type=float, default=LOSS)
     ap.add_argument("--crowd", type=int, default=CROWD)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
     CROWD, ROUNDS = a.crowd, a.rounds
-    global COMPETITORS
-    COMPETITORS = a.competitors
+    COMPETITORS, PULL, LOSS = a.competitors, a.pull, a.loss
+    if a.alt_driver is not None:
+        ALT_MONTHLY["Individual drivers"] = a.alt_driver
+    for g, n in zip(list(SEGMENTS), MIXES[a.mix]):
+        SEGMENTS[g] = (n,) + tuple(SEGMENTS[g][1:])
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
-    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "competitors": COMPETITORS, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
+    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "competitors": COMPETITORS, "mix": a.mix, "pull": PULL, "loss": LOSS, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
     (a.out / "report.html").write_text(report_html(res), encoding="utf-8")
     print(f"wrote {a.out / 'report.html'}")
     return 0
