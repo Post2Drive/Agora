@@ -35,6 +35,20 @@ SEGMENTS = {
     "Large fleets (16-30)": (5, 59.99 * WEEKS_PER_MONTH, 0.5, 0.40),
     "Fleets (31-55)": (2, 79.99 * WEEKS_PER_MONTH, 0.4, 0.45),
 }
+# Cheapest REAL alternative per group, monthly GBP incl. 20% VAT, with source (public pages read 24 Nov 2026). None = no cheaper alternative found/priced.
+# Courier Exchange: £169.99/mo ex VAT (Solo; courierexchange.co.uk pricing says plans "from 259.99/mo" for fleets, 12-month terms, plus VAT).
+# Same Day Courier Network: £39/mo ex VAT (own pricing page, per zerity.co.uk review; app-store prices may differ).
+VAT = 1.2
+ALT_MONTHLY = {
+    "Posters": None,
+    "Individual drivers": 39 * VAT,                  # Same Day Courier Network, cheapest priced load board found
+    "Small fleets (2-5 vehicles)": 259.99 * VAT,     # Courier Exchange small fleet
+    "Medium fleets (6-15)": 259.99 * VAT,
+    "Large fleets (16-30)": 259.99 * VAT,
+    "Fleets (31-55)": 259.99 * VAT,
+}
+PULL = 0.3             # how strongly being dearer than the alternative pushes accounts out [ASSUMED]
+COMPETITORS = False
 PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
 SCALE = 0.6            # how strongly price sensitivity moves preference (assumed)
 CROWD = 1200
@@ -45,16 +59,19 @@ FIELDS = ("stance_mean", "stance_sd", "stubbornness", "activity", "influence", "
 FIXED = {"stance_mean": 0.0, "stance_sd": 0.3, "stubbornness": 0.5, "activity": 0.4, "influence": 1.0, "openness": 0.5}
 
 
-def _lean(delta: float, sens: float, loyalty: float) -> float:
-    return max(-1.0, min(1.0, loyalty - SCALE * sens * delta))
+def _lean(delta: float, sens: float, loyalty: float, price: float = 0.0, alt: float | None = None) -> float:
+    pull = 0.0
+    if COMPETITORS and alt:
+        pull = PULL * sens * max(0.0, price * (1 + delta) / alt - 1.0)
+    return max(-1.0, min(1.0, loyalty - SCALE * sens * delta - pull))
 
 
 def _build(delta: float, seed: int):
     from ..scenario_inputs import recompute_scenario_hash
     h = lambda x: "sha256:" + hashlib.sha256(x.encode()).hexdigest()
     rows, total = [], sum(v[0] for v in SEGMENTS.values())
-    for name, (n, _price, sens, loyalty) in SEGMENTS.items():
-        lean = _lean(delta, sens, loyalty)
+    for name, (n, price, sens, loyalty) in SEGMENTS.items():
+        lean = _lean(delta, sens, loyalty, price, ALT_MONTHLY.get(name))
         for i in range(n):
             vals = {P_SEG: name, **{f"f:{f}": v for f, v in FIXED.items()}, P_STAY: lean, P_LEAVE: -lean}
             rows.append({"row_id": f"{name}-{i}", "property_values": vals,
@@ -179,13 +196,16 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seeds", type=int, default=70)
+    ap.add_argument("--competitors", action="store_true")
     ap.add_argument("--crowd", type=int, default=CROWD)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
     CROWD, ROUNDS = a.crowd, a.rounds
+    global COMPETITORS
+    COMPETITORS = a.competitors
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
-    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
+    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "competitors": COMPETITORS, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
     (a.out / "report.html").write_text(report_html(res), encoding="utf-8")
     print(f"wrote {a.out / 'report.html'}")
     return 0
