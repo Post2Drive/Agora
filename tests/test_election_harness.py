@@ -170,9 +170,10 @@ def test_test_evaluate_missing_seal_is_refused_and_labels_stay_closed(tmp_path, 
     args, _ = _evaluate_fixture(tmp_path, None)
     opened = []
     monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: opened.append(1))
+    monkeypatch.setattr(h, "sha256_file", lambda p, _o=h.sha256_file: (opened.append(str(p)) if "countypres" in str(p) else None) or _o(p))
     with pytest.raises(SystemExit, match="SEAL_MISMATCH"):
         d.main(args)
-    assert opened == []
+    assert opened == []                                  # label file neither hashed nor loaded when the seal is absent
 
 
 def test_test_evaluate_valid_seal_opens_labels_exactly_once(tmp_path, monkeypatch):
@@ -185,3 +186,18 @@ def test_test_evaluate_valid_seal_opens_labels_exactly_once(tmp_path, monkeypatc
     assert d.main(args) == 0
     assert opened == [[2012, 2016]]
     assert (out / "test_result.json").exists()
+
+
+def test_test_evaluate_reads_sealed_outputs_before_hashing_the_label_file(tmp_path, monkeypatch):
+    import hashlib
+    from pathlib import Path
+    from agora.validation import run_election_validation as d
+    args, out = _evaluate_fixture(tmp_path, hashlib.sha256(b"[]").hexdigest())
+    events = []
+    real_read = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (events.append("read_outputs") if self.name == "test_outputs.json" else None) or real_read(self))
+    monkeypatch.setattr(h, "sha256_file", lambda p, _o=h.sha256_file: (events.append("hash_medsl") if "countypres" in str(p) else None) or _o(p))
+    monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: events.append("load_labels") or {})
+    monkeypatch.setattr(h, "evaluate", lambda recs, outcomes, previous=None, **k: {"observations": len(recs)})
+    assert d.main(args) == 0
+    assert events.index("read_outputs") < events.index("hash_medsl") < events.index("load_labels")
