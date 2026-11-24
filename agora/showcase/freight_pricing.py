@@ -58,6 +58,8 @@ PAID_MONTHS_Y1 = {"Posters": 0, "Individual drivers": 9, "Small fleets (2-5 vehi
 LOSS = 1.0   # >1: a price RISE on existing accounts hurts more than the same-size cut helps (loss aversion) [ASSUMED]
 PULL = 0.3             # how strongly being dearer than the alternative pushes accounts out [ASSUMED]
 COMPETITORS = False
+LLM_AGENTS = 0         # >0 with LLM_CFG set: that many language-model agents in addition to the crowd
+LLM_CFG = None         # e.g. {"backend": "ollama", "model": "llama3.2:3b"}; None = mock backend
 PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
 SCALE = 0.6            # how strongly price sensitivity moves preference (assumed)
 CROWD = 1200
@@ -102,7 +104,7 @@ def _build(delta: float, seed: int):
     scenario = {"name": f"freight-price-{tag}", "topic": "Post2Drive plan price change",
                 "question": "Do accounts stay subscribed?", "context": "Demo: owner-stated plan prices; mix and responses assumed.",
                 "seed": seed, "start": "2026-01-01T08:00:00", "minutes_per_round": 180, "rounds": ROUNDS, "feed_size": 4,
-                "memory_size": 4, "population": {"llm_agents": 0, "crowd_agents": CROWD}, "llm": {"backend": "mock"},
+                "memory_size": 4, "population": {"llm_agents": LLM_AGENTS, "crowd_agents": CROWD}, "llm": dict(LLM_CFG or {"backend": "mock"}),
                 "choice": {"name": "booking", "question": "Will you keep your plan?", "options": [OPT_STAY, OPT_LEAVE],
                            "open_round": ROUNDS - 4, "close_round": ROUNDS - 1, "turnout_base": -1.0, "turnout_weight": 3.0,
                            "undecided_below": 0.0, "weights": {n: c / total for n, (c, *_r) in SEGMENTS.items()}},
@@ -129,7 +131,7 @@ def run_once(delta: float, seed: int, workdir: Path | None = None) -> dict:
                     "target_sensitivity": "public"}
         receipt = mint_simulation_receipt(principal_policy(SyntheticFixtureAdapter(fx).issue("operator")), resource=resource,
                                           manifest_hash=manifest_hash(m), scenario_hash=m["scenario_hash"])
-        Simulation(proj, {"backend": "mock"}, governed_input={"package": package, "mapping": mapping, "receipt": receipt}).run()
+        Simulation(proj, dict(LLM_CFG or {"backend": "mock"}), governed_input={"package": package, "mapping": mapping, "receipt": receipt}).run()
         ch = Analysis(proj).choice()
         by = {g: v["shares"][OPT_STAY] for g, v in ch["by_segment"].items()} if "shares" in next(iter(ch["by_segment"].values())) else {}
         return {"share": ch["weighted_share"][OPT_STAY], "by_segment": by, "scenario_hash": m["scenario_hash"]}
@@ -206,7 +208,7 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 
 
 def main(argv=None) -> int:
-    global CROWD, ROUNDS, COMPETITORS, PULL, LOSS
+    global CROWD, ROUNDS, COMPETITORS, PULL, LOSS, LLM_AGENTS, LLM_CFG
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seeds", type=int, default=70)
@@ -214,19 +216,29 @@ def main(argv=None) -> int:
     ap.add_argument("--mix", choices=sorted(MIXES), default="driver-heavy")
     ap.add_argument("--pull", type=float, default=PULL)
     ap.add_argument("--alt-driver", type=float, default=None, help="monthly GBP incl VAT of cheapest rival for individual drivers")
+    ap.add_argument("--llm-agents", type=int, default=0, help="number of language-model agents (needs --llm-model)")
+    ap.add_argument("--llm-model", default=None, help="local Ollama model name, e.g. llama3.2:3b")
+    ap.add_argument("--changes", default=None, help="comma list of price changes, e.g. -0.10,0,0.10 (must include 0)")
     ap.add_argument("--loss", type=float, default=LOSS)
     ap.add_argument("--crowd", type=int, default=CROWD)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
     CROWD, ROUNDS = a.crowd, a.rounds
     COMPETITORS, PULL, LOSS = a.competitors, a.pull, a.loss
+    if a.llm_agents:
+        if not a.llm_model:
+            raise SystemExit('--llm-agents needs --llm-model (a local Ollama model)')
+        LLM_AGENTS, LLM_CFG = a.llm_agents, {'backend': 'ollama', 'model': a.llm_model, 'timeout': 1800.0}
     if a.alt_driver is not None:
         ALT_MONTHLY["Individual drivers"] = a.alt_driver
     for g, n in zip(list(SEGMENTS), MIXES[a.mix]):
         SEGMENTS[g] = (n,) + tuple(SEGMENTS[g][1:])
     a.out.mkdir(parents=True, exist_ok=True)
-    res = sweep(seeds=SEEDS[:a.seeds])
-    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "competitors": COMPETITORS, "mix": a.mix, "pull": PULL, "loss": LOSS, "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
+    chg = tuple(float(x) for x in a.changes.split(',')) if a.changes else PRICE_CHANGES
+    if 0.0 not in chg:
+        raise SystemExit('--changes must include 0 (the baseline)')
+    res = sweep(seeds=SEEDS[:a.seeds], changes=chg)
+    (a.out / "result.json").write_text(json.dumps({"synthetic": True, "assumptions_marked": True, "competitors": COMPETITORS, "mix": a.mix, "pull": PULL, "loss": LOSS, "llm_agents": LLM_AGENTS, "llm_model": (LLM_CFG or {}).get("model"), "results": {f"{d:+.2f}": v for d, v in res.items()}}, indent=1, sort_keys=True), encoding="utf-8")
     (a.out / "report.html").write_text(report_html(res), encoding="utf-8")
     print(f"wrote {a.out / 'report.html'}")
     return 0
