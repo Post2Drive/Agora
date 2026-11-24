@@ -151,3 +151,37 @@ def test_test_evaluate_checks_seal_before_touching_labels(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match="SEAL_MISMATCH"):
         d.main(["test-evaluate", "--polls", str(polls), "--medsl", str(medsl), "--manifest", str(man), "--out", str(out), "--sealed-sha", "0" * 64])
     assert opened == []                                  # label file neither hashed nor loaded
+
+
+def _evaluate_fixture(tmp_path, seal_hash):
+    polls = tmp_path / "pres_pollaverages_1968-2016.csv"; polls.write_text("cycle,state,modeldate,candidate_name,pct_estimate\n")
+    medsl = tmp_path / "countypres_2000-2024.csv"; medsl.write_text("state,county_name,year,state_po,county_fips,office,candidate,party,candidatevotes,totalvotes,version,mode\n")
+    man = tmp_path / "m.csv"
+    man.write_text("package,file,bytes,sha256\n"
+                   f"x,polls/pres_pollaverages_1968-2016.csv,{polls.stat().st_size},{h.sha256_file(polls)}\n"
+                   f"x,medsl/countypres_2000-2024.csv,{medsl.stat().st_size},{h.sha256_file(medsl)}\n")
+    out = tmp_path / "o"; out.mkdir(); (out / "test_outputs.json").write_text("[]")
+    args = ["test-evaluate", "--polls", str(polls), "--medsl", str(medsl), "--manifest", str(man), "--out", str(out)]
+    return args + (["--sealed-sha", seal_hash] if seal_hash else []), out
+
+
+def test_test_evaluate_missing_seal_is_refused_and_labels_stay_closed(tmp_path, monkeypatch):
+    from agora.validation import run_election_validation as d
+    args, _ = _evaluate_fixture(tmp_path, None)
+    opened = []
+    monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: opened.append(1))
+    with pytest.raises(SystemExit, match="SEAL_MISMATCH"):
+        d.main(args)
+    assert opened == []
+
+
+def test_test_evaluate_valid_seal_opens_labels_exactly_once(tmp_path, monkeypatch):
+    import hashlib
+    from agora.validation import run_election_validation as d
+    args, out = _evaluate_fixture(tmp_path, hashlib.sha256(b"[]").hexdigest())
+    opened = []
+    monkeypatch.setattr(h, "load_outcomes", lambda *a, **k: opened.append(a[1]) or {})
+    monkeypatch.setattr(h, "evaluate", lambda recs, outcomes, previous=None, **k: {"observations": len(recs)})
+    assert d.main(args) == 0
+    assert opened == [[2012, 2016]]
+    assert (out / "test_result.json").exists()
