@@ -1,6 +1,6 @@
 """Showcase: governed what-if on Post2Drive plan prices.
 
-Inputs: the plan prices are the owner's stated Post2Drive plan (Nov 2026; adjustable, not locked). Everything else is
+Inputs: the plan prices are the owner's Post2Drive pricing page (Nov 2026; checkout not connected). Launch free periods and one-off verification fees are NOT modelled. Everything else is
 ASSUMED and marked as such: the account mix, how strongly each group reacts to a price change, and loyalty. No P2D user
 data, no personal data, no real accounts are used.
 
@@ -33,6 +33,7 @@ SEGMENTS = {
     "Small fleets (2-5 vehicles)": (40, 24.99 * WEEKS_PER_MONTH, 1.0, 0.30),
     "Medium fleets (6-15)": (15, 39.99 * WEEKS_PER_MONTH, 0.7, 0.35),
     "Large fleets (16-30)": (5, 59.99 * WEEKS_PER_MONTH, 0.5, 0.40),
+    "Fleets (31-55)": (2, 79.99 * WEEKS_PER_MONTH, 0.4, 0.45),
 }
 PRICE_CHANGES = (-0.10, -0.05, 0.0, 0.05, 0.10, 0.15)
 SCALE = 0.6            # how strongly price sensitivity moves preference (assumed)
