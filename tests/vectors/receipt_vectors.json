@@ -1,0 +1,246 @@
+{
+ "base_receipt": {
+  "alg": "ed25519",
+  "binding_id": "bind-1",
+  "expires_at": "2026-11-24T12:05:00Z",
+  "import_id": "imp-1",
+  "issued_at": "2026-11-24T12:00:00Z",
+  "key_id": "test-key-1",
+  "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "nonce": "00112233445566778899aabbccddeeff",
+  "project": "proj-1",
+  "purpose": "simulate",
+  "release_id": "rel-test-1",
+  "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "subject": "user-1",
+  "tenant": "tenant-a",
+  "v": 1
+ },
+ "cases": [
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "5931b0a889efb0ea154bdd8e5b6a64d38dc76a4b6805f3065ff10959ef8f8051e86f1e27276ce0b3e5c30b479acfe08f7051119dd0d9ea4cb3dd2e4fa9b3280c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "valid",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "ok"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"export\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "5931b0a889efb0ea154bdd8e5b6a64d38dc76a4b6805f3065ff10959ef8f8051e86f1e27276ce0b3e5c30b479acfe08f7051119dd0d9ea4cb3dd2e4fa9b3280c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "export",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "tampered-field-after-signing",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "BAD_SIGNATURE"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "67758de898c4ad3e65c792ac47a9771a0390876cf222d280b6b49254107d2198bfbd4783264373a40ef13a1da5de5712aac2cc67e238d380bde6084620237d0f"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "signed-without-domain-tag",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "BAD_SIGNATURE"
+  },
+  {
+   "envelope": {
+    "receipt": "{\n \"alg\": \"ed25519\",\n \"binding_id\": \"bind-1\",\n \"expires_at\": \"2026-11-24T12:05:00Z\",\n \"import_id\": \"imp-1\",\n \"issued_at\": \"2026-11-24T12:00:00Z\",\n \"key_id\": \"test-key-1\",\n \"manifest_hash\": \"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\n \"nonce\": \"00112233445566778899aabbccddeeff\",\n \"project\": \"proj-1\",\n \"purpose\": \"simulate\",\n \"release_id\": \"rel-test-1\",\n \"scenario_hash\": \"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\n \"subject\": \"user-1\",\n \"tenant\": \"tenant-a\",\n \"v\": 1\n}",
+    "sig": "e300d2762cfb6d04afc1687809888d76a042f385121927ee737df1a5b2a082fc46e27494d84882fec442bd7069f9a48eaecd2d4225a45498901a623ff371de02"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "signed-but-not-canonical",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "NON_CANONICAL"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"extra\":\"x\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "cc6a56791738a306401b1230224c7ce7c2368dc3eff109f9a17e56f9e3fcaafe7ea3a93194d1a319636cde0722882071e8b8e1299828fa22b2aabcdbe8d00e0c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "unknown-field-signed",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "BAD_FIELDS"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"rsa\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "ef5828d89e893e24b1df28d5cde39ac98e685185810858973e4e06d404957b622619ffdb5c418e14652be7fd52e29f7cf61d84dd526b9d1756e565c2f073aa09"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "wrong-algorithm-signed",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "BAD_ALGORITHM"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "5931b0a889efb0ea154bdd8e5b6a64d38dc76a4b6805f3065ff10959ef8f8051e86f1e27276ce0b3e5c30b479acfe08f7051119dd0d9ea4cb3dd2e4fa9b3280c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "expired",
+   "now": "2026-11-24T12:05:00Z",
+   "verdict": "EXPIRED"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "5931b0a889efb0ea154bdd8e5b6a64d38dc76a4b6805f3065ff10959ef8f8051e86f1e27276ce0b3e5c30b479acfe08f7051119dd0d9ea4cb3dd2e4fa9b3280c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "not-yet-valid",
+   "now": "2026-11-24T11:59:00Z",
+   "verdict": "NOT_YET_VALID"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "5931b0a889efb0ea154bdd8e5b6a64d38dc76a4b6805f3065ff10959ef8f8051e86f1e27276ce0b3e5c30b479acfe08f7051119dd0d9ea4cb3dd2e4fa9b3280c"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-b"
+   },
+   "name": "wrong-scope-tenant",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "SCOPE_MISMATCH"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:05:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"unlisted-key\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "99def8f827fa386165700318e2560ef3460c732b3149f9f761bef358ff86af2bf700d2f5829a1c0af816250e4dc72d696c3c3867bca9e0aed417b9e75b8ed30f"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "unknown-key-id",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "UNKNOWN_KEY"
+  },
+  {
+   "envelope": {
+    "receipt": "{\"alg\":\"ed25519\",\"binding_id\":\"bind-1\",\"expires_at\":\"2026-11-24T12:10:00Z\",\"import_id\":\"imp-1\",\"issued_at\":\"2026-11-24T12:00:00Z\",\"key_id\":\"test-key-1\",\"manifest_hash\":\"sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"project\":\"proj-1\",\"purpose\":\"simulate\",\"release_id\":\"rel-test-1\",\"scenario_hash\":\"sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"subject\":\"user-1\",\"tenant\":\"tenant-a\",\"v\":1}",
+    "sig": "b5f6be4717dd552d9475a7c23fb021b707fe6f469a38477eac3b6a9ba94a89198c6406ed0a5a4388e00155c216a0d6d548e227bc4ec5979c453ea479d4aa560f"
+   },
+   "expected": {
+    "binding_id": "bind-1",
+    "import_id": "imp-1",
+    "manifest_hash": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "project": "proj-1",
+    "purpose": "simulate",
+    "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "subject": "user-1",
+    "tenant": "tenant-a"
+   },
+   "name": "lifetime-over-limit",
+   "now": "2026-11-24T12:01:00Z",
+   "verdict": "BAD_LIFETIME"
+  }
+ ],
+ "note": "Test key only. Signatures were produced by an independent Ed25519 implementation (the 'cryptography' package) and checked here by the pure-Python verifier.",
+ "rfc8032": [
+  {
+   "message_hex": "",
+   "public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+   "seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+   "signature_hex": "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+  }
+ ],
+ "test_key": {
+  "key_id": "test-key-1",
+  "not_after": "2027-02-01T00:00:00Z",
+  "not_before": "2026-11-01T00:00:00Z",
+  "public_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+ }
+}
