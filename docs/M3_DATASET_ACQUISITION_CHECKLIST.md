@@ -164,3 +164,7 @@ Before hashing/import handoff, inspect the exact headers and a small, controlled
 
 **Retail scope note:** Package R/M5 is dropped by the owner. No Kaggle files are to be acquired and no retail benchmark is included in the current validation scope.
 
+
+## Final package and evidence disposition — 24 November 2026
+
+Owner clarification: Package E was run once; the 2012 result was a tie and the 2016 held-out result was a loss. This result is final; no rerun or further data acquisition is authorized. Package A is NOT EVALUABLE. Package R/M5 and retail are dropped. The seven state-cycle exclusions are not enumerated in the saved files and are unrecoverable. The first failed calibration attempt has no retained log or exit code; these details are unrecoverable from saved files. Full run configuration is only partly recorded; retain only evidenced values and mark the rest unavailable. Do not invent missing exclusions, reasons, timestamps, process status, log contents or configuration. Existing source manifests and frozen v0.1/v0.2 artifacts remain unchanged. VALIDATED_PREDICTION_ENABLED=False.
