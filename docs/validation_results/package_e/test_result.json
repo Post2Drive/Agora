@@ -1,0 +1,21 @@
+{
+ "coverage": 0.9934640522875817,
+ "mae_agora": 7.36240909817784,
+ "mae_difference_agora_minus_published": {
+  "alpha": 0.05,
+  "clusters": 51,
+  "hi": 1.8443978908358198,
+  "lo": 0.7307252939548811,
+  "point": 1.198965713204448,
+  "samples": 2000,
+  "seed": 20261123
+ },
+ "mae_persistence": 6.694122248925588,
+ "mae_published_average": 6.16344338497339,
+ "observations": 152,
+ "outputs_sha256": "109e055089e95f0e1be14bae547ceaaa1219bf045a5452e824d607caf56ac989",
+ "persistence_observations": 152,
+ "rmse_agora": 8.747410379499945,
+ "rmse_published_average": 7.546204343072801,
+ "states": 51
+}
