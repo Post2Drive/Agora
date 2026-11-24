@@ -175,13 +175,13 @@ table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom
 
 
 def main(argv=None) -> int:
+    global CROWD, ROUNDS
     ap = argparse.ArgumentParser(prog="agora.showcase.freight_pricing")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seeds", type=int, default=70)
     ap.add_argument("--crowd", type=int, default=CROWD)
     ap.add_argument("--rounds", type=int, default=ROUNDS)
     a = ap.parse_args(argv)
-    global CROWD, ROUNDS
     CROWD, ROUNDS = a.crowd, a.rounds
     a.out.mkdir(parents=True, exist_ok=True)
     res = sweep(seeds=SEEDS[:a.seeds])
