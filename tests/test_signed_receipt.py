@@ -13,7 +13,7 @@ TK = VEC["test_key"]
 SEED = bytes.fromhex(TK["seed_hex"])
 BASE = VEC["base_receipt"]
 SCOPE = {k: BASE[k] for k in ("tenant", "subject", "project", "import_id", "binding_id", "manifest_hash",
-                              "scenario_hash", "purpose")}
+                              "scenario_hash", "purpose", "release_id")}
 
 
 def ts(text):
@@ -43,6 +43,24 @@ def test_ed25519_matches_rfc8032_vector(vec):
     assert sr.public_key(seed).hex() == vec["public_hex"]
     assert sr.sign(seed, msg).hex() == vec["signature_hex"]
     assert sr.verify_signature(bytes.fromhex(vec["public_hex"]), msg, bytes.fromhex(vec["signature_hex"]))
+
+
+@pytest.mark.parametrize("case", VEC["small_order_key_cases"], ids=lambda c: c["name"])
+def test_small_order_edwards_points_are_refused(case):
+    public = bytes.fromhex(case["public_hex"])
+    signature = bytes.fromhex(case["signature_hex"])
+    assert not sr.verify_signature(public, b"any message", signature)
+
+
+def test_identity_public_key_cannot_forge_a_signed_receipt():
+    case = next(c for c in VEC["small_order_key_cases"] if c["name"] == "identity-public-key")
+    envelope = {"receipt": sr.canonical_bytes(BASE).decode("ascii"), "sig": case["signature_hex"]}
+    identity_key = sr.KeyEntry(TK["key_id"], bytes.fromhex(case["public_hex"]), TK["not_before"],
+                               TK["not_after"], status="active", test=True)
+    with pytest.raises(sr.ReceiptError) as err:
+        sr.verify_receipt(envelope, keys={TK["key_id"]: identity_key}, now=ts("2026-11-24T12:01:00Z"),
+                          expected=SCOPE, nonces=sr.NonceStore(), allow_test_keys=True)
+    assert err.value.code == "BAD_SIGNATURE"
 
 
 def test_signature_with_a_flipped_bit_or_wrong_message_is_refused():
@@ -120,6 +138,12 @@ def test_expiry_boundary_and_future_issue_with_skew():
 def test_every_scope_field_is_enforced():
     for name in SCOPE:
         refused("SCOPE_MISMATCH", signed(nonce="3" * 32), expected={**SCOPE, name: "other"})
+
+
+@pytest.mark.parametrize("name", tuple(SCOPE))
+def test_each_missing_expected_scope_field_is_refused(name):
+    incomplete = {key: value for key, value in SCOPE.items() if key != name}
+    refused("INCOMPLETE_SCOPE", signed(), expected=incomplete)
 
 
 def test_empty_scope_is_refused_so_a_caller_cannot_skip_the_scope_check():
