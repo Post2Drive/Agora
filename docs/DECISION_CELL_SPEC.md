@@ -23,7 +23,7 @@ Non-goals: predicting that an event will occur; autonomous action; targeting or 
 - **Timezone and market close.** All times are stored in UTC with the source's original local time and zone kept alongside. The company client's business time zone is set per project (default Asia/Kolkata). Where an event is tied to a market, the project record names the market calendar; an event after that market's close (or on a non-trading day) is assigned to the next session open for outcome windows, and the rule applied is logged. Ambiguous local times (daylight-saving overlap) are refused and sent to the human.
 - **Auditable source trust.** The trust score is a recorded function of named, versioned inputs (source class, track record from the after-action hit and false-alarm table, correction history, independence group) and is shown with its inputs; each score and each change is audit-logged with the version of the rule used. The primary-source CONFIRMED exception requires the approver to record which primary source and why it qualifies; the exception is flagged in every result that relies on it and counted in review reports.
 - **Corrections and retractions.** A retraction or correction is a new item linked to the original. Anything run on a retracted item is stamped "based on retracted item" in every result and report; the human is shown which branches are affected and can fork without it.
-- **Who may mark CONFIRMED.** Only the named approver for the project (or a delegate listed in the project record) may promote an item to CONFIRMED, with a reason text. The system may propose, never promote. Promotion and demotion are audit-logged.
+- **Who may mark CONFIRMED.** The designated project owner, identified in the project record, is the approver and may promote an item to CONFIRMED with a reason text. No delegate is enabled by default. A delegate may act only after the owner records that person's exact identity and project scope in the project record. The system may propose, never promote. Promotion and demotion are audit-logged.
 
 ## 3. Human options (shown to everyone with access; executable only if permitted, see 3A)
 | Option | What it does |
@@ -39,7 +39,7 @@ Non-goals: predicting that an event will occur; autonomous action; targeting or 
 | ESCALATE | Send to a second named approver before anything runs (for sensitive projects). |
 Options can be combined (e.g. fork from event with a different evidence set). Each choice needs: the person's identity, a reason text, and the time budget. A choice that costs more than the budget asks for confirmation.
 
-Timeout rule: if nobody responds within the project's response window, the system **holds the last human-approved result** and alerts the approver and a named backup. It publishes nothing new and changes no forecast. If no approved result exists, nothing is published and the item stays pending. The hold, the alert and the elapsed time are audit-logged.
+Timeout rule: each project has a 15-minute response window. If nobody responds within that window, the system **holds the last human-approved result** and alerts the designated project owner. If the owner has explicitly named a backup contact in the project record, that contact is alerted too; no backup is inferred. It publishes nothing new and changes no forecast. If no approved result exists, nothing is published and the item stays pending. The hold, the alert and the elapsed time are audit-logged.
 
 ## 3A. Permission, snapshot and budget matrix
 Showing an option is not the same as being able to run it. An option is executable only when all three checks pass; otherwise it is displayed greyed with the failing reason and the attempt is logged.
@@ -84,5 +84,5 @@ Any tie or loss is a valid result.
 ## 9. Open decisions for the owner
 1. ~~First client type~~ **Decided 24 Nov 2026 (owner): company.** Political and defence/security are out of scope until a hosted company pilot works.
 2. **Engine snapshot edit: approved in principle by the owner, 24 Nov 2026, for the single path `agora/sim/engine.py` only.** It is implemented in its own PR after this spec is final, with mutation proofs, and no other `agora/sim/**` path is covered. This spec itself changes no code.
-3. Response windows and who the approvers are per project.
+3. **Decided 25 Nov 2026 (owner):** 15-minute response window per project; the designated project owner named in the project record is the approver. No delegate or backup is enabled by default. A delegate or backup must be explicitly named with its project scope in the project record before receiving that authority or alerts.
 4. Hosting for live feeds.
