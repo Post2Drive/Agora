@@ -30,7 +30,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "valid",
    "now": "2026-11-24T12:01:00Z",
@@ -49,7 +50,8 @@
     "purpose": "export",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "tampered-field-after-signing",
    "now": "2026-11-24T12:01:00Z",
@@ -68,7 +70,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "signed-without-domain-tag",
    "now": "2026-11-24T12:01:00Z",
@@ -87,7 +90,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "signed-but-not-canonical",
    "now": "2026-11-24T12:01:00Z",
@@ -106,7 +110,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "unknown-field-signed",
    "now": "2026-11-24T12:01:00Z",
@@ -125,7 +130,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "wrong-algorithm-signed",
    "now": "2026-11-24T12:01:00Z",
@@ -144,7 +150,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "expired",
    "now": "2026-11-24T12:05:00Z",
@@ -163,7 +170,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "not-yet-valid",
    "now": "2026-11-24T11:59:00Z",
@@ -182,7 +190,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-b"
+    "tenant": "tenant-b",
+    "release_id": "rel-test-1"
    },
    "name": "wrong-scope-tenant",
    "now": "2026-11-24T12:01:00Z",
@@ -201,7 +210,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "unknown-key-id",
    "now": "2026-11-24T12:01:00Z",
@@ -220,7 +230,8 @@
     "purpose": "simulate",
     "scenario_hash": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "subject": "user-1",
-    "tenant": "tenant-a"
+    "tenant": "tenant-a",
+    "release_id": "rel-test-1"
    },
    "name": "lifetime-over-limit",
    "now": "2026-11-24T12:01:00Z",
