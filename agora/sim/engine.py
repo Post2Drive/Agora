@@ -20,6 +20,7 @@ import os
 import shutil
 import sqlite3
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -146,6 +147,24 @@ def _snapshot_state_digest(path: Path) -> str:
         return _state_digest(conn)
     finally:
         conn.close()
+
+
+def _backup_sqlite(source: sqlite3.Connection, target: Path) -> None:
+    fd, name = tempfile.mkstemp(prefix=target.name + ".", suffix=".tmp", dir=target.parent)
+    os.close(fd)
+    temp_path = Path(name)
+    try:
+        out = sqlite3.connect(str(temp_path))
+        try:
+            source.backup(out)
+            out.execute("PRAGMA journal_mode=DELETE")
+            out.commit()
+        finally:
+            out.close()
+        os.replace(temp_path, target)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
 
 
 class Simulation:
@@ -397,49 +416,30 @@ class Simulation:
             if not valid:
                 raise SnapshotError(f"snapshot for round {r} already exists but failed integrity verification")
             return meta_path
-        for stale in (db_path, cache_path, graph_path):  # an incomplete earlier attempt (no metadata) is replaced
-            if stale.exists():
-                os.chmod(stale, 0o644)
-                stale.unlink()
-        tmp = db_path.with_name(db_path.name + ".tmp")
-        tmp.unlink(missing_ok=True)
-        dst = sqlite3.connect(str(tmp))
-        try:
-            self.store.db.backup(dst)
-            dst.execute("PRAGMA journal_mode=DELETE")
-            dst.commit()
-        finally:
-            dst.close()
-        os.replace(tmp, db_path)
+        artifacts = (db_path, cache_path, graph_path,
+                     db_path.with_name(db_path.name + ".tmp"),
+                     cache_path.with_name(cache_path.name + ".tmp"),
+                     graph_path.with_name(graph_path.name + ".tmp"))
+        if any(p.exists() or p.is_symlink() for p in artifacts):
+            raise SnapshotError("incomplete snapshot artifacts already exist; refusing to remove or overwrite them")
+        _backup_sqlite(self.store.db, db_path)
         cache_src = self.dir / CACHE_FILE
         cache_digest = None
         if cache_src.exists():
-            ctmp = cache_path.with_name(cache_path.name + ".tmp")
-            ctmp.unlink(missing_ok=True)
-            src, dstc = sqlite3.connect(str(cache_src)), sqlite3.connect(str(ctmp))
+            src = sqlite3.connect(str(cache_src))
             try:
-                src.backup(dstc)
-                dstc.execute("PRAGMA journal_mode=DELETE")
-                dstc.commit()
+                _backup_sqlite(src, cache_path)
             finally:
                 src.close()
-                dstc.close()
-            os.replace(ctmp, cache_path)
             cache_digest = _cache_digest(cache_path)
         graph_src = self.dir / "graph.db"
         graph_digest = None
         if graph_src.exists():
-            gtmp = graph_path.with_name(graph_path.name + ".tmp")
-            gtmp.unlink(missing_ok=True)
-            gsrc, gdst = sqlite3.connect(str(graph_src)), sqlite3.connect(str(gtmp))
+            gsrc = sqlite3.connect(str(graph_src))
             try:
-                gsrc.backup(gdst)
-                gdst.execute("PRAGMA journal_mode=DELETE")
-                gdst.commit()
+                _backup_sqlite(gsrc, graph_path)
             finally:
                 gsrc.close()
-                gdst.close()
-            os.replace(gtmp, graph_path)
             graph_digest = _file_digest(graph_path)
         check = _open_ro(db_path)
         try:
