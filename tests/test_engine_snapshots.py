@@ -138,6 +138,16 @@ def test_live_backend_fork_fails_closed(tmp_path):
         Simulation.fork_from(source, 2, tmp_path / "live-fork")
 
 
+def test_missing_model_cache_fails_closed(tmp_path):
+    source = _small_project(tmp_path, "source")
+    _complete(source, snapshot_rounds=(2,))
+    cache = source / "snapshots" / "round-00002.cache.db"
+    assert cache.exists()
+    cache.unlink()
+    with pytest.raises(SnapshotError, match="cache"):
+        Simulation.fork_from(source, 2, tmp_path / "missing-cache-fork")
+
+
 def test_changed_engine_identity_refuses_fork(tmp_path, monkeypatch):
     import agora.sim.engine as engine
 
