@@ -1,0 +1,2 @@
+version,dataset_id,role,filename,source_url,source_reference,bytes,sha256,license,license_reference,status,notes
+v1.0-draft,fivethirtyeight-2020-presidential-poll-averages,poll_input,presidential_poll_averages_2020.csv,https://projects.fivethirtyeight.com/2020-general-data/presidential_poll_averages_2020.csv,TBD,TBD,TBD,CC BY 4.0,https://github.com/fivethirtyeight/data/blob/4c1ff5e3aef1816ae04af63218015066e186c147/README.md,CANDIDATE_NOT_ACQUIRED,TBD
