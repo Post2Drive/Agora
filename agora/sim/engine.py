@@ -533,13 +533,14 @@ class Simulation:
             except (TypeError, ValueError) as exc:
                 raise SnapshotError(f"invalid injected event: {exc}") from exc
             injected.append(ev)
-        if dest.exists():
+        injected.sort(key=lambda e: (e["round"], _canon(e)))
+        if dest.exists() or dest.is_symlink():
             raise SnapshotError("destination already exists; a fork never overwrites")
         src_resolved, dest_resolved = src.resolve(), dest.resolve()
         if dest_resolved == src_resolved or dest_resolved.is_relative_to(src_resolved):
             raise SnapshotError("fork destination must be outside the source project")
         work = dest.with_name(dest.name + ".forking")
-        if work.exists():
+        if work.exists() or work.is_symlink():
             raise SnapshotError("fork staging path already exists; refusing to remove existing data")
         work.mkdir(parents=True, exist_ok=False)
         try:
@@ -560,7 +561,7 @@ class Simulation:
                 with restored:
                     restored.execute("DELETE FROM injected WHERE round > ?", (int(round),))
                     restored.executemany("INSERT INTO injected (round, event) VALUES (?, ?)",
-                                         [(e["round"], json.dumps(e)) for e in injected])
+                                         [(e["round"], _canon(e)) for e in injected])
             finally:
                 restored.close()
             manifest = {"forked_from": src.name, "round": int(round), "state_digest": meta["state_digest"],
