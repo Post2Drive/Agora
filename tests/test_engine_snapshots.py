@@ -215,6 +215,23 @@ def test_snapshot_state_digest_preserves_row_order():
         conn.close()
 
 
+def test_snapshot_state_digest_binds_schema_and_future_ids():
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE generated (id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT)")
+        conn.execute("INSERT INTO generated (value) VALUES ('first')")
+        data_digest = _state_digest(conn)
+
+        conn.execute("UPDATE sqlite_sequence SET seq = seq + 100 WHERE name = 'generated'")
+        assert _state_digest(conn) != data_digest
+
+        sequence_digest = _state_digest(conn)
+        conn.execute("CREATE INDEX generated_value_idx ON generated(value)")
+        assert _state_digest(conn) != sequence_digest
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("rounds", [(-1,), (True,), (8,)])
 def test_snapshot_rounds_must_be_validated(tmp_path, rounds):
     project = _small_project(tmp_path, "source")
