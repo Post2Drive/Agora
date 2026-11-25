@@ -27,6 +27,9 @@ FIELDS = (
     "v", "alg", "tenant", "subject", "project", "import_id", "binding_id", "manifest_hash",
     "scenario_hash", "purpose", "release_id", "key_id", "issued_at", "expires_at", "nonce",
 )
+SCOPE_FIELDS = (
+    "tenant", "subject", "project", "import_id", "binding_id", "manifest_hash", "scenario_hash", "purpose", "release_id",
+)
 _TOKEN = re.compile(r"[A-Za-z0-9._:\-]{1,128}\Z")
 _HASH = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _NONCE = re.compile(r"[0-9a-f]{32}\Z")
@@ -119,6 +122,17 @@ def _h512(data: bytes) -> int:
     return int.from_bytes(hashlib.sha512(data).digest(), "little")
 
 
+_IDENTITY_ENCODING = b"\\x01" + b"\\x00" * 31
+
+
+def _is_prime_order_nonidentity(point) -> bool:
+    """Require a canonical, non-identity point in Ed25519's prime-order subgroup."""
+    return (
+        _compress(point) != _IDENTITY_ENCODING
+        and _compress(_mul(_Q, point)) == _IDENTITY_ENCODING
+    )
+
+
 def _expand(seed: bytes):
     if len(seed) != 32:
         raise ValueError("seed must be 32 bytes")
@@ -150,6 +164,8 @@ def verify_signature(pub: bytes, message: bytes, signature: bytes) -> bool:
     a_pt = _decompress(pub)
     r_pt = _decompress(signature[:32])
     if a_pt is None or r_pt is None:
+        return False
+    if not _is_prime_order_nonidentity(a_pt) or not _is_prime_order_nonidentity(r_pt):
         return False
     s = int.from_bytes(signature[32:], "little")
     if s >= _Q:
@@ -276,11 +292,17 @@ def verify_receipt(
 ) -> dict[str, Any]:
     """Return the verified receipt dict or raise ReceiptError. Consumes the nonce only after every check passes.
 
-    `expected` is the exact scope the caller is about to act on (tenant, subject, project, import_id, binding_id,
-    manifest_hash, scenario_hash, purpose, ...); every key given must equal the receipt's value. It must not be empty.
+    `expected` must contain exactly tenant, subject, project, import_id, binding_id, manifest_hash, scenario_hash,
+    purpose and release_id; every value must equal the receipt's value.
     """
-    if not expected:
-        raise ReceiptError("NO_SCOPE", "caller must state the scope being authorised")
+    if not isinstance(expected, Mapping) or not expected:
+        raise ReceiptError("NO_SCOPE", "caller must state the complete scope being authorised")
+    missing_scope = set(SCOPE_FIELDS) - set(expected)
+    if missing_scope:
+        missing = ",".join(sorted(missing_scope))
+        raise ReceiptError("INCOMPLETE_SCOPE", missing)
+    if set(expected) != set(SCOPE_FIELDS):
+        raise ReceiptError("SCOPE_MISMATCH", "expected scope has unknown fields")
     if not isinstance(envelope, Mapping) or set(envelope) != {"receipt", "sig"}:
         raise ReceiptError("MALFORMED", "envelope must be exactly {receipt, sig}")
     if not isinstance(envelope["receipt"], str) or not isinstance(envelope["sig"], str):
@@ -311,8 +333,8 @@ def verify_receipt(
         raise ReceiptError("NOT_YET_VALID")
     if now >= expires:
         raise ReceiptError("EXPIRED")
-    for name, want in expected.items():
-        if name not in FIELDS or receipt.get(name) != want:
+    for name in SCOPE_FIELDS:
+        if receipt.get(name) != expected[name]:
             raise ReceiptError("SCOPE_MISMATCH", name)
     if not nonces.consume(receipt["key_id"], receipt["nonce"]):
         raise ReceiptError("REPLAY")
