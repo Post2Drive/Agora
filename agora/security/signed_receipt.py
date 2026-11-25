@@ -122,7 +122,7 @@ def _h512(data: bytes) -> int:
     return int.from_bytes(hashlib.sha512(data).digest(), "little")
 
 
-_IDENTITY_ENCODING = b"\\x01" + b"\\x00" * 31
+_IDENTITY_ENCODING = b"\x01" + b"\x00" * 31
 
 
 def _is_prime_order_nonidentity(point) -> bool:
