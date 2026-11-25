@@ -88,8 +88,7 @@ def _sha(text: str) -> str:
 
 
 def _state_digest(conn: sqlite3.Connection) -> str:
-    """Digest of every simulation-state table (all agent state, posts, follows, memberships, choices, events,
-    injected events, provenance and meta), independent of row order, timing and call statistics."""
+    """Digest every simulation-state table, preserving load order and excluding only timing/call statistics."""
     h = hashlib.sha256()
     names = sorted(r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'") if r[0] not in _NON_STATE_TABLES)
@@ -122,7 +121,7 @@ def _llm_identity(cfg: LLMConfig) -> dict:
 
 def _engine_digest() -> str:
     """Bind a snapshot to the exact engine implementation that created it."""
-    return hashlib.sha256(Path(__file__).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _file_digest(path: Path) -> str:
@@ -356,7 +355,7 @@ class Simulation:
     def replay_is_deterministic(self) -> bool:
         """True only if this run's model replies are reproducible: the mock backend (a pure function of its input) or
         a run whose every reply came from the reply cache. A live model run beyond a snapshot is never claimed so."""
-        return self.llm_cfg.backend == "mock" or self.live_llm_calls == 0
+        return self.llm_cfg.backend.lower() == "mock"
 
     def take_snapshot(self, r: int) -> Path:
         """Write an immutable snapshot of the committed state after round r (only at a committed round boundary).
@@ -364,6 +363,8 @@ class Simulation:
         The snapshot is a copy of the run database and the model reply cache plus a write-once metadata file whose
         presence marks it complete. An existing snapshot is never overwritten.
         """
+        if isinstance(r, bool) or not isinstance(r, int):
+            raise SnapshotError("snapshot round must be an integer")
         if r != self.store.last_round():
             raise SnapshotError("snapshots are taken only at the last committed round boundary")
         base = self.dir / SNAPSHOT_DIR / f"round-{r:05d}"
@@ -461,11 +462,13 @@ class Simulation:
         Refuses (SnapshotError, nothing left at ``dest``) when the snapshot is missing, corrupt, incomplete, from a
         different scenario or model configuration, from a governed run, or when the restored state does not digest
         to the recorded value. Model replies up to the snapshot are replayed from the snapshot's reply cache; replies
-        after it are produced again, so the fork is reproducible only for the mock backend or when
-        ``Simulation.replay_is_deterministic`` is true after it runs. No claim is made for live models otherwise.
+        after it are produced again. Forks therefore require the deterministic mock backend; live model backends
+        are refused because unseen post-snapshot prompts cannot be guaranteed to hit the copied cache.
         """
+        if isinstance(round, bool) or not isinstance(round, int):
+            raise SnapshotError("fork round must be an integer")
         src, dest = Path(source), Path(dest)
-        base = src / SNAPSHOT_DIR / f"round-{int(round):05d}"
+        base = src / SNAPSHOT_DIR / f"round-{round:05d}"
         db_path, cache_path, graph_path, meta_path = (
             base.with_name(base.name + e) for e in (".db", ".cache.db", ".graph.db", ".json"))
         if not meta_path.exists() or not db_path.exists():
@@ -513,7 +516,7 @@ class Simulation:
             raise SnapshotError("model backend or configuration differs from the snapshot; replay would not be reproducible")
         # A new event can create unseen prompts. A copied cache cannot make a live backend deterministic
         # on cache misses, so only the deterministic mock backend is eligible for a fork.
-        if LLMConfig.from_dict(cfg).backend != "mock":
+        if LLMConfig.from_dict(cfg).backend.lower() != "mock":
             raise SnapshotError("forking with a live or unverified LLM backend cannot guarantee deterministic replay")
         fields = scenario_mod.Event.__dataclass_fields__
         injected = []
