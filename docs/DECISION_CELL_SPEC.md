@@ -1,6 +1,6 @@
 # AGORA Decision Cell — Design Spec (DRAFT v0.3)
 
-Status: DRAFT for ChatGPT review and owner approval. Docs only. Approves no code, no engine edit (`agora/sim/**`), no data, no feed, no run, no flag change. `VALIDATED_PREDICTION_ENABLED` stays False.
+Status: DRAFT for final owner review. Docs only. Approves no code, no engine edit (`agora/sim/**`), no data, no feed, no run, no flag change. `VALIDATED_PREDICTION_ENABLED` stays False.
 
 ## 1. Purpose
 When something new happens (breaking news, a viral video, a leak report, an incident), a named human in charge can bring it into a running or finished study and choose, with full information, how AGORA should respond. The system never acts on its own: it verifies, shows, runs what the human chooses, and records everything.
@@ -59,12 +59,13 @@ Rules: no snapshot means the option is shown as unavailable, not silently replac
 ## 4. Data the human can use
 Anything already approved and bound for the study: the study's own sources, the governed package, previous branches, and event items that passed section 2. New feeds and new datasets need separate named owner approval. Personal data stays excluded unless a consent review passes.
 
-## 5. Engine requirement (needs separate owner approval to edit agora/sim/**)
-- Per-round snapshot of agent state: opinions, memory, social links, random generator state, and the injected-event list.
-- `fork_from(snapshot, event_set)` that resumes deterministically; same inputs and seed give the same result.
-- Cost estimate before a run (rounds left times agents) shown to the human.
-- Snapshots are hashed and listed in the run provenance record.
-- **Immutable snapshot and deterministic replay, or refuse.** A snapshot is write-once and verified by hash before use. A fork resumes only if the replay check passes (same snapshot, same event set, same seed gives the same result hash on a short test replay). If the snapshot is missing, fails its hash, or replay is not deterministic, the system refuses the fork, logs the refusal with the reason, and offers only options that do not need it.
+## 5. Engine snapshot and replay requirement
+
+- **Committed-round, full-state snapshots.** Capture only after a committed round. Bind all state that can affect future output, not only agent attributes: the run database schema and rows; post IDs and AUTOINCREMENT counters; follows, memberships and mutes; poll and conversion state; event queues; simulation clock, round and RNG state; graph state when present; and the exact LLM reply cache or deterministic response transcript.
+- **Identity and integrity.** Bind the snapshot to scenario, seed, clock, event-set identity, model/backend/configuration, Agora source revision and runtime identity. Store a schema/version, canonical metadata digest and full state/cache/graph digests. Verify these before reuse or restore; write snapshots once and preserve incomplete or corrupt artifacts while refusing them.
+- **Deterministic replay or refusal.** Fork only when the exact snapshot and response cache/transcript verify and the selected backend can replay deterministically. The current implementation refuses live/non-mock backends. Any unsupported, incomplete, mismatched or nondeterministic state is refused before the source run is changed.
+- **Source-run immutability and provenance.** A fork creates a separate project, leaves its source run untouched, and records the parent snapshot digest and configuration.
+- Estimate cost before a run (rounds remaining × agents) and show it to the human.
 
 ## 6. Governance
 Default deny stays. Every choice, input and result is written to the audit log and linked to its source. Kill switch per study. Sensitive deployments (defence, security) are limited to decision support: situation awareness, scenario ranges, logistics impact. No targeting, no direction of force.
@@ -83,6 +84,6 @@ Any tie or loss is a valid result.
 
 ## 9. Open decisions for the owner
 1. ~~First client type~~ **Decided 24 Nov 2026 (owner): company.** Political and defence/security are out of scope until a hosted company pilot works.
-2. **Engine snapshot edit: approved in principle by the owner, 24 Nov 2026, for the single path `agora/sim/engine.py` only.** It is implemented in its own PR after this spec is final, with mutation proofs, and no other `agora/sim/**` path is covered. This spec itself changes no code.
+2. **Engine snapshot edit:** owner-approved and delivered in PR #225, merged at `fd82fad34c99a5bd0a10a13dfd577d7946e49d86`; it changed `agora/sim/engine.py` and `tests/test_engine_snapshots.py`. The engine changes are bounded to the approved simulation path. This design spec itself changes no code.
 3. **Decided 25 Nov 2026 (owner):** 15-minute response window per project; the designated project owner named in the project record is the approver. No delegate or backup is enabled by default. A delegate or backup must be explicitly named with its project scope in the project record before receiving that authority or alerts.
 4. Hosting for live feeds.
