@@ -19,6 +19,7 @@ import math
 import os
 import shutil
 import sqlite3
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -120,8 +121,15 @@ def _llm_identity(cfg: LLMConfig) -> dict:
 
 
 def _engine_digest() -> str:
-    """Bind a snapshot to the exact engine implementation that created it."""
-    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    """Bind snapshots to Agora Python source and deterministic runtime versions."""
+    root = Path(__file__).resolve().parents[1]
+    h = hashlib.sha256()
+    h.update(_canon([sys.version_info.major, sys.version_info.minor, np.__version__]).encode("utf-8"))
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        source = path.read_bytes().replace(b"\\r\\n", b"\\n")
+        h.update(_canon([relative, hashlib.sha256(source).hexdigest()]).encode("utf-8"))
+    return h.hexdigest()
 
 
 def _file_digest(path: Path) -> str:
