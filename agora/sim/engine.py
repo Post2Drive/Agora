@@ -17,10 +17,12 @@ import hashlib
 import json
 import math
 import os
+import platform
 import shutil
 import sqlite3
 import sys
 import tempfile
+from importlib import metadata
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -90,8 +92,13 @@ def _sha(text: str) -> str:
 
 
 def _state_digest(conn: sqlite3.Connection) -> str:
-    """Digest every simulation-state table, preserving load order and excluding only timing/call statistics."""
+    """Digest simulation rows, schema, row order and SQLite's future AUTOINCREMENT values."""
     h = hashlib.sha256()
+    schema = conn.execute(
+        "SELECT type, name, tbl_name, sql FROM sqlite_master "
+        "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+    ).fetchall()
+    h.update(_canon(["schema", schema]).encode("utf-8"))
     names = sorted(r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'") if r[0] not in _NON_STATE_TABLES)
     for t in names:
@@ -101,6 +108,9 @@ def _state_digest(conn: sqlite3.Connection) -> str:
         # Sorting rows here would make reordered event/membership records hash as the same state.
         rows = [_canon(list(r)) for r in conn.execute(f'SELECT {quoted} FROM "{t}" ORDER BY rowid')]
         h.update(_canon([t, cols, rows]).encode("utf-8"))
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone():
+        sequences = conn.execute("SELECT name, seq FROM sqlite_sequence ORDER BY name").fetchall()
+        h.update(_canon(["sqlite_sequence", sequences]).encode("utf-8"))
     return h.hexdigest()
 
 
@@ -122,10 +132,16 @@ def _llm_identity(cfg: LLMConfig) -> dict:
 
 
 def _engine_digest() -> str:
-    """Bind snapshots to Agora Python source and deterministic runtime versions."""
+    """Bind snapshots to Agora source, interpreter/platform, SQLite, NumPy and direct runtime dependencies."""
     root = Path(__file__).resolve().parents[1]
-    h = hashlib.sha256()
-    h.update(_canon([sys.version_info.major, sys.version_info.minor, np.__version__]).encode("utf-8"))
+    runtime = {
+        "python": sys.version,
+        "implementation": sys.implementation.name,
+        "platform": [sys.platform, platform.machine()],
+        "sqlite": sqlite3.sqlite_version,
+        "packages": {name: metadata.version(name) for name in ("numpy", "PyYAML", "networkx", "pypdf", "psutil")},
+    }
+    h = hashlib.sha256(_canon(runtime).encode("utf-8"))
     for path in sorted(root.rglob("*.py")):
         relative = path.relative_to(root).as_posix()
         source = path.read_bytes().replace(b"\\r\\n", b"\\n")
