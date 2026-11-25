@@ -72,7 +72,7 @@ class SnapshotError(RuntimeError):
 
 
 SNAPSHOT_DIR = "snapshots"
-SNAPSHOT_SCHEMA = 1
+SNAPSHOT_SCHEMA = 2
 # Columns that record timing or call statistics, not simulation state; excluded from the state digest.
 _VOLATILE_COLUMNS = {"rounds": {"seconds", "finished_at", "llm_calls", "cache_hits"}, "injected": {"added_at"}}
 _NON_STATE_TABLES = {"chats"}
@@ -96,7 +96,9 @@ def _state_digest(conn: sqlite3.Connection) -> str:
     for t in names:
         cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{t}")') if r[1] not in _VOLATILE_COLUMNS.get(t, ())]
         quoted = ",".join(f'"{c}"' for c in cols)
-        rows = sorted(_canon(list(r)) for r in conn.execute(f'SELECT {quoted} FROM "{t}"'))
+        # Preserve row order: World.load and event processing use insertion order for several tables.
+        # Sorting rows here would make reordered event/membership records hash as the same state.
+        rows = [_canon(list(r)) for r in conn.execute(f'SELECT {quoted} FROM "{t}" ORDER BY rowid')]
         h.update(_canon([t, cols, rows]).encode("utf-8"))
     return h.hexdigest()
 
@@ -118,8 +120,25 @@ def _llm_identity(cfg: LLMConfig) -> dict:
     return {"backend": cfg.backend, "model": cfg.model, "context": cfg.context, "extra": cfg.extra}
 
 
+def _engine_digest() -> str:
+    """Bind a snapshot to the exact engine implementation that created it."""
+    return hashlib.sha256(Path(__file__).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def _file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _open_ro(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
+
+
+def _snapshot_state_digest(path: Path) -> str:
+    conn = _open_ro(path)
+    try:
+        return _state_digest(conn)
+    finally:
+        conn.close()
 
 
 class Simulation:
@@ -135,8 +154,13 @@ class Simulation:
         """
         self.dir = Path(project)
         # Rounds after whose commit an immutable, verifiable snapshot is written (default none: legacy behaviour).
-        self.snapshot_rounds = frozenset(int(x) for x in snapshot_rounds)
+        rounds = tuple(snapshot_rounds)
+        if any(isinstance(x, bool) or not isinstance(x, int) or x < 0 for x in rounds):
+            raise ValueError("snapshot_rounds must contain non-negative integer rounds")
+        self.snapshot_rounds = frozenset(rounds)
         self.sc = scenario_mod.load(self.dir / SCENARIO_FILE)
+        if any(r >= self.sc.rounds for r in self.snapshot_rounds):
+            raise ValueError("snapshot_rounds must be inside the scenario run")
         self.governed: dict | None = None
         self.base_scenario_hash = self.scenario_hash  # scenario.yaml as loaded, before any projection
         if governed_input is not None:
@@ -320,8 +344,7 @@ class Simulation:
 
     # ---------------------------------------------------------------- snapshots and forks
     def state_digest(self) -> str:
-        """Digest of the committed simulation state (see _state_digest)."""
-        self.store.db.commit()
+        """Digest the current database state without committing or otherwise mutating it."""
         return _state_digest(self.store.db)
 
     @property
@@ -345,14 +368,27 @@ class Simulation:
             raise SnapshotError("snapshots are taken only at the last committed round boundary")
         base = self.dir / SNAPSHOT_DIR / f"round-{r:05d}"
         base.parent.mkdir(exist_ok=True)
-        db_path, cache_path, meta_path = (base.with_name(base.name + e) for e in (".db", ".cache.db", ".json"))
-        self.store.db.commit()
+        db_path, cache_path, graph_path, meta_path = (
+            base.with_name(base.name + e) for e in (".db", ".cache.db", ".graph.db", ".json"))
+        if self.store.db.in_transaction:
+            raise SnapshotError("snapshots are allowed only after the round transaction has committed")
         digest = _state_digest(self.store.db)
         if meta_path.exists():
-            if json.loads(meta_path.read_text(encoding="utf-8")).get("state_digest") != digest:
-                raise SnapshotError(f"snapshot for round {r} already exists with different state; it is immutable")
+            try:
+                old = json.loads(meta_path.read_text(encoding="utf-8"))
+                body = {k: v for k, v in old.items() if k != "meta_digest"}
+                valid = (old.get("meta_digest") == _sha(_canon(body))
+                         and old.get("state_digest") == digest
+                         and old.get("engine_sha256") == _engine_digest()
+                         and _snapshot_state_digest(db_path) == digest
+                         and old.get("cache_digest") == _cache_digest(cache_path)
+                         and old.get("graph_digest") == (_file_digest(graph_path) if graph_path.exists() else None))
+            except (OSError, ValueError, sqlite3.Error, SnapshotError):
+                valid = False
+            if not valid:
+                raise SnapshotError(f"snapshot for round {r} already exists but failed integrity verification")
             return meta_path
-        for stale in (db_path, cache_path):  # an incomplete earlier attempt (no metadata) is replaced
+        for stale in (db_path, cache_path, graph_path):  # an incomplete earlier attempt (no metadata) is replaced
             if stale.exists():
                 os.chmod(stale, 0o644)
                 stale.unlink()
@@ -381,20 +417,37 @@ class Simulation:
                 dstc.close()
             os.replace(ctmp, cache_path)
             cache_digest = _cache_digest(cache_path)
+        graph_src = self.dir / "graph.db"
+        graph_digest = None
+        if graph_src.exists():
+            gtmp = graph_path.with_name(graph_path.name + ".tmp")
+            gtmp.unlink(missing_ok=True)
+            gsrc, gdst = sqlite3.connect(str(graph_src)), sqlite3.connect(str(gtmp))
+            try:
+                gsrc.backup(gdst)
+                gdst.execute("PRAGMA journal_mode=DELETE")
+                gdst.commit()
+            finally:
+                gsrc.close()
+                gdst.close()
+            os.replace(gtmp, graph_path)
+            graph_digest = _file_digest(graph_path)
         check = _open_ro(db_path)
         try:
             if _state_digest(check) != digest:
                 raise SnapshotError("snapshot copy does not match the committed state")
         finally:
             check.close()
-        meta = {"schema": SNAPSHOT_SCHEMA, "round": r, "scenario_hash": self.base_scenario_hash, "seed": self.sc.seed,
-                "state_digest": digest, "cache_digest": cache_digest,
+        meta = {"schema": SNAPSHOT_SCHEMA, "round": r, "sim_time": self.now(r).isoformat(),
+                "scenario_hash": self.base_scenario_hash, "seed": self.sc.seed,
+                "state_digest": digest, "cache_digest": cache_digest, "graph_digest": graph_digest,
+                "engine_sha256": _engine_digest(),
                 "llm_identity_sha256": _sha(_canon(_llm_identity(self.llm_cfg))),
                 "governed": self.governed is not None}
         meta["meta_digest"] = _sha(_canon(meta))
         with open(meta_path, "x", encoding="utf-8") as f:  # write-once; its existence marks the snapshot complete
             f.write(_canon(meta))
-        for p in (db_path, cache_path, meta_path):
+        for p in (db_path, cache_path, graph_path, meta_path):
             if p.exists():
                 os.chmod(p, 0o444)
         return meta_path
@@ -413,7 +466,8 @@ class Simulation:
         """
         src, dest = Path(source), Path(dest)
         base = src / SNAPSHOT_DIR / f"round-{int(round):05d}"
-        db_path, cache_path, meta_path = (base.with_name(base.name + e) for e in (".db", ".cache.db", ".json"))
+        db_path, cache_path, graph_path, meta_path = (
+            base.with_name(base.name + e) for e in (".db", ".cache.db", ".graph.db", ".json"))
         if not meta_path.exists() or not db_path.exists():
             raise SnapshotError(f"no complete snapshot for round {round}")
         try:
@@ -421,17 +475,23 @@ class Simulation:
             body = {k: v for k, v in meta.items() if k != "meta_digest"}
             ok = (meta.get("schema") == SNAPSHOT_SCHEMA and meta.get("round") == int(round)
                   and meta.get("meta_digest") == _sha(_canon(body))
-                  and all(k in meta for k in ("scenario_hash", "state_digest", "cache_digest", "llm_identity_sha256", "governed")))
+                  and all(k in meta for k in ("scenario_hash", "state_digest", "cache_digest", "graph_digest",
+                                                "engine_sha256", "sim_time", "llm_identity_sha256", "governed")))
         except (ValueError, TypeError, OSError):
             ok = False
         if not ok:
             raise SnapshotError("snapshot metadata is corrupt, incomplete or of an unknown version")
         if meta["governed"]:
             raise SnapshotError("forking a governed run needs separate approval and is not supported")
+        if meta["engine_sha256"] != _engine_digest():
+            raise SnapshotError("engine implementation differs from the snapshot; deterministic replay is not established")
         conn = _open_ro(db_path)
         try:
             if _state_digest(conn) != meta["state_digest"]:
                 raise SnapshotError("snapshot state does not match its recorded digest")
+            row = conn.execute("SELECT round, sim_time FROM rounds ORDER BY round DESC LIMIT 1").fetchone()
+            if row is None or row[0] != int(round):
+                raise SnapshotError("snapshot database does not contain its declared committed round")
         except sqlite3.Error as exc:
             raise SnapshotError(f"snapshot database is unreadable: {exc}") from exc
         finally:
@@ -439,13 +499,22 @@ class Simulation:
         if meta["cache_digest"] is not None:
             if not cache_path.exists() or _cache_digest(cache_path) != meta["cache_digest"]:
                 raise SnapshotError("snapshot model reply cache is missing or does not match its recorded digest")
+        if meta["graph_digest"] is not None:
+            if not graph_path.exists() or _file_digest(graph_path) != meta["graph_digest"]:
+                raise SnapshotError("snapshot graph context is missing or does not match its recorded digest")
         sc = scenario_mod.load(src / SCENARIO_FILE)
         if _sha(json.dumps(sc.raw, sort_keys=True, default=str))[:16] != meta["scenario_hash"]:
             raise SnapshotError("scenario.yaml changed since the snapshot was taken")
+        if sc.seed != meta["seed"] or (sc.start + timedelta(hours=int(round) * sc.round_hours)).isoformat() != meta["sim_time"]:
+            raise SnapshotError("snapshot clock or seed does not match the scenario")
         cfg = safe_study_llm(sc.llm)
         cfg.update(llm_override or {})
         if _sha(_canon(_llm_identity(LLMConfig.from_dict(cfg)))) != meta["llm_identity_sha256"]:
             raise SnapshotError("model backend or configuration differs from the snapshot; replay would not be reproducible")
+        # A new event can create unseen prompts. A copied cache cannot make a live backend deterministic
+        # on cache misses, so only the deterministic mock backend is eligible for a fork.
+        if LLMConfig.from_dict(cfg).backend != "mock":
+            raise SnapshotError("forking with a live or unverified LLM backend cannot guarantee deterministic replay")
         fields = scenario_mod.Event.__dataclass_fields__
         injected = []
         for ev in events:
@@ -463,10 +532,13 @@ class Simulation:
             injected.append(ev)
         if dest.exists():
             raise SnapshotError("destination already exists; a fork never overwrites")
+        src_resolved, dest_resolved = src.resolve(), dest.resolve()
+        if dest_resolved == src_resolved or dest_resolved.is_relative_to(src_resolved):
+            raise SnapshotError("fork destination must be outside the source project")
         work = dest.with_name(dest.name + ".forking")
         if work.exists():
-            shutil.rmtree(work)
-        work.mkdir(parents=True)
+            raise SnapshotError("fork staging path already exists; refusing to remove existing data")
+        work.mkdir(parents=True, exist_ok=False)
         try:
             shutil.copyfile(src / SCENARIO_FILE, work / SCENARIO_FILE)
             shutil.copyfile(db_path, work / DB_FILE)
@@ -474,6 +546,10 @@ class Simulation:
             if meta["cache_digest"] is not None:
                 shutil.copyfile(cache_path, work / CACHE_FILE)
                 os.chmod(work / CACHE_FILE, 0o644)
+            if meta["graph_digest"] is not None:
+                shutil.copyfile(graph_path, work / "graph.db")
+                if _file_digest(work / "graph.db") != meta["graph_digest"]:
+                    raise SnapshotError("restored graph context does not match the snapshot digest")
             restored = sqlite3.connect(str(work / DB_FILE))
             try:
                 if _state_digest(restored) != meta["state_digest"]:
