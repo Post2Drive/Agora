@@ -37,7 +37,7 @@ Non-goals: predicting that an event will occur; autonomous action; targeting or 
 | CHANGE INPUTS | Choose which evidence to include or exclude (per item, per source, per trust level) and rerun or fork with that set. |
 | COMPARE | Side-by-side of any branches already run. |
 | ESCALATE | Send to a second named approver before anything runs (for sensitive projects). |
-Options can be combined (e.g. fork from event with a different evidence set). Each choice needs: the person's identity, a reason text, and the time budget. A choice that costs more than the budget asks for confirmation.
+Options can be combined (e.g. fork from event with a different evidence set). Each choice needs: the person's identity, a reason text, and the time budget. A choice that costs more than the budget asks for confirmation.\n\n**Suggested-action card (non-executing):** For each typed event, show one suggested next step with the evidence and trust labels behind it, why it is suggested, affected studies, expected cost, and any unmet permission/snapshot/budget gates. Show the other human options beside it. The suggestion is advisory: it cannot promote an item, change a forecast, start a run, or publish a result. A permitted human must explicitly choose and confirm an executable action; blocked choices remain disabled with the failing reason.
 
 Timeout rule: each project has a 15-minute response window. If nobody responds within that window, the system **holds the last human-approved result** and alerts the designated project owner. If the owner has explicitly named a backup contact in the project record, that contact is alerted too; no backup is inferred. It publishes nothing new and changes no forecast. If no approved result exists, nothing is published and the item stays pending. The hold, the alert and the elapsed time are audit-logged.
 
@@ -79,11 +79,11 @@ Any tie or loss is a valid result.
 ## 8. Staging
 1. Spec and human-option workflow with typed events (no feeds), existing inject plus compare.
 2. Engine snapshots and fork-from-event (owner approves engine edit first).
-3. Feed adapters on the owner's hosting (e.g. Railway), source scoring, alerts to the person in charge.
+3. After separate security, access-control and spend-limit review, deploy feed adapters on owner-selected Railway hosting for the company pilot; keep feeds disabled until those gates pass. Add source scoring and alerts to the person in charge.
 4. Customer deployment: security review and an agreement on what the system may and may not do.
 
 ## 9. Open decisions for the owner
 1. ~~First client type~~ **Decided 24 Nov 2026 (owner): company.** Political and defence/security are out of scope until a hosted company pilot works.
 2. **Engine snapshot edit:** owner-approved and delivered in PR #225, merged at `fd82fad34c99a5bd0a10a13dfd577d7946e49d86`; it changed `agora/sim/engine.py` and `tests/test_engine_snapshots.py`. The engine changes are bounded to the approved simulation path. This design spec itself changes no code.
 3. **Decided 25 Nov 2026 (owner):** 15-minute response window per project; the designated project owner named in the project record is the approver. No delegate or backup is enabled by default. A delegate or backup must be explicitly named with its project scope in the project record before receiving that authority or alerts.
-4. Hosting for live feeds.
+4. **Decided 25 Nov 2026 (owner):** Railway is the intended host for a future company pilot. This selects the platform direction only; no service deployment or feed activation is approved. Complete security/access-control review and set a spend limit before deployment.
