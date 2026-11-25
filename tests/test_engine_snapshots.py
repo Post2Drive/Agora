@@ -168,6 +168,7 @@ def test_missing_model_cache_fails_closed(tmp_path):
     _complete(source, snapshot_rounds=(2,))
     cache = source / "snapshots" / "round-00002.cache.db"
     assert cache.exists()
+    os.chmod(cache, 0o644)
     cache.unlink()
     with pytest.raises(SnapshotError, match="cache"):
         Simulation.fork_from(source, 2, tmp_path / "missing-cache-fork")
