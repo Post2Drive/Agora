@@ -105,6 +105,23 @@ def test_corrupt_snapshot_is_refused_without_creating_destination(tmp_path):
     assert not (tmp_path / "bad-fork").exists()
 
 
+def test_incomplete_snapshot_artifact_is_preserved(tmp_path):
+    source = _small_project(tmp_path, "source")
+    sim = Simulation(source)
+    try:
+        sim.prepare()
+        sim.run(rounds=3)
+        artifacts = source / "snapshots"
+        artifacts.mkdir(exist_ok=True)
+        partial = artifacts / "round-00002.db"
+        partial.write_bytes(b"leave this partial artifact untouched")
+        with pytest.raises(SnapshotError, match="refusing to remove or overwrite"):
+            sim.take_snapshot(2)
+        assert partial.read_bytes() == b"leave this partial artifact untouched"
+    finally:
+        sim.close()
+
+
 def test_existing_snapshot_is_reverified_and_never_overwritten(tmp_path):
     source = _small_project(tmp_path, "source")
     sim = Simulation(source, snapshot_rounds=(2,))
