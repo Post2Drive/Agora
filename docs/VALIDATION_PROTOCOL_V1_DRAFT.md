@@ -2,7 +2,7 @@
 
 **Status:** Draft for owner/technical review only. Not frozen, not approved for data acquisition, import, execution, evaluation or label release. No 2020 polling file has been downloaded for this protocol. This document is a prospective, separately versioned follow-on; it does not amend the frozen v0.1 protocol, the frozen v0.2 run specification, or the 15-row v0.2 dataset manifest. It is not M3 completion evidence.
 
-**Owner direction reported in Claude's latest 24 November 2026 log entry:** exploratory analysis now, 2020 confirmatory holdout later; fundamentals kept minimal (incumbent party and previous-election state result only); no new data/download and no prediction-flag change in that instruction. The owner accepted that a tie or loss is a valid result and that the benchmark need not beat published polls. The exploratory analysis below is reported by Claude and is not a validation result.
+**Owner directions reflected here:** the owner selected the official FiveThirtyEight 2020 state-average asset as the v1.0 draft candidate on 25 Nov 2026, and requested a versioned protocol/manifest draft only. Earlier owner direction remains exploratory analysis now and 2020 confirmatory holdout later, with minimal fundamentals (incumbent party and previous-election state result only). A tie or loss is valid; the benchmark need not beat published polls. The exploratory analysis below is reported by Claude and is not a validation result. Selection of a draft candidate does not authorize data acquisition, import, run, label access/release, or prediction-flag change.
 
 ## 1. Purpose and non-claims
 
@@ -44,9 +44,9 @@ Claude also reports mean signed poll error by cycle of approximately +0.0 pp (20
 
 ### 4.1 Polling input — 2020 FiveThirtyEight state averages
 
-The owner must later download and supply the exact 2020 presidential general-election state-average file. The current 12-file FiveThirtyEight import does not establish 2020 polling coverage; its general-election file is for 2024 and is explicitly uncorrected, so it is not a substitute.
+The owner selected the exact official candidate on 25 Nov 2026: FiveThirtyEight's 2020 presidential general-election state-average asset, presidential_poll_averages_2020.csv, at [the publisher URL](https://projects.fivethirtyeight.com/2020-general-data/presidential_poll_averages_2020.csv). The official FiveThirtyEight/data election-forecasts-2020 README at reference commit 4c1ff5e3aef1816ae04af63218015066e186c147 names this asset and documents daily averages, including pct_estimate and pct_trend_adjusted. The CSV itself is hosted outside that Git commit, so the README commit does not pin the CSV bytes. FiveThirtyEight's repository README states that datasets are CC BY 4.0 unless otherwise noted; recheck the exact asset's terms when acquisition is authorized. No 2020 CSV has been retrieved; its bytes, SHA-256, access date, schema confirmation and exact release identity are unknown.
 
-Before v1.0 freeze, record a **new, separately versioned hash-only v1.0 manifest** in an owner-approved repository. Reference the exact public source/version/path/bytes/SHA-256/licence for each input; do not duplicate or privately mirror the already pinned MEDSL source. The later owner-supplied 2020 polling file must have its own exact source, licence, byte count and SHA-256 before freeze.
+Before v1.0 freeze, use the separate draft hash-only manifest at docs/VALIDATION_DATASET_MANIFEST_V1_DRAFT.csv. Reference the source, licence, exact bytes and SHA-256 for each input; do not duplicate or privately mirror the already pinned MEDSL source. The candidate file must be acquired and verified only after the required owner freeze/acquisition authorization.
 
 - exact source URL and publisher;
 - exact original filename and relative path;
@@ -57,7 +57,7 @@ Before v1.0 freeze, record a **new, separately versioned hash-only v1.0 manifest
 - schema/header allow-list and the documented state-margin field/units;
 - any source corrections, exclusions or transformation, with a reproducible description.
 
-Do not guess the filename, infer a licence from an older release, use a mirror without approval, or silently substitute another poll product. The exact file, source, licence and hash remain acquisition blockers until the owner supplies and verifies them.
+Do not substitute another poll product or treat the README reference commit as a content hash. The official candidate source is selected for this draft; acquisition, licence verification, size/hash recording and source-version pinning remain gated on a complete owner v1.0 freeze/acquisition authorization.
 
 ### 4.2 Outcome labels — MEDSL Version 20.0
 
@@ -67,17 +67,17 @@ The 2020 MEDSL state outcomes are held-out labels. Keep them outside the model-d
 
 ### 4.3 Manifest separation
 
-Create a new versioned hash-only v1.0 manifest; do not edit `docs/VALIDATION_DATASET_MANIFEST.csv` or its frozen 15-row hash. Include every v1.0 input, including the exact later owner-supplied 2020 polling file and the already pinned public MEDSL outcome file, with per-file bytes, SHA-256, source/version and licence. No raw MEDSL copy is required; record the new manifest's own SHA-256 in the v1.0 freeze attestation.
+A draft versioned hash-only v1.0 manifest is prepared at docs/VALIDATION_DATASET_MANIFEST_V1_DRAFT.csv; do not edit docs/VALIDATION_DATASET_MANIFEST.csv or its frozen 15-row hash. It records the owner-selected 2020 poll asset as CANDIDATE_NOT_ACQUIRED with byte count and SHA-256 TBD, plus references to the already pinned public MEDSL outcome source. No raw MEDSL copy is required. Finalize and hash the new manifest only after authorized source acquisition and verification; record that manifest SHA-256 in the v1.0 freeze attestation.
 
 No raw dataset is to be uploaded to ChatGPT or Notion. No data download or import is authorized by this draft.
 
 ## 5. Proposed target, observation unit and time cutoffs
 
 - **Target:** 2020 U.S. presidential two-party state margin, in percentage points, derived from the predeclared MEDSL V20.0 state returns using the frozen mode rule.
-- **Observation unit:** state/area × forecast cutoff. Freeze the included state/area universe and treatment of DC/territories before outcome release; do not silently drop an area after seeing its result.
+- **Observation unit:** state/area × forecast cutoff. Recommended universe: 50 states plus D.C.; exclude territories unless a separate owner-approved scope says otherwise. Confirm source/outcome support for this exact universe before freeze; do not silently drop an area after seeing its result.
 - **Election Day:** 3 November 2020.
 - **Proposed cutoffs:** 28, 14 and 7 days before Election Day: 6 October, 20 October and 27 October 2020. These dates are a draft proposal and must be confirmed in the v1.0 freeze.
-- **Poll value:** for each state/area and cutoff, use the latest eligible published FiveThirtyEight state average dated on or before that cutoff. No poll published after the cutoff may be used.
+- **Poll value:** primary field recommendation is pct_estimate for major-party candidate rows; derive the two-party margin after verifying the exact CSV header, state/candidate naming and units. Keep pct_trend_adjusted as a separately labeled sensitivity only. For each state/area and cutoff, use the latest eligible modeldate on or before that cutoff; no later value or interpolation. If the header/mapping does not support this rule, stop before freeze and revise only with owner approval.
 - **Previous result:** the 2016 two-party state margin, carried forward without post-hoc adjustment.
 
 If the supplied polling file does not provide the required state/area, office, date or margin coverage, mark the affected target not evaluable and stop. Do not substitute national averages, individual polls, a later date or a different source after inspecting outcomes.
@@ -92,7 +92,7 @@ The following four comparisons are proposed. Their exact formulas and input mapp
    [
    \widehat m_{s,t}=w p_{s,t}+(1-w)r_s,\quad 0\leq w\leq1.
    ]
-   Proposed fitting rule: choose (w) using only pre-2020 cycles 2004, 2008, 2012 and 2016, pooling the predeclared state/cutoff observations and minimizing MAE over a fixed grid from 0.00 to 1.00 in 0.01 increments. Freeze the tie-break rule and exact training-row/exclusion set before v1.0 freeze. No 2020 outcome may influence (w).
+   Proposed fitting rule: choose (w) using only pre-2020 cycles 2004, 2008, 2012 and 2016, pooling the predeclared state/cutoff observations and minimizing MAE over a fixed grid from 0.00 to 1.00 in 0.01 increments. Proposed tie-break: among equal-MAE weights, choose the largest w (closest to poll-only) to minimize unnecessary reliance on the prior. Freeze this tie-break and exact training-row/exclusion set before v1.0 freeze. No 2020 outcome may influence (w).
 4. **AGORA readout:** use the existing frozen v0.2 mapping/readout without changing engine code or tuning against 2020. The reported v0.2 calibration selected (k=0.24); whether this exact mapping is retained unchanged for v1.0 must be explicit in the freeze. The readout is a monotone transformation of the poll average and must not be described as an independent information source.
 
 **Minimal fundamentals:** the owner direction limits fundamentals to incumbent party and previous-election state result. The previous-result baseline/blend already uses the 2016 state margin. This draft treats incumbent party as a predeclared descriptor for stratified reporting only, not as a fitted coefficient. If the owner intends an incumbent-party predictive term, its exact encoding and formula must be approved and frozen before 2020 is touched; do not add it after seeing results. No economy, demographic, campaign, fundraising or other fundamentals are allowed in this version.
@@ -102,7 +102,7 @@ The following four comparisons are proposed. Their exact formulas and input mapp
 - **Primary metric:** mean absolute error (MAE), in percentage points, over the frozen state/area × cutoff observations.
 - **Secondary metric:** root mean squared error (RMSE), same unit and denominator.
 - Report every model's full observation count, state/area count, cutoff coverage, per-state errors, missingness and exclusions.
-- Report 95% cluster-bootstrap intervals for MAE and RMSE, resampling states/areas as clusters and keeping all cutoffs for a sampled state together. Proposed replicate count: 2,000. Select and record the RNG seed in the v1.0 freeze before predictions; do not select it after outcomes.
+- Report 95% cluster-bootstrap intervals for MAE and RMSE, resampling states/areas as clusters and keeping all cutoffs for a sampled state together. Proposed replicate count: 2,000; propose carrying forward the previously owner-approved bootstrap seed 20261123 and percentile construction for v1.0, subject to explicit confirmation in its freeze. Resample state/area clusters with replacement and keep all cutoffs for a sampled state together. Do not select or change the seed after outcomes.
 - **Interval coverage:** report coverage for predeclared nominal prediction intervals only if the interval construction, nominal level(s), training residual source and calculation are frozen before test predictions. If that method is not fully specified before freeze, report interval coverage as not estimable; do not construct or calibrate intervals after opening 2020 labels.
 - **Shared-bias decomposition:** report mean signed error (prediction minus actual) by historical cycle and for 2020, alongside MAE/RMSE. Do not apply a post-hoc national-bias correction to the 2020 predictions.
 - Report the poll-alone baseline first and all other models beside it. A tie or loss is valid; no minimum improvement or win condition is required. Do not omit unfavorable cycles, states, cutoffs or metrics.
@@ -138,8 +138,8 @@ Do not create a proxy target or replace a missing source after seeing the result
 
 This draft is not a freeze or run authorization. Before any 2020 acquisition/import/run:
 
-- [ ] Owner supplies the exact 2020 FiveThirtyEight state-average file and approves its source and licence.
-- [ ] Owner supplies the exact 2020 poll file; the new hash-only manifest records its bytes, hash, source and licence and references the already pinned public MEDSL source. No private MEDSL mirror or data download is required before owner approval.
+- [x] Owner selected the exact official FiveThirtyEight source URL as a v1.0 draft candidate on 25 Nov 2026; no CSV bytes were acquired.
+- [ ] After a complete owner freeze/acquisition authorization, acquire the candidate file and record its exact bytes, SHA-256, access date, schema, correction history and licence in the draft hash-only manifest; also reference the already pinned public MEDSL source. No private MEDSL mirror is required.
 - [ ] Owner/Claude resolve the state/area universe, cutoffs, blend-weight grid/tie-break, incumbent-party role, interval method/levels, bootstrap seed and all exclusions.
 - [ ] A separate evaluator/custodian and 2020 label-release procedure are confirmed.
 - [ ] The owner provides a complete v1.0 freeze sentence naming the exact protocol commit and new manifest SHA-256.
@@ -149,4 +149,4 @@ No further `agora/sim/**` path is authorized. The only existing owner-approved p
 
 ## 11. Current status
 
-Claude's exploratory analysis is a reported, unverified statistical exercise over already-opened 2004/2008/2012/2016 outcomes. It is not a validation, not an M3 completion declaration and not a basis for a validated-prediction claim. The future 2020 confirmatory holdout remains unacquired, unfrozen and unauthorized. M3 status is governed separately by `M3_EXIT_EVIDENCE.md` and Claude's exact canonical declaration.
+Claude's exploratory analysis is a reported, unverified statistical exercise over already-opened 2004/2008/2012/2016 outcomes. It is not a validation, not an M3 completion declaration and not a basis for a validated-prediction claim. The owner selected the official FiveThirtyEight 2020 averages URL as a draft candidate, but the CSV remains unacquired; the hash-only manifest and protocol remain draft and unfrozen. No acquisition, run, outcome-label release or prediction-flag change is authorized. M3 status is governed separately by `M3_EXIT_EVIDENCE.md` and Claude's exact canonical declaration.
