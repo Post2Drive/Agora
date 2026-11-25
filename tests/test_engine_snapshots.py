@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+from agora.llm import LLMConfig, make_backend
 from agora.sim.engine import Simulation, SnapshotError, _state_digest
 from conftest import make_project
 
@@ -147,10 +148,17 @@ def test_existing_snapshot_is_reverified_and_never_overwritten(tmp_path):
 def test_live_backend_fork_fails_closed(tmp_path):
     source = _small_project(
         tmp_path, "live",
-        population={"llm_agents": 0, "crowd_agents": 12},
         llm={"backend": "ollama", "model": "test-model"},
     )
-    _complete(source, snapshot_rounds=(2,))
+    sim = Simulation(source, snapshot_rounds=(2,))
+    # Keep the saved run identity as Ollama, but use the deterministic mock backend
+    # to create its fixture without requiring a model server in CI.
+    sim.llm = make_backend(LLMConfig.from_dict({"backend": "mock"}))
+    try:
+        sim.prepare()
+        sim.run()
+    finally:
+        sim.close()
     with pytest.raises(SnapshotError, match="deterministic replay"):
         Simulation.fork_from(source, 2, tmp_path / "live-fork")
 
