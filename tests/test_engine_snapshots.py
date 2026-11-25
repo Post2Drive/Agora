@@ -71,6 +71,19 @@ def test_event_fork_changes_branch_and_preserves_source(tmp_path):
     assert _complete(source) == baseline
 
 
+def test_event_set_order_does_not_change_fork_state(tmp_path):
+    source = _small_project(tmp_path, "source")
+    _complete(source, snapshot_rounds=(2,))
+    events = [
+        {"type": "news", "text": "Synthetic event B", "round": 4},
+        {"type": "news", "text": "Synthetic event A", "round": 4},
+    ]
+    first, second = tmp_path / "first-fork", tmp_path / "second-fork"
+    Simulation.fork_from(source, 2, first, events=events)
+    Simulation.fork_from(source, 2, second, events=list(reversed(events)))
+    assert _complete(first) == _complete(second)
+
+
 def test_corrupt_snapshot_is_refused_without_creating_destination(tmp_path):
     source = _small_project(tmp_path, "source")
     sim = Simulation(source, snapshot_rounds=(2,))
