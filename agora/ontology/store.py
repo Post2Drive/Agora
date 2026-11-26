@@ -1204,6 +1204,7 @@ class OntologyObjectStore:
         temporary = destination.with_name(destination.name + ".tmp")
         source_conn = None
         backup_conn = None
+        created_temporary = False
         try:
             require_safe_path(self.project)
             self.project.mkdir(parents=True, exist_ok=True)
@@ -1221,6 +1222,7 @@ class OntologyObjectStore:
             require_safe_path(temporary)
             source_conn = self._connect()
             backup_conn = sqlite3.connect(str(temporary), timeout=30.0)
+            created_temporary = True
             source_conn.backup(backup_conn)
             self._verify_connection_integrity(backup_conn)
             backup_conn.close()
@@ -1229,10 +1231,11 @@ class OntologyObjectStore:
             source_conn = None
             require_safe_path(temporary)
             temporary.replace(destination)
+            created_temporary = False
             require_safe_path(destination)
             return destination
-        except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
-            if temporary.exists():
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
+            if created_temporary and temporary.exists():
                 try:
                     temporary.unlink()
                 except OSError:
