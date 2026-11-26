@@ -1,4 +1,4 @@
-"""`agora web`: a local website for the whole pipeline, like MiroFish's app.
+"""`agora web`: a local website for the whole pipeline.
 
 Runs on http://127.0.0.1:<port> using only the Python standard library. It is meant for
 your own machine: it binds to localhost, rejects requests for other host names (DNS

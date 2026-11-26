@@ -232,7 +232,7 @@ def _make_llm(args, project: Path):
 
 
 def cmd_create(args) -> int:
-    """MiroFish-style entry: upload documents + describe what to predict -> ready project."""
+    """Guided entry: upload documents + describe what to predict -> ready project."""
     from .pipeline import CreateOptions, create_project
     proj = Path(args.project)
     if (proj / SCENARIO_FILE).exists() and not args.overwrite:

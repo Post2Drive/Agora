@@ -6,7 +6,7 @@
 
 Give Agora a durable, queryable ontology layer that connects versioned type definitions and immutable imported snapshots to stable object identities and typed links. Keep the source snapshot as the authoritative record for imported property values; store ontology identity and relationships without copying raw dataset rows.
 
-The design follows Agora's accepted modular-monolith direction and existing project-local SQLite pattern. It targets comparable core ontology capabilities to operational object platforms, with complete source lineage, explicit snapshot selection, portable definitions, and fail-closed policy as Agora's measurable differentiators.
+The design follows Agora's accepted modular-monolith direction and existing project-local SQLite pattern. Its aim is a durable object and link layer with complete source lineage, explicit snapshot selection, portable definitions, and fail-closed policy as Agora's measurable strengths.
 
 ## Goals
 

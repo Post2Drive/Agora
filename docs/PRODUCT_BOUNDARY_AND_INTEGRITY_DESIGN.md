@@ -103,7 +103,7 @@ A signed build that we install, update and attest ourselves, with the policy ser
 - Compromise of our signing keys or build pipeline defeats everything above; key custody and access control need their own review.
 - A same-process caller on a host the customer controls can patch verification; only detection and contract apply there.
 - Legal terms (licence, audit right, export controls, data protection in India and the UK) need professional advice; nothing here is legal advice.
-- The comparison to platforms like Palantir is general knowledge about how such platforms are commonly sold, not verified current facts about any vendor.
+- Commercial packaging, pricing and sales-model assumptions are unverified market judgement, not evidence.
 - Cost, staffing and hosting choices are unestimated.
 
 ## 10. Non-claims
