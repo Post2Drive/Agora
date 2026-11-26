@@ -1334,10 +1334,22 @@ class OntologyObjectStore:
                     raise OntologyError("a referenced source import does not match its stored provenance")
             for import_id, digest in link_refs.items():
                 row = conn.execute(
-                    "SELECT file_sha256, status FROM imports WHERE import_id=?", (import_id,)
+                    "SELECT file_sha256, status, manifest_json FROM imports WHERE import_id=?",
+                    (import_id,),
                 ).fetchone()
                 if row is None or row["status"] != "committed" or row["file_sha256"].lower() != digest:
                     raise OntologyError("a source-backed link references a missing or changed import")
+                try:
+                    manifest = json.loads(row["manifest_json"])
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise OntologyError("a source-backed link import manifest is invalid") from exc
+                if not isinstance(manifest, dict) or type(manifest.get("accepted_records")) is not int:
+                    raise OntologyError("a source-backed link import manifest has an invalid shape")
+                row_count = conn.execute(
+                    "SELECT COUNT(*) FROM import_rows WHERE import_id=?", (import_id,)
+                ).fetchone()[0]
+                if row_count != manifest["accepted_records"]:
+                    raise OntologyError("a source-backed link import is missing snapshot rows")
         except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError) as exc:
             if isinstance(exc, OntologyError):
                 raise
