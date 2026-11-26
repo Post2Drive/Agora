@@ -1280,6 +1280,11 @@ class OntologyObjectStore:
                    FROM ontology_object_refs"""
             )
         ]
+        object_rows = [
+            dict(row) for row in ontology_conn.execute(
+                "SELECT import_id, snapshot_row_id, source_locator_json FROM ontology_object_refs"
+            )
+        ]
         link_refs: dict[str, str] = {}
         for row in ontology_conn.execute("SELECT provenance_json FROM ontology_links"):
             provenance = json.loads(row["provenance_json"])
@@ -1303,6 +1308,20 @@ class OntologyObjectStore:
         except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
             raise OntologyError("required tabular source snapshot database is unavailable") from exc
         try:
+            for object_ref in object_rows:
+                snapshot_row = conn.execute(
+                    "SELECT locator_json FROM import_rows WHERE import_id=? AND row_id=?",
+                    (object_ref["import_id"], object_ref["snapshot_row_id"]),
+                ).fetchone()
+                if snapshot_row is None:
+                    raise OntologyError("a referenced ontology snapshot row is missing")
+                try:
+                    stored_locator = json.loads(object_ref["source_locator_json"])
+                    snapshot_locator = json.loads(snapshot_row["locator_json"])
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise OntologyError("a referenced source row locator is invalid") from exc
+                if not isinstance(stored_locator, dict) or stored_locator != snapshot_locator:
+                    raise OntologyError("a referenced source row locator does not match its snapshot")
             for dependency in dependencies:
                 row = conn.execute(
                     """SELECT dataset_id, source_registry_id, file_sha256, status, manifest_json
