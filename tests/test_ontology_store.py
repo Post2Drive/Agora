@@ -205,7 +205,7 @@ def test_dependency_manifest_records_exact_source_file_hash_without_row_values(c
     project, store, audit, pack_fingerprint, binding_fingerprint = catalog
     source = project / "customers.csv"
     source.write_text(
-        "customer_id,email\\nC-SECRET-001,private-value@example.test\\n",
+        "customer_id,email\nC-SECRET-001,private-value@example.test\n",
         encoding="utf-8",
     )
     imported = ingest_csv(project, source, {
