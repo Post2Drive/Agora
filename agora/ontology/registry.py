@@ -318,12 +318,18 @@ def _list(value: Any, field: str) -> list[Any]:
 
 
 def _unique_definitions(items: tuple[Any, ...], label: str, get_id: Any) -> None:
-    seen: set[tuple[str, str]] = set()
+    seen: dict[str, str] = {}
     for item in items:
-        key = (get_id(item), item.version)
-        if key in seen:
-            raise OntologyError(f"duplicate {label} ID/version: {key[0]}@{key[1]}")
-        seen.add(key)
+        type_id = get_id(item)
+        previous_version = seen.get(type_id)
+        if previous_version is not None:
+            if previous_version == item.version:
+                raise OntologyError(f"duplicate {label} ID/version: {type_id}@{item.version}")
+            raise OntologyError(
+                f"ambiguous {label} ID {type_id}: multiple versions in one pack "
+                f"({previous_version}, {item.version})"
+            )
+        seen[type_id] = item.version
 
 
 def _parse_source_binding(value: Any, context: str) -> SourceBinding | None:
