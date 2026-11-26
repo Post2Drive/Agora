@@ -72,6 +72,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 ### O1 — Persistent ontology records and query
 
 - Follow the detailed [Ontology Object Store and Query Design](ONTOLOGY_OBJECT_STORE_DESIGN.md) for the proposed storage boundary, identity, links, query contract, and governance controls.
+- The task-by-task implementation sequence is in [the O1 implementation plan](superpowers/plans/2026-11-26-ontology-object-store.md).
 - Persist versioned object instances, links, provenance, and validity intervals with stable identity.
 - Add scoped queries with explicit versions/snapshots, pagination, filters, and predictable consistency.
 - Prove integrity constraints, backup/restore, and migration behavior without silently reinterpreting existing graph records.
