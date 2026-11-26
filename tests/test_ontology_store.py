@@ -229,7 +229,7 @@ def test_dependency_manifest_records_exact_source_file_hash_without_row_values(c
                 "sensitivity": "sensitive",
             },
         ],
-    }, data_role="context")
+    }, data_role="context", policy=_allow, audit=audit)
     assert store.materialize_binding(
         pack_fingerprint, binding_fingerprint, imported["import_id"],
         policy=_allow, audit=audit, purpose="account support", retention="90 days",
