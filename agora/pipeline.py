@@ -59,7 +59,7 @@ CLOUD_PEOPLE = 100        # default AI people when the simulation runs on Claude
 
 def size_population(rounds: int, hours: float, llm_agents=None, crowd=None,
                     cloud: bool = False) -> tuple[int, int]:
-    """Every person is an AI agent (as in MiroFish). Locally the number fits the time budget
+    """Every person is an AI agent. Locally the number fits the time budget
     on this machine; a crowd of rule-based agents is only added if asked for explicitly."""
     prof = hardware.detect()
     voices = llm_agents

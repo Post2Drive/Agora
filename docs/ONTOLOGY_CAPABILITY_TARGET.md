@@ -1,14 +1,12 @@
 # Agora Ontology Capability Target
 
-**Status:** Strategy and staged delivery proposal with partial O1 implementation. O1 remains incomplete; this document is not a parity claim and does not authorize data acquisition, external integrations, action execution, or deployment.
+**Status:** Strategy and staged delivery proposal with partial O1 implementation. O1 remains incomplete; this document claims no capability beyond the evidence listed below and does not authorize data acquisition, external integrations, action execution, or deployment.
 
-**Strategic direction:** Build Agora to meet or exceed the useful ontology capabilities demonstrated by Palantir Gotham and Foundry, while differentiating on transparent provenance, portable schemas, explicit human authority, and independently verifiable behavior. This is a target, not a present capability claim.
+**Strategic direction:** Build Agora's ontology layer as a transparent, portable and governed semantic foundation for decision work, distinguished by complete provenance, portable schemas, explicit human authority and independently verifiable behavior. This is a target, not a present capability claim.
 
-## Reference capabilities
+## Capability areas
 
-Palantir's published documentation describes Gotham APIs for objects, object links, targets, and operational resources, with a Defense Ontology SDK exposing a semantically consistent layer to third-party applications. Foundry Ontology includes object types, link types, action types, interfaces, shared properties, and object type groups. Its APIs and SDKs let applications query objects, call functions, and apply actions. References: [Gotham API](https://www.palantir.com/docs/gotham/api), [Foundry Ontology overview](https://www.palantir.com/docs/foundry/ontologies/ontologies-overview), [Foundry developer toolchain](https://www.palantir.com/docs/foundry/dev-toolchain).
-
-Compare documented behavior and verified implementation, not marketing claims. Mark capabilities unknown where public material or access does not permit a fair assessment.
+The target is defined from Agora's own requirements: a shared versioned vocabulary, durable source-backed records, governed actions, stable contracts for applications, enforced access control, and honest separation of observed facts from model-generated or simulated content. Each area below states what must be demonstrated, not what any other product offers. Where a requirement cannot be assessed fairly from available evidence, mark it unknown rather than assume.
 
 ## Current Agora evidence
 
@@ -31,7 +29,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 3. **Usable contracts:** typed schemas and stable APIs/SDKs let independent applications query and safely act on ontology data.
 4. **Governed actions:** actions have typed inputs, preconditions, effects, policy checks, approvals where required, idempotency, audit, and recoverable outcomes.
 5. **Enterprise controls:** identity, tenant boundaries, classification, purpose/retention, permissions, audit integrity, and deployment behavior are enforced and demonstrated.
-6. **Measured advantage:** every comparative claim has a test or operational proof. Target strengths include complete provenance, portable ontology packs, explicit human authority, and clear separation of observed facts from model-generated or simulated content.
+6. **Measured strengths:** every claimed strength has a test or operational proof. Target strengths include complete provenance, portable ontology packs, explicit human authority, and clear separation of observed facts from model-generated or simulated content.
 
 ## Design principles
 
@@ -48,17 +46,17 @@ These are real early ontology capabilities, not an integrated ontology platform.
 
 ## Capability scorecard
 
-| Capability | Palantir reference | Agora evidence today | Target and proof |
+| Capability | Requirement | Agora evidence today | Target and proof |
 |---|---|---|---|
-| Semantic types | Gotham dynamic ontology; Foundry object, property, link, and interface types | Versioned pack definitions and parser | Portable schemas; independent domain packs use one contract; compatible evolution and explicit breaking changes |
-| Identity and links | Persistent objects and links exposed to applications | Durable source-backed object references and immutable typed temporal links with project/pack/type/import identity | Feature-specific integrity coverage, merge/split history, and cross-project identity rules |
-| Data connection and lineage | Ontology backed by platform data and APIs | Explicit snapshot binding contract, source IDs, hashes, locators, read-only materialization | Repeatable imports, full row lineage, schema evolution, reconciliation, retention/deletion handling, and connector boundaries |
-| Query and application APIs | Gotham REST APIs; Foundry REST APIs and generated OSDKs | No general ontology API/SDK established | Versioned query/mutation APIs, typed SDK, pagination, filters, consistency rules, compatibility promises, and API security evidence |
-| Actions and workflows | Foundry actions update ontology objects and support applications | Action contracts and simulated-only boundary; no general persistent-object action service | Policy-enforced transactions, validation, idempotency, audit, recovery, human approval, explicit side-effect boundaries |
-| Governance and security | Ontology-scoped organizations and platform access controls | Project scopes and policy concepts; service-level enforcement remains incomplete | Identity, RBAC+ABAC, tenant isolation, least privilege, revocation, and integrity-tested audit |
-| Authoring and usability | Platform tools and application surfaces | YAML/JSON pack files and documentation | Clear authoring, inspection, lineage, permission review, change review, and action review for domain experts |
-| Portability and transparency | Supported platform APIs/SDKs | Local-first Python contracts and serializable packs | Open export/import format, no hidden identity/provenance semantics, conformance suite, and clear migration path |
-| Reliability and operations | Managed platform services | Local stores, partial audit and event primitives | Backup/restore, migrations, observability, concurrency, recovery, release compatibility, private/on-prem deployment proof |
+| Semantic types | Versioned object, property, link and action types shared by every application | Versioned pack definitions and parser | Portable schemas; independent domain packs use one contract; compatible evolution and explicit breaking changes |
+| Identity and links | Stable object identity and typed relationships that applications can rely on | Durable source-backed object references and immutable typed temporal links with project/pack/type/import identity | Feature-specific integrity coverage, merge/split history, and cross-project identity rules |
+| Data connection and lineage | Every object traceable to an exact source snapshot | Explicit snapshot binding contract, source IDs, hashes, locators, read-only materialization | Repeatable imports, full row lineage, schema evolution, reconciliation, retention/deletion handling, and connector boundaries |
+| Query and application APIs | Versioned, typed, paginated access for independent applications | No general ontology API/SDK established | Versioned query/mutation APIs, typed SDK, pagination, filters, consistency rules, compatibility promises, and API security evidence |
+| Actions and workflows | Declared, policy-checked actions with approval, audit and recovery | Action contracts and simulated-only boundary; no general persistent-object action service | Policy-enforced transactions, validation, idempotency, audit, recovery, human approval, explicit side-effect boundaries |
+| Governance and security | Enforced identity, scope and least-privilege access with tamper-evident audit | Project scopes and policy concepts; service-level enforcement remains incomplete | Identity, RBAC+ABAC, tenant isolation, least privilege, revocation, and integrity-tested audit |
+| Authoring and usability | Domain experts can inspect, review and change definitions safely | YAML/JSON pack files and documentation | Clear authoring, inspection, lineage, permission review, change review, and action review for domain experts |
+| Portability and transparency | Open formats and no hidden identity or provenance semantics | Local-first Python contracts and serializable packs | Open export/import format, no hidden identity/provenance semantics, conformance suite, and clear migration path |
+| Reliability and operations | Recoverable, observable, upgradeable operation, including private deployment | Local stores, partial audit and event primitives | Backup/restore, migrations, observability, concurrency, recovery, release compatibility, private/on-prem deployment proof |
 
 ## Delivery sequence
 
@@ -103,8 +101,8 @@ These are real early ontology capabilities, not an integrated ontology platform.
 
 ## Non-goals and guardrails
 
-- Do not rebrand Agora or imitate proprietary interfaces.
-- Do not claim parity from a document, class, API stub, or demo.
+- Do not copy third-party interfaces, branding or terminology.
+- Do not claim a capability from a document, class, API stub, or demo.
 - Do not add a general action executor before query, identity, authorization, audit, and recovery guarantees exist.
 - Do not connect live feeds, real customer systems, payments, messaging, or accounts as part of O0–O3.
 - Do not use the 2020 holdout or change prediction status as part of ontology work.
@@ -112,4 +110,4 @@ These are real early ontology capabilities, not an integrated ontology platform.
 
 ## Success definition
 
-Claim a capability only when implementation evidence, a documented contract, conformance tests, capability-appropriate security/failure evidence, and a verified release exist. “Meet or exceed Palantir in all areas” remains the strategic ambition; each area must have a measurable, fair benchmark before a comparative claim is made.
+Claim a capability only when implementation evidence, a documented contract, conformance tests, capability-appropriate security/failure evidence, and a verified release exist. Any claim of advantage over an alternative additionally needs a measurable, fair benchmark.

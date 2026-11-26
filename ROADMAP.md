@@ -37,7 +37,7 @@ LLM swarms lack.
 - [x] Fork a study to try a variation, then compare studies side by side
 - [x] Website: Report and Interact steps, an "add an event" box, Fork, a Compare page. Command line: `report`, `ask`, `chat`, `interview`, `inject`, `fork`, `compare`
 
-## Phase 3b: Parity with MiroFish, plus more (this release)
+## Phase 3b: Conversations, memory and report tools (done)
 - [x] Agents talk to each other: an inbox (replies, @mentions and private messages come first), replies that show the message they answer, quote, mute, unfollow, search, trending terms
 - [x] Time settings: minutes per round, peak and off-peak multipliers, active hours per group or account
 - [x] Feed ranking per app: recency, popularity, relevance, echo chamber, viral threshold
@@ -52,6 +52,9 @@ LLM swarms lack.
 - [x] Backtest against a statistical baseline (Bass diffusion curve)
 - [x] Monte Carlo ranges (10/50/90%), win and target probabilities, uncertainty bands, sensitivity ("what moves the result most")
 - [x] In the report, the website (Calibrate step) and the command line (`data`, `calibrate`, `backtest`, `forecast`)
+
+## Next: native society layer (planned)
+- [ ] Agents communicate directly inside Agora (private, group, open and broadcast conversations) with no platform account required; simulated platforms become optional environments. Design: [docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md](docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md)
 
 ## Phase 5: Product
 - Web UI polish: PDF export button, guided tour, saved interview sets

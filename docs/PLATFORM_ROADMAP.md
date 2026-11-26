@@ -8,11 +8,11 @@
 
 The baseline above is historical. Since that commit, main includes ontology registry, pack-loader, and data-binding implementation in `agora/ontology/`, domain packs, and registry/binding tests. At current main `745e98e4abdf9d2008e479cf1cdbd0240a3642f6`, ontology is **partially implemented**, not design-only: the registry and fingerprints are in-memory, and bound snapshot records materialize read-only in memory. A durable ontology object/link store, general ontology query/API/SDK, managed action runtime, complete identity/authorization layer, and authoring experience are not established by those components.
 
-The [ontology capability target](ONTOLOGY_CAPABILITY_TARGET.md) sets a staged benchmark against published Gotham and Foundry capabilities. This status refresh does not claim platform parity or production readiness.
+The [ontology capability target](ONTOLOGY_CAPABILITY_TARGET.md) sets a staged, evidence-based delivery target for the ontology layer. This status refresh does not claim production readiness.
 
 ## Product direction
 
-AGORA is a governed decision platform. Data is integrated with provenance, represented through a domain ontology, used by one or more decision engines (including exploratory simulation), and connected to decisions whose inputs, approvals and outcomes can be audited.
+AGORA is a living-world simulation and decision-intelligence platform: persistent populations of agents that communicate, form relationships, exchange information and make decisions, inside a governed framework. Data is integrated with provenance, represented through a domain ontology, used by one or more decision engines (including exploratory simulation), and connected to decisions whose inputs, approvals and outcomes can be audited.
 
 The product is built as a modular monolith with stable internal contracts first. Do not create a fleet of microservices or independently branded subsystem products prematurely. The previous proposed subsystem names are dropped; use capability and domain language in architecture, code and user-facing documentation.
 
