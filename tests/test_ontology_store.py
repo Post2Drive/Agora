@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import shutil
 
 import pytest
 
 from agora.audit_chain import AuditChainStore
 from agora.ontology import OntologyError, OntologyObjectStore, load_binding, parse_domain_pack
+from agora.tabular import ingest_csv
 
 
 def _pack():
@@ -250,3 +252,56 @@ def test_dependency_manifest_records_exact_source_file_hash_without_row_values(c
     serialized = _canonical(manifest)
     assert "C-SECRET-001" not in serialized
     assert "private-value@example.test" not in serialized
+
+
+
+def test_restore_publishes_verified_backup_into_empty_project(catalog, tmp_path):
+    project, store, audit, pack_fingerprint, _binding_fingerprint = catalog
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+
+    restored_project = tmp_path / "restored" / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        result = restored_store.restore(
+            restored_backup, policy=_allow, audit=restored_audit,
+        )
+        assert result == restored_project / "data" / "ontology.sqlite3"
+        report = restored_store.verify_integrity(policy=_allow, audit=restored_audit)
+        assert report["ok"] is True
+        assert restored_store.get_pack(
+            pack_fingerprint, policy=_allow, audit=restored_audit,
+        ).pack_id == "backup-test-pack"
+    finally:
+        restored_audit.close()
+
+
+def test_restore_refuses_existing_destination(catalog):
+    project, store, audit, _pack_fingerprint, _binding_fingerprint = catalog
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+
+    with pytest.raises(OntologyError, match="destination already exists"):
+        store.restore(backup_path, policy=_allow, audit=audit)
+
+
+def test_restore_rejects_corrupt_backup_without_publishing(catalog):
+    project, _store, audit, _pack_fingerprint, _binding_fingerprint = catalog
+    restored_project = project.parent / "restored-corrupt" / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    corrupt_backup = restored_data / "corrupt.sqlite3"
+    corrupt_backup.write_bytes(b"not a sqlite database")
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        with pytest.raises(OntologyError):
+            restored_store.restore(corrupt_backup, policy=_allow, audit=restored_audit)
+        assert not restored_store.path.exists()
+    finally:
+        restored_audit.close()
