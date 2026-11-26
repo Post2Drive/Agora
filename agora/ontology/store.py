@@ -163,7 +163,7 @@ class OntologyObjectStore:
     ) -> str:
         if not isinstance(pack, OntologyPack):
             raise OntologyError("pack must be a validated OntologyPack")
-        pack = parse_domain_pack(asdict(pack))
+        pack = parse_domain_pack(json.loads(_canonical(asdict(pack))))
         fingerprint = pack.fingerprint
         resource_id = f"{pack.pack_id}:{fingerprint}"
         self._authorize("ontology_write", [resource_id], policy=policy, audit=audit)
