@@ -1268,6 +1268,75 @@ class OntologyObjectStore:
                 source_conn.close()
 
 
+    def _verify_source_snapshot_dependencies(self, ontology_conn: sqlite3.Connection) -> None:
+        """Confirm every referenced import exists in this project's tabular snapshot DB.
+
+        Only import metadata is read; no source row payloads are selected.
+        """
+        dependencies = [
+            dict(row) for row in ontology_conn.execute(
+                """SELECT DISTINCT import_id, dataset_id, schema_id, schema_version,
+                          schema_fingerprint, source_registry_id, file_sha256
+                   FROM ontology_object_refs"""
+            )
+        ]
+        link_refs: dict[str, str] = {}
+        for row in ontology_conn.execute("SELECT provenance_json FROM ontology_links"):
+            provenance = json.loads(row["provenance_json"])
+            if provenance.get("kind") != "source":
+                continue
+            for ref in provenance.get("source_refs", []):
+                import_id, digest = ref.get("import_id"), ref.get("file_sha256")
+                if isinstance(import_id, str) and isinstance(digest, str):
+                    previous = link_refs.setdefault(import_id, digest.lower())
+                    if previous != digest.lower():
+                        raise OntologyError("backup contains conflicting hashes for one source import")
+        if not dependencies and not link_refs:
+            return
+        snapshot_path = self.project / "data" / "tabular.sqlite3"
+        try:
+            require_safe_path(snapshot_path)
+            if not snapshot_path.is_file():
+                raise OntologyError("required tabular source snapshot database is missing")
+            conn = sqlite3.connect(snapshot_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
+            raise OntologyError("required tabular source snapshot database is unavailable") from exc
+        try:
+            for dependency in dependencies:
+                row = conn.execute(
+                    """SELECT dataset_id, source_registry_id, file_sha256, status, manifest_json
+                       FROM imports WHERE import_id=?""",
+                    (dependency["import_id"],),
+                ).fetchone()
+                if row is None or row["status"] != "committed":
+                    raise OntologyError("a referenced source import is missing or not committed")
+                try:
+                    manifest = json.loads(row["manifest_json"])
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise OntologyError("a referenced source import manifest is invalid") from exc
+                if (
+                    row["dataset_id"] != dependency["dataset_id"]
+                    or row["source_registry_id"] != dependency["source_registry_id"]
+                    or row["file_sha256"].lower() != dependency["file_sha256"].lower()
+                    or manifest.get("schema_id") != dependency["schema_id"]
+                    or manifest.get("schema_version") != dependency["schema_version"]
+                    or manifest.get("schema_fingerprint") != dependency["schema_fingerprint"]
+                ):
+                    raise OntologyError("a referenced source import does not match its stored provenance")
+            for import_id, digest in link_refs.items():
+                row = conn.execute(
+                    "SELECT file_sha256, status FROM imports WHERE import_id=?", (import_id,)
+                ).fetchone()
+                if row is None or row["status"] != "committed" or row["file_sha256"].lower() != digest:
+                    raise OntologyError("a source-backed link references a missing or changed import")
+        except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError) as exc:
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("tabular source dependency verification failed") from exc
+        finally:
+            conn.close()
+
     def restore(
         self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
     ) -> Path:
@@ -1299,6 +1368,7 @@ class OntologyObjectStore:
             source_conn = sqlite3.connect(resolved_backup.as_uri() + "?mode=ro", uri=True, timeout=30.0)
             source_conn.row_factory = sqlite3.Row
             self._verify_connection_integrity(source_conn)
+            self._verify_source_snapshot_dependencies(source_conn)
             for table in ("ontology_object_refs", "ontology_links"):
                 foreign_projects = source_conn.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE project_id<>?", (self.project_id,)
