@@ -311,7 +311,7 @@ def evaluate_option(
 
 
 def request_option(principal: Principal | None, request: OptionRequest, *, audit: Any,
-                   **context: Any) -> GateResult:
+                   record_hash: str | None = None, **context: Any) -> GateResult:
     """Evaluate a person's choice and audit the attempt, allowed or blocked.
 
     If the attempt cannot be recorded this raises, so nothing may proceed. The
@@ -337,6 +337,8 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
             "confirmed_cost_units": request.confirmed_cost_units,
         }),
     }
+    if record_hash is not None:
+        event["record_hash"] = record_hash  # which stored project-record version was judged
     try:
         if _protection.ANCHOR_REQUIRED:
             from agora.audit_anchor import require_anchored
