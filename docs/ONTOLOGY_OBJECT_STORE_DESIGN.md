@@ -1,6 +1,6 @@
 # Ontology Object Store and Query Design
 
-**Status:** design proposal. This document defines O1 for owner review; it does not implement storage, migrate existing databases, or enable external actions.
+**Status:** design contract with partial O1 implementation. The project-local store now includes immutable definitions, source-backed object references, and typed temporal links. Bounded queries, traversal, backup/restore verification, and feature-specific implementation evidence remain outstanding. This is not an O1 completion claim and does not enable external actions.
 
 ## Intent
 
@@ -100,7 +100,7 @@ The first catalog slice uses separate `ontology_read` and `ontology_write` polic
 
 ## Migration and operations
 
-Create the sidecar only when O1 implementation is separately approved. Schema migrations are explicit, forward-only, checksummed, and transactional. Existing databases are not automatically altered. Backups include the ontology database and its referenced snapshot manifests; restore verification checks pack, binding, link, and source-reference integrity. If a referenced snapshot is missing, queries fail closed and return an actionable provenance error.
+The sidecar implementation is in `agora/ontology/store.py` and currently uses checksummed, forward-only migrations through schema v3. Existing graph and run databases are not altered. Schema migrations are explicit and transactional. Existing databases are not automatically altered. Backups include the ontology database and its referenced snapshot manifests; restore verification checks pack, binding, link, and source-reference integrity. If a referenced snapshot is missing, queries fail closed and return an actionable provenance error.
 
 ## Acceptance evidence for implementation
 
