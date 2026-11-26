@@ -75,14 +75,17 @@
 - Modify: `agora/ontology/store.py`
 - Test: `tests/test_ontology_store.py`
 
-**Interfaces:**
-- `add_link(pack_fingerprint: str, link_type_id: str, link_version: str, source_ref: str, target_ref: str, valid_from: str, valid_to: str | None, *, actor: str, reason: str, provenance: Mapping[str, Any], policy, audit) -> str` validates exact pack/type/endpoints, temporal interval, project scope, cardinality, and policy in one transaction, appending an immutable link and audit event.
-- `supersede_link(link_id: str, occurred_at: str, reason: str, *, actor, policy, audit) -> str` appends a successor record; it does not update or delete the original.
+**Status:** PR #237 merged at `3023cb369df94b90d78cf5d89faf3374e6ba0675`, changing only `agora/ontology/store.py`. Exact-head CodeQL and all four Windows/Linux × Python 3.11/3.12 repository CI jobs passed. No focused link tests were added or run; Task 3 is not complete until feature-specific coverage and behavior verification are supplied.
 
-- [ ] **Step 1: Add tests** for endpoint type/version checks, temporal bounds, each cardinality, overlapping validity, concurrent insertion, idempotency, policy denial, and append-only supersession.
-- [ ] **Step 2: Implement** typed link storage and transaction-scoped cardinality checks.
-- [ ] **Step 3: Verify** allowed and denied link writes and audit behavior.
-- [ ] **Step 4: Commit** the link slice independently.
+**Interfaces:**
+- `add_link(pack_fingerprint, link_type_id, link_type_version, source, target, valid_from, valid_to, reason, provenance, *, policy, audit) -> str` appends a typed relationship between exact project/pack/type/version/import/record references. It validates timezone-aware intervals, source provenance references, endpoint sensitivity, and cardinality within a write transaction.
+- `supersede_link(pack_fingerprint, link_id, source, target, valid_from, valid_to, reason, provenance, *, policy, audit) -> str` appends a successor while retaining the original immutable link.
+- `get_links(pack_fingerprint, link_type_id, link_type_version, *, source, target, include_superseded, policy, audit) -> list[dict]` reads exact-version records under endpoint sensitivity policy.
+
+- [ ] **Step 1: Add focused tests** for endpoint type/version checks, temporal bounds, each cardinality, overlapping validity, concurrent insertion, policy denial, sensitivity enforcement, provenance, audit, and append-only supersession.
+- [x] **Step 2: Implement** typed link storage and transaction-scoped cardinality checks.
+- [ ] **Step 3: Verify** allowed and denied link writes, sensitivity gates, migration, and audit behavior with focused coverage.
+- [x] **Step 4: Commit** the link slice independently.
 
 ### Task 4: Scoped object queries and link traversal
 
