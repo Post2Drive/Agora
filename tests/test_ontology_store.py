@@ -741,3 +741,172 @@ def test_restore_rejects_conflicting_hashes_for_one_link_import(catalog, tmp_pat
         expect_error=True, conflicting=True,
     )
     assert "conflicting hashes for one source import" in message
+
+
+_ATTEMPT_CACHE: dict = {}
+
+
+def _restore_attempt(catalog, tmp_path, name, tamper, digest):
+    """Restore the standard backup into a fresh project; return (store, error or None)."""
+    project, store, audit = catalog[0], catalog[1], catalog[2]
+    cached = _ATTEMPT_CACHE.get(str(project))
+    if cached is None:
+        import_id, backup_path = _materialized_backup(catalog)
+        manifest = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+        cached = _ATTEMPT_CACHE[str(project)] = (import_id, backup_path, manifest)
+    import_id, backup_path, manifest = cached
+    restored_project = tmp_path / name / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    tabular_copy = restored_data / "tabular.sqlite3"
+    shutil.copyfile(project / "data" / "tabular.sqlite3", tabular_copy)
+    connection = sqlite3.connect(tabular_copy)
+    try:
+        tamper(connection, import_id)
+        connection.commit()
+    finally:
+        connection.close()
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        chosen = manifest["source_snapshot_digest"] if digest == "manifest" else digest
+        try:
+            restored_store.restore(
+                restored_backup, policy=_allow, audit=restored_audit,
+                expected_source_snapshot_digest=chosen,
+            )
+            return restored_store, None
+        except OntologyError as exc:
+            assert not restored_store.path.exists()
+            return restored_store, str(exc)
+    finally:
+        restored_audit.close()
+
+
+def _tamper_payload(conn, import_id):
+    conn.execute(
+        "UPDATE import_rows SET payload_json=? WHERE import_id=?",
+        ('{"customer_id":"C-SECRET-001","email":"attacker@example.test"}', import_id),
+    )
+
+
+def test_manifest_carries_source_snapshot_digest_without_row_values(catalog):
+    project, store, audit, _, _ = catalog
+    import_id, backup_path = _materialized_backup(catalog)
+    first = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    second = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    digest = first["source_snapshot_digest"]
+    assert len(digest) == 64 and int(digest, 16) >= 0
+    assert digest == second["source_snapshot_digest"]
+    serialized = json.dumps(first)
+    assert "private-value@example.test" not in serialized and "C-SECRET-001" not in serialized
+    connection = sqlite3.connect(project / "data" / "tabular.sqlite3")
+    try:
+        _tamper_payload(connection, import_id)
+        connection.commit()
+    finally:
+        connection.close()
+    changed = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    assert changed["source_snapshot_digest"] != digest
+
+
+def test_restore_with_matching_anchored_digest_succeeds(catalog, tmp_path):
+    restored_store, error = _restore_attempt(
+        catalog, tmp_path, "anchor-ok", lambda c, i: None, "manifest")
+    assert error is None and restored_store.path.exists()
+
+
+def test_anchored_digest_detects_payload_tampering_that_consistency_checks_miss(catalog, tmp_path):
+    unanchored_store, unanchored_error = _restore_attempt(
+        catalog, tmp_path, "tamper-unanchored", _tamper_payload, None)
+    assert unanchored_error is None and unanchored_store.path.exists()
+    anchored_store, anchored_error = _restore_attempt(
+        catalog, tmp_path, "tamper-anchored", _tamper_payload, "manifest")
+    assert anchored_error is not None
+    assert "does not match the anchored digest" in anchored_error
+    assert not anchored_store.path.exists()
+
+
+def test_anchored_digest_must_be_a_sha256(catalog, tmp_path):
+    for bad in ("short", "z" * 64, 12345):
+        _, error = _restore_attempt(catalog, tmp_path, f"bad-{abs(hash(str(bad)))}", lambda c, i: None, bad)
+        assert error is not None and "64-character SHA-256" in error
+
+
+def test_anchored_digest_for_wrong_content_is_refused(catalog, tmp_path):
+    _, error = _restore_attempt(catalog, tmp_path, "wrong-digest", lambda c, i: None, "0" * 64)
+    assert error is not None and "does not match the anchored digest" in error
+
+
+def test_anchored_digest_applies_to_backups_without_source_dependencies(catalog, tmp_path):
+    project, store, audit, _, _ = catalog
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+    manifest = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    assert manifest["source_snapshot_files"] == []
+    for name, digest, ok in (("empty-ok", manifest["source_snapshot_digest"], True),
+                             ("empty-bad", "1" * 64, False)):
+        restored_project = tmp_path / name / project.name
+        restored_data = restored_project / "data"
+        restored_data.mkdir(parents=True)
+        restored_backup = restored_data / backup_path.name
+        shutil.copyfile(backup_path, restored_backup)
+        restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+        restored_store = OntologyObjectStore(restored_project)
+        try:
+            if ok:
+                restored_store.restore(
+                    restored_backup, policy=_allow, audit=restored_audit,
+                    expected_source_snapshot_digest=digest)
+            else:
+                with pytest.raises(OntologyError, match="does not match the anchored digest"):
+                    restored_store.restore(
+                        restored_backup, policy=_allow, audit=restored_audit,
+                        expected_source_snapshot_digest=digest)
+        finally:
+            restored_audit.close()
+
+
+@pytest.mark.parametrize("statement", [
+    "UPDATE import_rows SET locator_json='{\"x\":1}' WHERE import_id=?",
+    "UPDATE import_rows SET record_key='other-key' WHERE import_id=?",
+    "UPDATE import_rows SET row_id='renamed-row' WHERE import_id=?",
+    "UPDATE import_rows SET source_record_number=source_record_number+100 WHERE import_id=?",
+    "UPDATE imports SET status='failed' WHERE import_id=?",
+    "UPDATE imports SET source_registry_id='other-registry' WHERE import_id=?",
+    "UPDATE imports SET manifest_json=json_set(manifest_json, '$.extra_field', 1) WHERE import_id=?",
+])
+def test_every_snapshot_field_is_bound_by_the_digest(catalog, statement):
+    project, store, audit, _, _ = catalog
+    import_id, backup_path = _materialized_backup(catalog)
+    before = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    connection = sqlite3.connect(project / "data" / "tabular.sqlite3")
+    try:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute(statement, (import_id,))
+        connection.commit()
+    finally:
+        connection.close()
+    after = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)
+    assert after["source_snapshot_digest"] != before["source_snapshot_digest"]
+
+
+def test_anchored_digest_accepts_uppercase_hex(catalog, tmp_path):
+    import_id, backup_path = _materialized_backup(catalog)
+    project, store, audit = catalog[0], catalog[1], catalog[2]
+    digest = store.backup_dependency_manifest(backup_path, policy=_allow, audit=audit)["source_snapshot_digest"]
+    restored_project = tmp_path / "upper" / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    shutil.copyfile(project / "data" / "tabular.sqlite3", restored_data / "tabular.sqlite3")
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    try:
+        OntologyObjectStore(restored_project).restore(
+            restored_backup, policy=_allow, audit=restored_audit,
+            expected_source_snapshot_digest=digest.upper())
+    finally:
+        restored_audit.close()

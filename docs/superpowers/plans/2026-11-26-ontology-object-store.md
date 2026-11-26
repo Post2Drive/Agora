@@ -106,7 +106,7 @@
 
 ### Task 5: Migration, recovery, and contract documentation
 
-**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, a hash-bound dependency inventory, and a no-overwrite restore path are implemented in PR #241. Restore now checks target-side tabular import availability and exact provenance metadata; it does not copy the tabular database. It does not authenticate the tabular database's complete bytes or row payloads, so target snapshot DB integrity remains a trusted dependency pending a separately retained digest/attestation. Restore acceptance evidence and feature-specific test execution are still open.
+**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, a hash-bound dependency inventory, and a no-overwrite restore path are implemented in PR #241. Restore now checks target-side tabular import availability and exact provenance metadata; it does not copy the tabular database. Authentication of the tabular database's row payloads is available through the manifest's `source_snapshot_digest` and `restore(expected_source_snapshot_digest=...)`; without that argument target snapshot integrity remains a trusted dependency, and signing/anchoring the manifest is follow-up work. Restore acceptance evidence and feature-specific test execution are still open.
 
 **Files:**
 - Modify: `agora/ontology/store.py`
