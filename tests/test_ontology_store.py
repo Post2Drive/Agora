@@ -281,6 +281,87 @@ def test_restore_publishes_verified_backup_into_empty_project(catalog, tmp_path)
         restored_audit.close()
 
 
+
+def test_restore_requires_exact_source_snapshot_database(catalog, tmp_path):
+    project, store, audit, pack_fingerprint, binding_fingerprint = catalog
+    source = project / "customers.csv"
+    source.write_text(
+        "customer_id,email\nC-SECRET-001,private-value@example.test\n",
+        encoding="utf-8",
+    )
+    imported = ingest_csv(project, source, {
+        "schema_id": "customers-v1",
+        "schema_version": "1.0.0",
+        "dataset_name": "customers",
+        "columns": [
+            {"name": "customer_id", "type": "string", "nullable": False,
+             "primary_key": True, "sensitivity": "personal", "purpose": "account support",
+             "retention": "90 days"},
+            {"name": "email", "type": "string", "nullable": False, "sensitivity": "sensitive"},
+        ],
+    }, data_role="context")
+    assert store.materialize_binding(
+        pack_fingerprint, binding_fingerprint, imported["import_id"],
+        policy=_allow, audit=audit, purpose="account support", retention="90 days",
+    ) == 1
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+
+    restored_project = tmp_path / "missing-source" / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        with pytest.raises(OntologyError, match="tabular source snapshot"):
+            restored_store.restore(restored_backup, policy=_allow, audit=restored_audit)
+        assert not restored_store.path.exists()
+    finally:
+        restored_audit.close()
+
+
+def test_restore_accepts_matching_source_snapshot_database(catalog, tmp_path):
+    project, store, audit, pack_fingerprint, binding_fingerprint = catalog
+    source = project / "customers.csv"
+    source.write_text(
+        "customer_id,email\nC-SECRET-001,private-value@example.test\n",
+        encoding="utf-8",
+    )
+    imported = ingest_csv(project, source, {
+        "schema_id": "customers-v1",
+        "schema_version": "1.0.0",
+        "dataset_name": "customers",
+        "columns": [
+            {"name": "customer_id", "type": "string", "nullable": False,
+             "primary_key": True, "sensitivity": "personal", "purpose": "account support",
+             "retention": "90 days"},
+            {"name": "email", "type": "string", "nullable": False, "sensitivity": "sensitive"},
+        ],
+    }, data_role="context")
+    assert store.materialize_binding(
+        pack_fingerprint, binding_fingerprint, imported["import_id"],
+        policy=_allow, audit=audit, purpose="account support", retention="90 days",
+    ) == 1
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+
+    restored_project = tmp_path / "matching-source" / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    shutil.copyfile(project / "data" / "tabular.sqlite3", restored_data / "tabular.sqlite3")
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        restored_store.restore(restored_backup, policy=_allow, audit=restored_audit)
+        assert restored_store.verify_integrity(policy=_allow, audit=restored_audit)["ok"] is True
+    finally:
+        restored_audit.close()
+
+
 def test_restore_refuses_existing_destination(catalog):
     project, store, audit, _pack_fingerprint, _binding_fingerprint = catalog
     backup_path = project / "data" / "ontology.backup.sqlite3"
