@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agora-sim"
 version = "0.3.0"
-description = "Open-source, fully local multi-agent social simulation and prediction engine"
+description = "Open-source, fully local living-world simulation and decision-intelligence platform"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"

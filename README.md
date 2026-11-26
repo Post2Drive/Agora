@@ -2,12 +2,19 @@
 
 **A living-world simulation and decision-intelligence platform: persistent populations of agents that talk, remember, form opinions and act. Open source, fully local.**
 
-Upload your documents and describe a situation. Agora fills a small world with people
-who have personas, memories and opinions. They talk to each other on simulated
-**WhatsApp, Instagram, Facebook, X, YouTube, Reddit, Facebook Groups, Telegram,
-LinkedIn, Threads and TikTok**, react to news and decisions, and take real-world
-actions such as registering, buying or voting. You get a prediction of what people
-will say and do, with numbers you can check.
+Upload your documents and describe a situation. Agora builds a small world of people
+with personas, memories and opinions. They react to news and decisions, form views and
+take **simulated** actions such as registering, buying or voting, and you get a
+projection of what people may say and do, with numbers you can check. Simulated actions
+and projected outcomes are model output; Agora does not perform actions in external
+systems.
+
+Today those conversations happen on simulated **WhatsApp, Instagram, Facebook, X,
+YouTube, Reddit, Facebook Groups, Telegram, LinkedIn, Threads and TikTok**. These are
+optional environments. Native agent-to-agent communication that needs no platform is a
+planned core capability (see the [design](docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md)).
+Predictions are scenario projections: validated predictive accuracy is not claimed (see
+[current status](docs/RUNG_STATUS.md)).
 
 - **Fully local.** Uses your own model server (Ollama, llama.cpp, LM Studio, vLLM, or any
   OpenAI-compatible server). By default nothing leaves your machine or private network.
@@ -50,6 +57,8 @@ The website takes you through six steps:
 It runs only on your computer: it listens on `127.0.0.1`, refuses other host names
 and cross-site requests, and keeps projects in `~/AgoraProjects` (`--dir` to change this).
 **Open the demo** shows a complete example without uploading anything.
+
+Documentation index: [docs/README.md](docs/README.md).
 
 ## Quick start: command line
 
