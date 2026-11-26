@@ -1,6 +1,8 @@
 # Native Social Interaction Engine — design (draft v0.1)
 
-Status: design only. No engine code changes in this document's PR. Direction set by the owner on 26 Nov 2026.
+Status: design, with phase 1 implemented (below). Direction set by the owner on 26 Nov 2026. The engine does not use the native store yet, so no run's behaviour has changed.
+
+**Implemented:** phase 1, `agora/society/store.py` (`SocietyStore`): conversations of four kinds, memberships with roles, an append-only message log that records the reason for every message, per-agent inboxes with read cursors, directed relationships with an append-only change log tied to the causing message, and a deterministic `digest()` over all state. Tests: `tests/test_society_store.py`, mutation-verified. **Not implemented:** phases 2-6, snapshot integration, any engine wiring.
 
 ## 1. Problem
 
@@ -68,7 +70,7 @@ For every message AGORA records: conversation ID and kind, sender, recipients, r
 
 ## 8. Phased delivery
 
-1. **Native data model and store (no behaviour change).** Tables for conversations, messages, memberships, relationships, with digests and tests. Engine untouched except snapshot coverage hooks.
+1. **Native data model and store (no behaviour change). Implemented.** Tables for conversations, messages, memberships, relationships, with digests and tests. Engine untouched except snapshot coverage hooks.
 2. **Direct messaging path.** `_dm` delivers natively when no platform is shared or when the scenario is `native`; inbox read path for agents; effects on relationships and memory; mutation-tested.
 3. **Groups and open discussions.** Group lifecycle, membership permissions, public threads tied to events.
 4. **Initiation policy.** Scored counterpart choice, contact budgets, permission matrix.
