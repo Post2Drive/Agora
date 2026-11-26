@@ -1249,3 +1249,69 @@ class OntologyObjectStore:
                 backup_conn.close()
             if source_conn is not None:
                 source_conn.close()
+
+
+    def backup_dependency_manifest(
+        self, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> dict[str, Any]:
+        """Describe exact external source dependencies without exporting row values."""
+        self._authorize("ontology_read", ["store_backup_dependencies"], policy=policy, audit=audit)
+        conn = self._connect()
+        try:
+            self._verify_connection_integrity(conn)
+            packs = [
+                {
+                    "fingerprint": row["fingerprint"],
+                    "pack_id": row["pack_id"],
+                    "schema_version": row["schema_version"],
+                }
+                for row in conn.execute(
+                    "SELECT fingerprint, pack_id, schema_version FROM ontology_packs ORDER BY fingerprint"
+                )
+            ]
+            bindings = [
+                {
+                    "pack_fingerprint": row["pack_fingerprint"],
+                    "fingerprint": row["fingerprint"],
+                    "binding_id": row["binding_id"],
+                    "binding_version": row["binding_version"],
+                }
+                for row in conn.execute(
+                    """SELECT pack_fingerprint, fingerprint, binding_id, binding_version
+                       FROM bindings ORDER BY pack_fingerprint, fingerprint"""
+                )
+            ]
+            dependencies = [
+                {
+                    "import_id": row["import_id"],
+                    "dataset_id": row["dataset_id"],
+                    "schema_id": row["schema_id"],
+                    "schema_version": row["schema_version"],
+                    "schema_fingerprint": row["schema_fingerprint"],
+                    "source_registry_id": row["source_registry_id"],
+                    "file_sha256": row["file_sha256"].lower(),
+                }
+                for row in conn.execute(
+                    """SELECT DISTINCT import_id, dataset_id, schema_id, schema_version,
+                              schema_fingerprint, source_registry_id, file_sha256
+                       FROM ontology_object_refs
+                       ORDER BY import_id, dataset_id, schema_id, schema_version,
+                                schema_fingerprint, source_registry_id, file_sha256"""
+                )
+            ]
+            payload = {
+                "format": "agora-ontology-backup-dependencies/v1",
+                "project_id": self.project_id,
+                "created_at": _utc_now(),
+                "ontology_schema_version": 3,
+                "packs": packs,
+                "bindings": bindings,
+                "source_snapshot_files": dependencies,
+                "source_row_values_included": False,
+            }
+            digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+            return {**payload, "manifest_sha256": digest}
+        except (sqlite3.Error, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise OntologyError("ontology backup dependency manifest could not be created") from exc
+        finally:
+            conn.close()
