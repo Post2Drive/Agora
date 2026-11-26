@@ -16,7 +16,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Mapping
 
-from .ontology.binding import DataBinding, materialize_instances
+from .ontology.binding import DataBinding, declared_sensitivity, materialize_instances
 from .ontology.registry import OntologyError, OntologyPack
 from .ontology.binding import load_binding
 from .policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
@@ -143,14 +143,7 @@ def build_scenario_input(
     if policy is not None or _protection.POLICY_REQUIRED:
         try:
             policy_binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
-            properties = {item.property_id: item for item in pack.property_types}
-            sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
-            source_sensitivity = max(
-                (policy_binding.property_sensitivity.get(
-                    property_id, properties[property_id].sensitivity
-                 ) for property_id in policy_binding.column_map.values()),
-                key=lambda value: sensitivity_rank[value],
-            )
+            source_sensitivity = declared_sensitivity(pack, policy_binding)
             receipt_resource = {
                     "project_id": project.name or str(project),
                     "resource_ids": [import_id, policy_binding.binding_id],

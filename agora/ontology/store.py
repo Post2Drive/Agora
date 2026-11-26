@@ -22,7 +22,7 @@ from ..audit_anchor import require_anchored, verify_anchored
 from ..pathsafe import UnsafePathError, require_safe_path
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 from .binding import (
-    DataBinding, iter_source_object_refs, load_binding, materialize_source_object,
+    DataBinding, declared_sensitivity, iter_source_object_refs, load_binding, materialize_source_object,
 )
 from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
 
@@ -482,6 +482,9 @@ class OntologyObjectStore:
             property_ids = {item.property_id for item in pack.property_types}
             if not set(binding.column_map.values()).issubset(property_ids):
                 raise OntologyError("binding references a property outside the selected pack")
+            # Identity strategy and classification floor, so a binding that can
+            # never materialize is not stored.
+            declared_sensitivity(pack, binding)
             existing = conn.execute(
                 "SELECT content_json FROM bindings WHERE pack_fingerprint=? AND fingerprint=?",
                 (pack_fingerprint, binding.fingerprint),

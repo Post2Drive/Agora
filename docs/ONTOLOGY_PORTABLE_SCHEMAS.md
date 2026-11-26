@@ -22,6 +22,8 @@ Agora applies these rules that the schemas do not:
 |---|---|
 | Object properties, link ends and action actor and target must resolve inside the pack | Pack |
 | One definition per ID in a pack | Pack |
+| An object type lists each property once | Pack |
+| `property_sensitivity` keys must be mapped property IDs | Binding |
 | `scale` must not exceed `precision` | Pack |
 | `precision` and `scale` must be written as integers (`2`, not `2.0`) | Pack |
 | `primary_key_column` must be a key of `column_map` | Binding |
@@ -47,3 +49,5 @@ All values are synthetic. Another implementation conforms to the structural cont
 The `$id` of each schema ends in its major version (`:1`). The identifiers are names, not web addresses. A change that makes a previously accepted document fail needs a new major version. The schema version is separate from a pack's `schema_version`; changes between two pack versions are covered by [ONTOLOGY_COMPATIBILITY.md](ONTOLOGY_COMPATIBILITY.md).
 
 When these schemas were first published, the parsers were tightened to match them. Agora now refuses, with an `OntologyError`: repeated keys in JSON files; non-ASCII digits in pack versions; and, in bindings, non-string field names, a non-string primary key column or sensitivity value (these three previously raised a `TypeError`).
+
+The later O0 close-out audit made two more parsing rules stricter without changing the schemas: an object type that repeats a property, and a binding whose `property_sensitivity` names an unmapped property, are now refused.
