@@ -353,10 +353,13 @@ def _parse_object(value: Any, index: int) -> ObjectType:
     strategy = _required_text(row["identity_strategy"], f"{context}.identity_strategy")
     if strategy not in {"record_key", "assigned"}:
         raise OntologyError(f"{context}.identity_strategy is unsupported")
+    properties = _string_tuple(row["properties"], f"{context}.properties")
+    if len(set(properties)) != len(properties):
+        raise OntologyError(f"{context}.properties must not repeat a property ID")
     return ObjectType(
         _namespaced_id(row["type_id"], f"{context}.type_id"), _version(row["version"], f"{context}.version"),
         _required_text(row["name"], f"{context}.name"), _required_text(row["description"], f"{context}.description"),
-        _string_tuple(row["properties"], f"{context}.properties"), strategy,
+        properties, strategy,
         _parse_source_binding(row.get("source_binding"), context),
     )
 

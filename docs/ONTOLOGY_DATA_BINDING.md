@@ -96,6 +96,17 @@ The current implementation provides:
 
 `materialize_instances` must reject unknown bindings, missing imports, missing stored type information, schema drift, sealed-holdout misuse, missing primary keys, and `latest` selectors. Type information comes from the stored schema associated with the explicit import, never from a caller-edited manifest. Each instance carries effective per-property sensitivity (the maximum of source-column and ontology-property sensitivity), even when no binding override is supplied. It must not call a real driver, open a network connection, write to a snapshot, mutate a project database, or invoke `agora/sim/**`.
 
+### Rules added by the O0 close-out audit
+
+- `property_sensitivity` may name only mapped property IDs. A mistyped key is refused, not ignored.
+- An override may raise a property's classification and never lower it below the pack's declared value, even when the source column is less sensitive. The policy decision made before any read uses the highest declared classification of the mapped properties.
+- The ObjectType must use the `record_key` identity strategy. An `assigned` type cannot be bound.
+- Every row read must satisfy the property's `nullable` rule and, when listed, its `allowed_values`. Decimals compare numerically; other values must have the same type. Errors name the property and never the value. `iter_source_object_refs` checks rows as it yields them, so a caller that indexes them must do so in one transaction, as the object store does.
+- `materialize_instances` refuses a snapshot in which the binding's key column repeats. `iter_source_object_refs` does not keep every key in memory; the object store refuses the conflicting reference.
+- `OntologyObjectStore.register_binding` refuses a binding that breaks the identity or classification rules above.
+
+These checks run on new reads and registrations. They do not revisit object references already stored.
+
 ## 8. Acceptance tests and mutation proofs
 
 The implementation must test both the commerce and civic ontology fixtures with one CSV-backed snapshot each. Tests must demonstrate:

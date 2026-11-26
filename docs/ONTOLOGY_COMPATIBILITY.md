@@ -48,4 +48,4 @@ The output is JSON listing each change and each version rule breach. Exit status
 - The check compares only the two packs it is given. It cannot tell whether the old pack is the one actually released.
 - It does not inspect stored objects, links or bindings, and it migrates nothing. Old packs remain separate immutable snapshots selected by fingerprint.
 - A breaking change to an object type does not force new versions on the link or action types that refer to it.
-- Published portable schemas for packs and bindings, and migration reports over stored records, are not implemented.
+- Migration reports over stored records are not implemented. Structural schemas for packs and bindings are described in [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md); they do not check compatibility.
