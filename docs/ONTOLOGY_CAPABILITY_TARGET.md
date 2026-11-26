@@ -71,7 +71,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 
 ### O1 — Persistent ontology records and query
 
-- Decide durable source of truth and transaction boundaries within the modular monolith.
+- Follow the detailed [Ontology Object Store and Query Design](ONTOLOGY_OBJECT_STORE_DESIGN.md) for the proposed storage boundary, identity, links, query contract, and governance controls.
 - Persist versioned object instances, links, provenance, and validity intervals with stable identity.
 - Add scoped queries with explicit versions/snapshots, pagination, filters, and predictable consistency.
 - Prove integrity constraints, backup/restore, and migration behavior without silently reinterpreting existing graph records.
