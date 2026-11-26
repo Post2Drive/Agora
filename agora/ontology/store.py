@@ -10,6 +10,7 @@ import base64
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 from typing import Any, Mapping
@@ -1266,6 +1267,75 @@ class OntologyObjectStore:
             if source_conn is not None:
                 source_conn.close()
 
+
+    def restore(
+        self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> Path:
+        """Restore a verified, project-local backup without overwriting an existing store.
+
+        The destination is published only after a temporary SQLite copy passes the
+        same integrity checks as a live store. Source tabular snapshots are not copied.
+        """
+        self._authorize("ontology_write", ["store_restore"], policy=policy, audit=audit)
+        backup_file = Path(backup_path)
+        temporary = self.path.with_name(self.path.name + ".restore-" + uuid.uuid4().hex + ".tmp")
+        source_conn = None
+        restore_conn = None
+        created_temporary = False
+        try:
+            require_safe_path(self.project)
+            self.project.mkdir(parents=True, exist_ok=True)
+            root = self.project.resolve()
+            resolved_backup = backup_file.resolve()
+            resolved_backup.relative_to(root)
+            if resolved_backup == self.path.resolve() or not backup_file.is_file():
+                raise OntologyError("restore requires an existing project-local backup file")
+            require_safe_path(backup_file)
+            require_safe_path(self.path.parent)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            require_safe_path(temporary)
+            if self.path.exists() or temporary.exists():
+                raise OntologyError("restore destination already exists")
+            source_conn = sqlite3.connect(resolved_backup.as_uri() + "?mode=ro", uri=True, timeout=30.0)
+            source_conn.row_factory = sqlite3.Row
+            self._verify_connection_integrity(source_conn)
+            for table in ("ontology_object_refs", "ontology_links"):
+                foreign_projects = source_conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE project_id<>?", (self.project_id,)
+                ).fetchone()[0]
+                if foreign_projects:
+                    raise OntologyError("backup contains ontology records for a different project")
+            restore_conn = sqlite3.connect(str(temporary), timeout=30.0)
+            restore_conn.row_factory = sqlite3.Row
+            created_temporary = True
+            source_conn.backup(restore_conn)
+            self._verify_connection_integrity(restore_conn)
+            restore_conn.close()
+            restore_conn = None
+            source_conn.close()
+            source_conn = None
+            require_safe_path(temporary)
+            # Hard-link publication is atomic and fails rather than replacing a
+            # destination created concurrently after the initial existence check.
+            os.link(temporary, self.path)
+            temporary.unlink()
+            created_temporary = False
+            require_safe_path(self.path)
+            return self.path
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
+            if created_temporary and temporary.exists():
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("ontology restore failed or did not pass verification") from exc
+        finally:
+            if restore_conn is not None:
+                restore_conn.close()
+            if source_conn is not None:
+                source_conn.close()
 
     def backup_dependency_manifest(
         self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
