@@ -75,6 +75,9 @@ No public REST endpoint or generated SDK is exposed in O1; those belong to O3 af
 
 ## Governance and failure behavior
 
+The first catalog slice uses separate `ontology_read` and `ontology_write` policy operations; it does not label ontology changes as `binding`. The current role matrix grants both operations to `operator`, read access to `reviewer` and `reader`, and no ontology writes to those read-oriented roles. Every operation is project-scoped, sensitivity-checked, principal-bound, and recorded through the anchored audit writer in protected mode. The policy version changes when these operation grants change.
+
+
 - Require a principal-bound policy decision before protected reads or writes. No caller can bypass it with a flag or unbound callback.
 - Audit pack registration, binding registration, object/link insertion, supersession, denied queries, and export attempts through the anchored audit path.
 - Apply least privilege at project and resource scope. Never return values above the principal's clearance or for an unauthorized data purpose.
