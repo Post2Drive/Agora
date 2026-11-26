@@ -10,16 +10,20 @@ from collections.abc import Mapping
 from typing import Any
 
 POLICY_VERSION = "stage2-v1"
-OPERATIONS = frozenset({"import", "binding", "simulation_input", "report_export", "decision_approval", "decision_outcome", "reconciliation_repair"})
+OPERATIONS = frozenset({
+    "import", "binding", "simulation_input", "report_export",
+    "decision_approval", "decision_outcome", "reconciliation_repair",
+    "ontology_read", "ontology_write",
+})
 SENSITIVITY_RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
 
 # Keep this deliberately small until an identity adapter defines the complete
 # enterprise role model. Unknown roles are denied rather than inferred.
 ROLE_OPERATIONS = {
     "operator": OPERATIONS - {"decision_approval", "reconciliation_repair"},
-    "reviewer": frozenset({"binding", "report_export", "decision_outcome"}),
+    "reviewer": frozenset({"binding", "report_export", "decision_outcome", "ontology_read"}),
     "approver": frozenset({"report_export", "decision_approval", "reconciliation_repair"}),
-    "reader": frozenset({"report_export"}),
+    "reader": frozenset({"report_export", "ontology_read"}),
 }
 
 
