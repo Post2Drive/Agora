@@ -737,6 +737,27 @@ class OntologyObjectStore:
                 params,
             ).fetchall()
             self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
+            sensitivities = []
+            for row in rows:
+                for side in ("source", "target"):
+                    key = (row[side + "_type_id"], row[side + "_type_version"],
+                           row[side + "_import_id"], row[side + "_record_key"])
+                    ref = conn.execute(
+                        """SELECT property_sensitivity_json FROM ontology_object_refs
+                           WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                             AND import_id=? AND record_key=?""",
+                        (self.project_id, pack_fingerprint, *key),
+                    ).fetchone()
+                    if ref:
+                        stored = json.loads(ref["property_sensitivity_json"])
+                        if isinstance(stored, dict):
+                            sensitivities.extend(v for v in stored.values() if isinstance(v, str))
+            rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+            sensitivity = max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
+            self._authorize(
+                "ontology_read", [pack_fingerprint, link_type_id, link_type_version],
+                policy=policy, audit=audit, sensitivity=sensitivity,
+            )
             return [{
                 "link_id": row["link_id"], "pack_fingerprint": pack_fingerprint,
                 "link_type_id": link_type_id, "link_type_version": link_type_version,
