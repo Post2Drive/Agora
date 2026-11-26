@@ -163,6 +163,7 @@ class OntologyObjectStore:
     ) -> str:
         if not isinstance(pack, OntologyPack):
             raise OntologyError("pack must be a validated OntologyPack")
+        pack = parse_domain_pack(asdict(pack))
         fingerprint = pack.fingerprint
         resource_id = f"{pack.pack_id}:{fingerprint}"
         self._authorize("ontology_write", [resource_id], policy=policy, audit=audit)
@@ -215,7 +216,7 @@ class OntologyObjectStore:
         self, pack_fingerprint: str, binding: DataBinding | dict[str, Any], *,
         policy: PolicyCallable | None, audit: Any | None,
     ) -> str:
-        binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
+        binding = load_binding(binding.as_dict() if isinstance(binding, DataBinding) else binding)
         self._authorize(
             "ontology_write", [pack_fingerprint, binding.binding_id, binding.fingerprint],
             policy=policy, audit=audit,
