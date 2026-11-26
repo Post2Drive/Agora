@@ -55,7 +55,7 @@ Every type definition should include:
 - created/updated metadata and reviewer where applicable;
 - references to the source registry records that justify the definition, where relevant.
 
-Type IDs are never reused for a different meaning. A breaking change creates a new major version or a new type ID. Deprecated versions remain readable for historical runs.
+Type IDs are never reused for a different meaning. A breaking change creates a new major version or a new type ID. Deprecated versions remain readable for historical runs.\n\n**Pack reference rule:** each domain-pack snapshot contains at most one definition version for each ObjectType, PropertyType, LinkType, or ActionType ID. References within that pack use the stable ID and resolve only to that sole definition; the pack schema version and fingerprint pin the complete definition set. Historical versions are retained by registering later pack snapshots, not by mixing multiple versions of one ID into a single pack. A consumer must select an explicit pack version/fingerprint and must never resolve an unqualified reference to an implicit latest version. Reject a pack that contains multiple versions of the same ID.
 
 ### 2.1 ObjectType
 
