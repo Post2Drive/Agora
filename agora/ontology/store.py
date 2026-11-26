@@ -1271,7 +1271,8 @@ class OntologyObjectStore:
                     backup_bytes += len(chunk)
         except (OSError, UnsafePathError, ValueError) as exc:
             raise OntologyError("ontology backup path is unsafe or unavailable") from exc
-        conn = self._connect()
+        conn = sqlite3.connect(backup_file.resolve().as_uri() + "?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
         try:
             self._verify_connection_integrity(conn)
             packs = [
