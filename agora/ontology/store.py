@@ -1402,8 +1402,13 @@ class OntologyObjectStore:
             require_safe_path(self.path.parent)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             require_safe_path(temporary)
-            if self.path.exists() or temporary.exists():
-                raise OntologyError("restore destination already exists")
+            sidecars = (
+                Path(str(self.path) + "-wal"),
+                Path(str(self.path) + "-shm"),
+                Path(str(self.path) + "-journal"),
+            )
+            if self.path.exists() or temporary.exists() or any(path.exists() for path in sidecars):
+                raise OntologyError("restore destination already exists or has SQLite sidecars")
             source_conn = sqlite3.connect(resolved_backup.as_uri() + "?mode=ro", uri=True, timeout=30.0)
             source_conn.row_factory = sqlite3.Row
             self._verify_connection_integrity(source_conn)
@@ -1427,8 +1432,13 @@ class OntologyObjectStore:
             # Hard-link publication is atomic and fails rather than replacing a
             # destination created concurrently after the initial existence check.
             os.link(temporary, self.path)
-            temporary.unlink()
+            # Publication has succeeded. A cleanup failure must not report a
+            # failed restore while leaving the destination live.
             created_temporary = False
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
             require_safe_path(self.path)
             return self.path
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
