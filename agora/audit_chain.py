@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 from agora.pathsafe import require_safe_path
@@ -52,6 +52,10 @@ class AuditAppender(Protocol):
     def append(self, event: Mapping[str, Any]) -> Any: ...
 
 
+class AuditReplayError(ValueError):
+    """An event with this event_id is already committed to the chain."""
+
+
 def verify_rows(rows: Any) -> tuple[str, int | None]:
     """Verify (seq,event_id,previous_hash,event_json,event_hash) rows in order.
 
@@ -85,7 +89,16 @@ class AuditChainStore:
         rows = self.db.execute("SELECT seq,event_id,previous_hash,event_json,event_hash FROM audit_events ORDER BY seq").fetchall()
         return verify_rows(rows)
 
-    def append(self, event: Mapping[str, Any]) -> dict[str, Any]:
+    def append(
+        self, event: Mapping[str, Any], *,
+        in_transaction: Callable[[sqlite3.Connection], None] | None = None,
+    ) -> dict[str, Any]:
+        """Append one event.
+
+        ``in_transaction``, when given, runs on this store's connection after the event row is inserted and
+        before the commit, so its writes commit or roll back together with the event. It must not commit,
+        roll back or start a transaction itself. Anything it raises rolls back both.
+        """
         safe = redact_event(event)
         event_id = safe.get("event_id")
         if not isinstance(event_id, str) or not event_id.strip():
@@ -100,11 +113,13 @@ class AuditChainStore:
             if broken is not None:
                 raise ValueError(f"audit chain is broken at sequence {broken}")
             if self.db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (event_id,)).fetchone():
-                raise ValueError("audit event replay detected")
+                raise AuditReplayError("audit event replay detected")
             event_hash = hashlib.sha256(_canonical({"previous_hash": previous, "event": safe}).encode()).hexdigest()
             self.db.execute("INSERT INTO audit_events(event_id,previous_hash,event_json,event_hash,recorded_at) VALUES (?,?,?,?,?)", (event_id, previous, _canonical(safe), event_hash, safe["recorded_at"]))
+            if in_transaction is not None:
+                in_transaction(self.db)
             self.db.commit()
-        except Exception:
+        except BaseException:
             self.db.rollback()
             raise
         return {"event_id": event_id, "previous_hash": previous, "event": safe, "event_hash": event_hash}
@@ -124,4 +139,4 @@ class AuditChainStore:
         self.db.close()
 
 
-__all__ = ["AuditAppender", "AuditChainStore", "GENESIS", "redact_event", "verify_rows"]
+__all__ = ["AuditAppender", "AuditChainStore", "AuditReplayError", "GENESIS", "redact_event", "verify_rows"]
