@@ -5,6 +5,7 @@ from __future__ import annotations
 from agora import protection as _protection
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
@@ -128,6 +129,9 @@ def load_binding(path_or_payload: str | Path | Mapping[str, Any]) -> DataBinding
         not isinstance(k, str) or not isinstance(v, str) or v not in _SENSITIVITY_RANK for k, v in sensitivities.items()
     ):
         raise OntologyError("property_sensitivity must contain valid classifications")
+    if set(sensitivities) - set(column_map.values()):
+        # An ignored key would let a mistyped override look applied when it is not.
+        raise OntologyError("property_sensitivity may only name mapped property IDs")
     body = {
         "binding_id": _text(raw["binding_id"], "binding_id"),
         "binding_version": _text(raw["binding_version"], "binding_version"),
@@ -158,7 +162,57 @@ def _properties(pack: OntologyPack, binding: DataBinding) -> tuple[Any, dict[str
     object_properties = set(objects[0].properties)
     if set(binding.column_map.values()) != object_properties:
         raise OntologyError("binding must map exactly the ObjectType properties")
+    if objects[0].identity_strategy != "record_key":
+        raise OntologyError("binding identity strategy does not match the ObjectType")
+    for property_id, level in binding.property_sensitivity.items():
+        if property_id not in object_properties or level not in _SENSITIVITY_RANK:
+            raise OntologyError("property_sensitivity must classify mapped property IDs")
+        if _SENSITIVITY_RANK[level] < _SENSITIVITY_RANK[properties[property_id].sensitivity]:
+            raise OntologyError("sensitivity downgrade below the declared property classification")
     return objects[0], properties
+
+
+def declared_sensitivity(pack: OntologyPack, binding: DataBinding) -> str:
+    """Highest classification the pack and binding declare, for a pre-read policy decision.
+
+    A binding may raise a property's classification and never lower it, so an
+    override cannot understate what the policy decision point is asked about.
+    """
+    _object, properties = _properties(pack, binding)
+    return max(
+        (binding.property_sensitivity.get(property_id, properties[property_id].sensitivity)
+         for property_id in binding.column_map.values()),
+        key=lambda value: _SENSITIVITY_RANK[value],
+    )
+
+
+def _is_allowed_value(value: Any, prop: PropertyType) -> bool:
+    for allowed in prop.allowed_values:
+        if prop.data_type == "decimal":
+            if allowed is None or isinstance(allowed, bool):
+                continue
+            try:
+                if Decimal(str(allowed)) == Decimal(str(value)):
+                    return True
+            except InvalidOperation:
+                continue
+        elif type(allowed) is type(value) and allowed == value:
+            return True
+    return False
+
+
+def _check_row_values(
+    values: Mapping[str, Any], binding: DataBinding, properties: Mapping[str, PropertyType],
+) -> None:
+    """Enforce the pack's nullability and allowed values; errors never carry source values."""
+    for column, property_id in binding.column_map.items():
+        prop = properties[property_id]
+        value = values.get(column)
+        if value is None:
+            if not prop.nullable:
+                raise OntologyError(f"null value for non-nullable property {property_id}")
+        elif prop.allowed_values and not _is_allowed_value(value, prop):
+            raise OntologyError(f"value is not allowed by property {property_id}")
 
 
 def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], binding: DataBinding | Mapping[str, Any]) -> DataBinding:
@@ -248,13 +302,7 @@ def materialize_instances(
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
     project = Path(project)
     if policy is not None or _protection.POLICY_REQUIRED:
-        _object, properties = _properties(pack, binding)
-        sensitivity_rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
-        source_sensitivity = max(
-            (binding.property_sensitivity.get(property_id, properties[property_id].sensitivity)
-             for property_id in binding.column_map.values()),
-            key=lambda value: sensitivity_rank[value],
-        )
+        source_sensitivity = declared_sensitivity(pack, binding)
         try:
             enforce_policy(
                 policy,
@@ -294,15 +342,22 @@ def materialize_instances(
         for column, property_id in binding.column_map.items()
     }
     instances = []
+    seen_keys: set[str] = set()
     for row in rows:
         primary_value = row["values"].get(binding.identity.primary_key_column)
         if primary_value is None:
             raise OntologyError("primary key value is missing")
+        _check_row_values(row["values"], binding, properties)
+        key = stable_record_key(binding.dataset_id, primary_value)
+        if key in seen_keys:
+            # The binding's key column need not be the one the import enforced as unique.
+            raise OntologyError("binding primary key is not unique in the snapshot")
+        seen_keys.add(key)
         instances.append({
             "object_type_id": binding.object_type_id,
             "object_type_version": binding.object_type_version,
             "property_values": {reverse[column]: row["values"].get(column) for column in reverse},
-            "record_key": stable_record_key(binding.dataset_id, primary_value),
+            "record_key": key,
             "row_id": row["row_id"],
             "import_id": import_id,
             "dataset_id": binding.dataset_id,
@@ -328,13 +383,8 @@ def _authorize_source_snapshot(
     """Authorize before reading import metadata or snapshot rows."""
     binding = load_binding(binding.as_dict() if isinstance(binding, DataBinding) else binding)
     decision = None
-    _object, properties = _properties(pack, binding)
+    source_sensitivity = declared_sensitivity(pack, binding)
     if policy is not None or _protection.POLICY_REQUIRED:
-        source_sensitivity = max(
-            (binding.property_sensitivity.get(property_id, properties[property_id].sensitivity)
-             for property_id in binding.column_map.values()),
-            key=lambda value: _SENSITIVITY_RANK[value],
-        )
         try:
             decision = enforce_policy(
                 policy, audit=audit, project=project, operation="binding",
@@ -400,10 +450,12 @@ def iter_source_object_refs(
         purpose=purpose, retention=retention,
     )
     effective_sensitivity = _effective_property_sensitivity(pack, binding, manifest)
+    properties = {item.property_id: item for item in pack.property_types}
     for row in iter_snapshot_rows(project, import_id, batch_size=batch_size):
         primary_value = row["values"].get(binding.identity.primary_key_column)
         if primary_value is None:
             raise OntologyError("primary key value is missing")
+        _check_row_values(row["values"], binding, properties)
         locator = row["source_locator"]
         yield {
             "object_type_id": binding.object_type_id,
@@ -444,6 +496,7 @@ def materialize_source_object(
     primary_value = row["values"].get(binding.identity.primary_key_column)
     if primary_value is None or stable_record_key(binding.dataset_id, primary_value) != expected_record_key:
         raise OntologyError("referenced snapshot row does not match the stable object identity")
+    _check_row_values(row["values"], binding, {item.property_id: item for item in pack.property_types})
     reverse = {column: property_id for column, property_id in binding.column_map.items()}
     return {
         "object_type_id": binding.object_type_id,
