@@ -299,7 +299,7 @@ def test_restore_requires_exact_source_snapshot_database(catalog, tmp_path):
              "retention": "90 days"},
             {"name": "email", "type": "string", "nullable": False, "sensitivity": "sensitive"},
         ],
-    }, data_role="context")
+    }, data_role="context", policy=_allow, audit=audit)
     assert store.materialize_binding(
         pack_fingerprint, binding_fingerprint, imported["import_id"],
         policy=_allow, audit=audit, purpose="account support", retention="90 days",
@@ -391,7 +391,7 @@ def test_restore_accepts_matching_source_snapshot_database(catalog, tmp_path):
              "retention": "90 days"},
             {"name": "email", "type": "string", "nullable": False, "sensitivity": "sensitive"},
         ],
-    }, data_role="context")
+    }, data_role="context", policy=_allow, audit=audit)
     assert store.materialize_binding(
         pack_fingerprint, binding_fingerprint, imported["import_id"],
         policy=_allow, audit=audit, purpose="account support", retention="90 days",
