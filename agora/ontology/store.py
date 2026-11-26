@@ -1222,6 +1222,7 @@ class OntologyObjectStore:
             require_safe_path(temporary)
             source_conn = self._connect()
             backup_conn = sqlite3.connect(str(temporary), timeout=30.0)
+            backup_conn.row_factory = sqlite3.Row
             created_temporary = True
             source_conn.backup(backup_conn)
             self._verify_connection_integrity(backup_conn)
