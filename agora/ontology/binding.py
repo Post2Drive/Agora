@@ -323,6 +323,7 @@ def _authorize_source_snapshot(
 ) -> tuple[DataBinding, dict[str, Any]]:
     """Authorize before reading import metadata or snapshot rows."""
     binding = load_binding(binding.as_dict() if isinstance(binding, DataBinding) else binding)
+    decision = None
     _object, properties = _properties(pack, binding)
     if policy is not None or _protection.POLICY_REQUIRED:
         source_sensitivity = max(
