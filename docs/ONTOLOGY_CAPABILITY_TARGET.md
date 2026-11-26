@@ -12,7 +12,7 @@ Compare documented behavior and verified implementation, not marketing claims. M
 
 ## Current Agora evidence
 
-At main commit `26200a4e88f8ff428bb711a06c3b49c1c0fa3be7`, Agora contains:
+At main commit `3b907e5fb384de67a4ce78bece78e400e23c1531`, Agora contains:
 
 - Domain-pack parsing and versioned `ObjectType`, `PropertyType`, `LinkType`, and `ActionType` definitions in `agora/ontology/registry.py`.
 - A fingerprinted, version-aware registry that rejects conflicting reuse of the same type ID/version. Registry state is currently in memory.
