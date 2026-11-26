@@ -106,7 +106,7 @@
 
 ### Task 5: Migration, recovery, and contract documentation
 
-**Status:** Partial implementation in progress. Local SQLite backup and integrity inspection are being added. Source-snapshot packaging/availability checks, restore acceptance, and feature-specific tests are still open.
+**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, and a hash-bound dependency inventory are implemented or in review. Source-snapshot packaging/availability checks, restore acceptance, and feature-specific tests are still open.
 
 **Files:**
 - Modify: `agora/ontology/store.py`
@@ -116,7 +116,8 @@
 
 **Interfaces:**
 - `backup(path: str | Path) -> Path` creates a consistent project-local ontology-store backup.
-- `verify_integrity() -> IntegrityReport` validates foreign keys, pack/binding fingerprints, object source references, link endpoints, and audit references.
+- `verify_integrity(*, policy, audit) -> IntegrityReport` validates SQLite and foreign-key integrity, migration checksums, pack/binding fingerprints, object-reference metadata, and link-record shape. It does not validate external source-file availability or audit-event references.
+- `backup_dependency_manifest(backup_path, *, policy, audit) -> Mapping[str, Any]` binds the exact backup byte count and SHA-256 to pack/binding fingerprints and external source-file hashes, without copying source rows.
 
 - [ ] **Step 1: Add tests** for transactional migration, backup/restore, missing source snapshots, corrupt fingerprints, and read-only behavior after restore.
 - [x] **Step 2: Implement** forward-only versioned migrations and a local integrity report; do not migrate existing graph or run databases. Backup and integrity methods do not yet prove external snapshot recovery.
