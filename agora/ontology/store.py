@@ -1168,6 +1168,22 @@ class OntologyObjectStore:
                 raise OntologyError("ontology link provenance is not valid JSON") from exc
             if not isinstance(provenance, dict):
                 raise OntologyError("ontology link provenance has an invalid shape")
+            kind = provenance.get("kind")
+            if kind not in {"source", "manual_assertion", "derived"}:
+                raise OntologyError("ontology link provenance kind is invalid")
+            if kind == "source":
+                source_refs = provenance.get("source_refs")
+                if not isinstance(source_refs, list) or not source_refs:
+                    raise OntologyError("source-backed link provenance has no source references")
+                for ref in source_refs:
+                    if not isinstance(ref, Mapping) or not all(
+                        isinstance(ref.get(key), str) and ref[key].strip()
+                        for key in ("import_id", "file_sha256", "locator")
+                    ):
+                        raise OntologyError("source-backed link provenance reference is incomplete")
+                    digest = ref["file_sha256"]
+                    if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+                        raise OntologyError("source-backed link provenance has an invalid SHA-256")
 
         return {
             "ok": True,
@@ -1315,6 +1331,22 @@ class OntologyObjectStore:
                                 schema_fingerprint, source_registry_id, file_sha256"""
                 )
             ]
+            link_source_references_by_key = {}
+            for row in conn.execute("SELECT provenance_json FROM ontology_links ORDER BY link_id"):
+                provenance = json.loads(row["provenance_json"])
+                if provenance.get("kind") != "source":
+                    continue
+                for ref in provenance["source_refs"]:
+                    reference = {
+                        "import_id": ref["import_id"],
+                        "file_sha256": ref["file_sha256"].lower(),
+                        "locator": ref["locator"],
+                    }
+                    link_source_references_by_key[_canonical(reference)] = reference
+            link_source_references = [
+                link_source_references_by_key[key]
+                for key in sorted(link_source_references_by_key)
+            ]
             payload = {
                 "format": "agora-ontology-backup-dependencies/v1",
                 "project_id": self.project_id,
@@ -1328,6 +1360,7 @@ class OntologyObjectStore:
                     "sha256": backup_digest.hexdigest(),
                 },
                 "source_snapshot_files": dependencies,
+                "link_source_references": link_source_references,
                 "source_row_values_included": False,
             }
             digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
