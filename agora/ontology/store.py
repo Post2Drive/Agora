@@ -1423,17 +1423,21 @@ class OntologyObjectStore:
         backup_file = Path(backup_path)
         try:
             require_safe_path(self.project)
+            resolved_backup = backup_file.resolve()
+            resolved_backup.relative_to(self.project.resolve())
+        except (OSError, UnsafePathError, ValueError) as exc:
+            raise OntologyError("ontology backup path is unsafe or unavailable") from exc
+        if resolved_backup == self.path.resolve() or not backup_file.is_file():
+            raise OntologyError("dependency manifest requires an existing backup file")
+        try:
             require_safe_path(backup_file)
-            backup_file.resolve().relative_to(self.project.resolve())
-            if backup_file.resolve() == self.path.resolve() or not backup_file.is_file():
-                raise OntologyError("dependency manifest requires an existing backup file")
             backup_digest = hashlib.sha256()
             backup_bytes = 0
             with backup_file.open("rb") as source:
                 while chunk := source.read(1024 * 1024):
                     backup_digest.update(chunk)
                     backup_bytes += len(chunk)
-        except (OSError, UnsafePathError, ValueError) as exc:
+        except (OSError, UnsafePathError) as exc:
             raise OntologyError("ontology backup path is unsafe or unavailable") from exc
         conn = sqlite3.connect(backup_file.resolve().as_uri() + "?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
