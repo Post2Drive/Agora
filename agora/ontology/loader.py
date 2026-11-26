@@ -33,6 +33,20 @@ def _construct_unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode, 
 _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping)
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise OntologyError(f"duplicate key {key!r} in JSON object")
+        result[key] = value
+    return result
+
+
+def _load_unique_json(content: str) -> Any:
+    """Parse JSON, rejecting repeated keys instead of keeping the last one."""
+    return json.loads(content, object_pairs_hook=_unique_json_object)
+
+
 def load_domain_pack(path: str | Path) -> OntologyPack:
     """Load a domain pack from a UTF-8 JSON, YAML, or YML file."""
     source = Path(path)
@@ -45,7 +59,7 @@ def load_domain_pack(path: str | Path) -> OntologyPack:
         raise OntologyError(f"cannot read domain pack: {exc}") from exc
     try:
         if suffix == ".json":
-            data: Any = json.loads(content)
+            data: Any = _load_unique_json(content)
         else:
             data = yaml.load(content, Loader=_UniqueKeyLoader)
     except (json.JSONDecodeError, yaml.YAMLError, TypeError) as exc:

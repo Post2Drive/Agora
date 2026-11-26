@@ -66,6 +66,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 - Compare registry and binding code against existing acceptance criteria.
 - Close gaps in uniqueness, referential integrity, cardinality, time semantics, version compatibility, and canonical fingerprints. In particular, reject multiple versions of one type ID inside a pack: current references use IDs without version qualifiers, so allowing concurrent versions in one pack is ambiguous. Preserve old definitions as separate immutable pack snapshots selected by exact version/fingerprint.
 - Publish portable domain-pack and binding schemas, examples, and compatibility policy.
+  - Structural schemas and conformance vectors: [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md). Compatibility check: [ONTOLOGY_COMPATIBILITY.md](ONTOLOGY_COMPATIBILITY.md). Examples: `domain_packs/`.
 - Exit when civic and commerce packs validate against the same contract and schema/version differences are detected deterministically.
 
 ### O1 — Persistent ontology records and query

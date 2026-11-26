@@ -1,0 +1,319 @@
+{
+  "$defs": {
+    "namespacedId": {
+      "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*[^:\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000][^:]*:[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*[^\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]",
+      "type": "string"
+    },
+    "text": {
+      "pattern": "[^\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?![\\s\\S])",
+      "type": "string"
+    }
+  },
+  "$id": "urn:agora:ontology:schema:domain-pack:1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action_types": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "actor_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "effects": {
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "type": "array"
+          },
+          "execution_mode": {
+            "const": "simulation_only"
+          },
+          "external_writeback": {
+            "const": "prohibited"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "type": "array"
+          },
+          "name": {
+            "$ref": "#/$defs/text"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "type": "array"
+          },
+          "preconditions": {
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "type": "array"
+          },
+          "simulated_only": {
+            "const": true
+          },
+          "target_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "version": {
+            "$ref": "#/$defs/version"
+          }
+        },
+        "required": [
+          "action_type_id",
+          "actor_type_id",
+          "effects",
+          "execution_mode",
+          "external_writeback",
+          "inputs",
+          "name",
+          "permissions",
+          "preconditions",
+          "simulated_only",
+          "target_type_id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "link_types": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cardinality": {
+            "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:many_to_many|one_to_many|one_to_one)[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?![\\s\\S])",
+            "type": "string"
+          },
+          "link_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "name": {
+            "$ref": "#/$defs/text"
+          },
+          "predicate": {
+            "$ref": "#/$defs/text"
+          },
+          "source_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "target_type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "version": {
+            "$ref": "#/$defs/version"
+          }
+        },
+        "required": [
+          "cardinality",
+          "link_type_id",
+          "name",
+          "predicate",
+          "source_type_id",
+          "target_type_id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "object_types": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "$ref": "#/$defs/text"
+          },
+          "identity_strategy": {
+            "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:assigned|record_key)[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?![\\s\\S])",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/$defs/text"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "type": "array"
+          },
+          "source_binding": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "locator": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "source_registry_id": {
+                    "$ref": "#/$defs/text"
+                  }
+                },
+                "required": [
+                  "locator",
+                  "source_registry_id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "version": {
+            "$ref": "#/$defs/version"
+          }
+        },
+        "required": [
+          "description",
+          "identity_strategy",
+          "name",
+          "properties",
+          "type_id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "pack_id": {
+      "$ref": "#/$defs/text"
+    },
+    "property_types": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_values": {
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "data_type": {
+            "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:boolean|date|decimal|enum|identifier|integer|string|structured_object|timestamp)[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?![\\s\\S])",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/$defs/text"
+          },
+          "nullable": {
+            "type": "boolean"
+          },
+          "precision": {
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "property_id": {
+            "$ref": "#/$defs/namespacedId"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "scale": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sensitivity": {
+            "pattern": "^[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:internal|personal|public|sensitive)[\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?![\\s\\S])",
+            "type": "string"
+          },
+          "source_binding": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "locator": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "source_registry_id": {
+                    "$ref": "#/$defs/text"
+                  }
+                },
+                "required": [
+                  "locator",
+                  "source_registry_id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/text"
+              }
+            ]
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/text"
+              }
+            ]
+          },
+          "version": {
+            "$ref": "#/$defs/version"
+          }
+        },
+        "required": [
+          "data_type",
+          "name",
+          "nullable",
+          "property_id",
+          "required",
+          "sensitivity",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/version"
+    }
+  },
+  "required": [
+    "action_types",
+    "link_types",
+    "object_types",
+    "pack_id",
+    "property_types",
+    "schema_version"
+  ],
+  "title": "Agora ontology domain pack (structure)",
+  "type": "object"
+}

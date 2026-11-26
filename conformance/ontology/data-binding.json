@@ -1,0 +1,391 @@
+{
+ "format": "agora-ontology-conformance/1",
+ "schema": "data-binding",
+ "cases": [
+  {
+   "id": "minimal",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "with-sensitivity-and-null-fingerprint",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "property_sensitivity": {
+     "demo:Item.id": "sensitive"
+    },
+    "fingerprint": null
+   }
+  },
+  {
+   "id": "missing-column-map",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "unknown-field",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "extra": 1
+   }
+  },
+  {
+   "id": "blank-binding-id",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": " ",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "empty-column-map",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {},
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "column-map-value-not-string",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": 3
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "unknown-identity-strategy",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "assigned",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "extra-identity-field",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id",
+     "extra": 1
+    }
+   }
+  },
+  {
+   "id": "primary-key-not-string",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": []
+    }
+   }
+  },
+  {
+   "id": "sensitivity-not-string",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "property_sensitivity": {
+     "demo:Item.id": []
+    }
+   }
+  },
+  {
+   "id": "padded-sensitivity",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "property_sensitivity": {
+     "demo:Item.id": " internal"
+    }
+   }
+  },
+  {
+   "id": "null-property-sensitivity",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "property_sensitivity": null
+   }
+  },
+  {
+   "id": "malformed-fingerprint",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "fingerprint": "sha256:abc"
+   }
+  },
+  {
+   "id": "unmapped-primary-key",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "other"
+    }
+   }
+  },
+  {
+   "id": "two-columns-one-property",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id",
+     "other": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    }
+   }
+  },
+  {
+   "id": "wrong-fingerprint",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "binding_id": "demo.item.v1",
+    "binding_version": "1.0.0",
+    "object_type_id": "demo:Item",
+    "object_type_version": "1.0.0",
+    "dataset_id": "demo_items",
+    "schema_id": "demo-items-v1",
+    "schema_version": "1.0.0",
+    "column_map": {
+     "id": "demo:Item.id"
+    },
+    "identity": {
+     "strategy": "record_key",
+     "primary_key_column": "id"
+    },
+    "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+   }
+  }
+ ],
+ "json_text_cases": [
+  {
+   "id": "duplicate-root-key",
+   "text": "{\"binding_id\": \"demo.item.v1\", \"binding_id\": \"demo.item.v1\", \"binding_version\": \"1.0.0\", \"column_map\": {\"id\": \"demo:Item.id\"}, \"dataset_id\": \"demo_items\", \"identity\": {\"primary_key_column\": \"id\", \"strategy\": \"record_key\"}, \"object_type_id\": \"demo:Item\", \"object_type_version\": \"1.0.0\", \"schema_id\": \"demo-items-v1\", \"schema_version\": \"1.0.0\"}",
+   "agora_valid": false
+  },
+  {
+   "id": "duplicate-nested-key",
+   "text": "{\"binding_id\": \"demo.item.v1\", \"binding_version\": \"1.0.0\", \"column_map\": {\"id\": \"demo:Item.id\"}, \"dataset_id\": \"demo_items\", \"identity\": {\"primary_key_column\": \"id\", \"strategy\": \"record_key\", \"strategy\": \"record_key\"}, \"object_type_id\": \"demo:Item\", \"object_type_version\": \"1.0.0\", \"schema_id\": \"demo-items-v1\", \"schema_version\": \"1.0.0\"}",
+   "agora_valid": false
+  },
+  {
+   "id": "plain",
+   "text": "{\"binding_id\": \"demo.item.v1\", \"binding_version\": \"1.0.0\", \"column_map\": {\"id\": \"demo:Item.id\"}, \"dataset_id\": \"demo_items\", \"identity\": {\"primary_key_column\": \"id\", \"strategy\": \"record_key\"}, \"object_type_id\": \"demo:Item\", \"object_type_version\": \"1.0.0\", \"schema_id\": \"demo-items-v1\", \"schema_version\": \"1.0.0\"}",
+   "agora_valid": true
+  }
+ ]
+}
