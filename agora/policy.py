@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-POLICY_VERSION = "stage2-v1"
+POLICY_VERSION = "stage2-v2"
 OPERATIONS = frozenset({
     "import", "binding", "simulation_input", "report_export",
     "decision_approval", "decision_outcome", "reconciliation_repair",
