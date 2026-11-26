@@ -65,7 +65,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 
 - Refresh the platform roadmap against live main and link this target.
 - Compare registry and binding code against existing acceptance criteria.
-- Close gaps in uniqueness, referential integrity, cardinality, time semantics, version compatibility, and canonical fingerprints.
+- Close gaps in uniqueness, referential integrity, cardinality, time semantics, version compatibility, and canonical fingerprints. In particular, reject multiple versions of one type ID inside a pack: current references use IDs without version qualifiers, so allowing concurrent versions in one pack is ambiguous. Preserve old definitions as separate immutable pack snapshots selected by exact version/fingerprint.
 - Publish portable domain-pack and binding schemas, examples, and compatibility policy.
 - Exit when civic and commerce packs validate against the same contract and schema/version differences are detected deterministically.
 
