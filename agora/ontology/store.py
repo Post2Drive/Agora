@@ -1252,10 +1252,25 @@ class OntologyObjectStore:
 
 
     def backup_dependency_manifest(
-        self, *, policy: PolicyCallable | None, audit: Any | None,
+        self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
     ) -> dict[str, Any]:
         """Describe exact external source dependencies without exporting row values."""
         self._authorize("ontology_read", ["store_backup_dependencies"], policy=policy, audit=audit)
+        backup_file = Path(backup_path)
+        try:
+            require_safe_path(self.project)
+            require_safe_path(backup_file)
+            backup_file.resolve().relative_to(self.project.resolve())
+            if backup_file.resolve() == self.path.resolve() or not backup_file.is_file():
+                raise OntologyError("dependency manifest requires an existing backup file")
+            backup_digest = hashlib.sha256()
+            backup_bytes = 0
+            with backup_file.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    backup_digest.update(chunk)
+                    backup_bytes += len(chunk)
+        except (OSError, UnsafePathError, ValueError) as exc:
+            raise OntologyError("ontology backup path is unsafe or unavailable") from exc
         conn = self._connect()
         try:
             self._verify_connection_integrity(conn)
@@ -1306,6 +1321,11 @@ class OntologyObjectStore:
                 "ontology_schema_version": 3,
                 "packs": packs,
                 "bindings": bindings,
+                "ontology_backup": {
+                    "file_name": backup_file.name,
+                    "bytes": backup_bytes,
+                    "sha256": backup_digest.hexdigest(),
+                },
                 "source_snapshot_files": dependencies,
                 "source_row_values_included": False,
             }
