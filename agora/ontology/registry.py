@@ -19,7 +19,9 @@ _ACTION_GUARDS = {
     "execution_mode": "simulation_only",
     "external_writeback": "prohibited",
 }
-_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+# ASCII digits only: ``\d`` also matches other Unicode digits, which no portable
+# validator of the published schema would accept.
+_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 def _canonical_json(value: Any) -> str:

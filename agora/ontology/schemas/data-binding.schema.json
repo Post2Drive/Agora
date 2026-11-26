@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "text": {
+      "pattern": "[^\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]",
+      "type": "string"
+    }
+  },
+  "$id": "urn:agora:ontology:schema:data-binding:1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "binding_id": {
+      "$ref": "#/$defs/text"
+    },
+    "binding_version": {
+      "$ref": "#/$defs/text"
+    },
+    "column_map": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "dataset_id": {
+      "$ref": "#/$defs/text"
+    },
+    "fingerprint": {
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "identity": {
+      "additionalProperties": false,
+      "properties": {
+        "primary_key_column": {
+          "type": "string"
+        },
+        "strategy": {
+          "const": "record_key"
+        }
+      },
+      "required": [
+        "primary_key_column",
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "object_type_id": {
+      "$ref": "#/$defs/text"
+    },
+    "object_type_version": {
+      "$ref": "#/$defs/text"
+    },
+    "property_sensitivity": {
+      "additionalProperties": {
+        "enum": [
+          "internal",
+          "personal",
+          "public",
+          "sensitive"
+        ],
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "schema_id": {
+      "$ref": "#/$defs/text"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/text"
+    }
+  },
+  "required": [
+    "binding_id",
+    "binding_version",
+    "column_map",
+    "dataset_id",
+    "identity",
+    "object_type_id",
+    "object_type_version",
+    "schema_id",
+    "schema_version"
+  ],
+  "title": "Agora ontology data binding (structure)",
+  "type": "object"
+}

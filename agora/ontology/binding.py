@@ -18,7 +18,7 @@ from ..identity import stable_record_key
 from ..audit_anchor import require_anchored
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 from ..tabular import iter_snapshot_rows, read_snapshot, read_snapshot_row
-from .loader import _UniqueKeyLoader
+from .loader import _UniqueKeyLoader, _load_unique_json
 from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
 
 
@@ -98,11 +98,13 @@ def load_binding(path_or_payload: str | Path | Mapping[str, Any]) -> DataBinding
         source = Path(path_or_payload)
         try:
             content = source.read_text(encoding="utf-8")
-            raw = json.loads(content) if source.suffix.lower() == ".json" else yaml.load(content, Loader=_UniqueKeyLoader)
+            raw = _load_unique_json(content) if source.suffix.lower() == ".json" else yaml.load(content, Loader=_UniqueKeyLoader)
         except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError, TypeError) as exc:
             raise OntologyError(f"invalid binding: {exc}") from exc
     if not isinstance(raw, Mapping):
         raise OntologyError("binding must be an object")
+    if any(not isinstance(key, str) for key in raw):
+        raise OntologyError("binding field names must be strings")
     unknown = sorted(set(raw) - _ALLOWED_KEYS)
     missing = sorted(_REQUIRED_KEYS - set(raw))
     if unknown:
@@ -119,10 +121,12 @@ def load_binding(path_or_payload: str | Path | Mapping[str, Any]) -> DataBinding
         raise OntologyError("identity must contain strategy and primary_key_column")
     if identity["strategy"] != "record_key":
         raise OntologyError("binding identity strategy must be record_key")
-    if identity["primary_key_column"] not in column_map:
+    if not isinstance(identity["primary_key_column"], str) or identity["primary_key_column"] not in column_map:
         raise OntologyError("identity primary_key_column must be mapped")
     sensitivities = raw.get("property_sensitivity", {})
-    if not isinstance(sensitivities, Mapping) or any(not isinstance(k, str) or v not in _SENSITIVITY_RANK for k, v in sensitivities.items()):
+    if not isinstance(sensitivities, Mapping) or any(
+        not isinstance(k, str) or not isinstance(v, str) or v not in _SENSITIVITY_RANK for k, v in sensitivities.items()
+    ):
         raise OntologyError("property_sensitivity must contain valid classifications")
     body = {
         "binding_id": _text(raw["binding_id"], "binding_id"),
