@@ -15,7 +15,7 @@ import stat
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from agora.audit_chain import GENESIS, AuditChainStore, _canonical
 from agora.pathsafe import UnsafePathError, open_flags, require_safe_path
@@ -246,12 +246,15 @@ class AnchoredAuditChain:
     def __init__(self, chain: AuditChainStore, anchors: AnchorStore):
         self.chain, self.anchors = chain, anchors
 
-    def append(self, event: Mapping[str, Any]) -> dict[str, Any]:
+    def append(
+        self, event: Mapping[str, Any], *, in_transaction: Callable[[Any], None] | None = None,
+    ) -> dict[str, Any]:
+        """Anchor-checked append; ``in_transaction`` has the contract of ``AuditChainStore.append``."""
         with self.anchors.lock():  # serialise verify -> append -> anchor across processes
             state = verify_anchored(self.chain, self.anchors)
             if not state["valid"]:
                 raise AnchorRequiredError(f"audit chain is not cleanly anchored: {state['status']}")
-            appended = self.chain.append(event)
+            appended = self.chain.append(event, in_transaction=in_transaction)
             sequence, head = _head(self.chain)
             try:
                 self.anchors.advance(sequence, head)

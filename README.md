@@ -1,6 +1,6 @@
 # Agora
 
-**Open-source, fully local multi-agent social simulation and prediction engine.**
+**A living-world simulation and decision-intelligence platform: persistent populations of agents that talk, remember, form opinions and act. Open source, fully local.**
 
 Upload your documents and describe a situation. Agora fills a small world with people
 who have personas, memories and opinions. They talk to each other on simulated
@@ -21,7 +21,7 @@ will say and do, with numbers you can check.
 - **Reproducible.** The same seed gives the same world. Model replies are cached in the project.
 
 > **Status: Phases 1–4 are done**: the engine; upload, graph and setup; the report and
-> interaction; MiroFish-level conversations, memory and report tools; elections; and
+> interaction; conversations, memory and report tools; elections; and
 > calibration, backtests and probability ranges. Next is installers and polish (5).
 > See [ROADMAP.md](ROADMAP.md) and the [six-rung platform roadmap](docs/PLATFORM_ROADMAP.md).
 
@@ -33,7 +33,7 @@ ollama pull llama3.2:3b               # or any model server, see below
 agora web                             # opens http://127.0.0.1:8765
 ```
 
-The website takes you through the same five steps as MiroFish:
+The website takes you through six steps:
 
 1. **Upload:** add documents and describe what you want to predict.
 2. **Graph:** explore the knowledge graph Agora built from your documents.

@@ -106,7 +106,7 @@
 
 ### Task 5: Migration, recovery, and contract documentation
 
-**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, a hash-bound dependency inventory, and a no-overwrite restore path are implemented in PR #241. Restore now checks target-side tabular import availability and exact provenance metadata; it does not copy the tabular database. Authentication of the tabular database's row payloads is available through the manifest's `source_snapshot_digest` and `restore(expected_source_snapshot_digest=...)`; without that argument target snapshot integrity remains a trusted dependency, and signing/anchoring the manifest is follow-up work. Restore acceptance evidence and feature-specific test execution are still open.
+**Status:** Backup and restore merged in PR #241; recovery authentication was hardened in a follow-up PR. Local SQLite backup, integrity inspection, a hash-bound dependency inventory with per-import content digests, and a no-overwrite restore that requires a separately retained manifest SHA-256 are implemented with focused tests. Restore does not copy the tabular database or source files, and the digest is not a signature. A disaster-recovery rehearsal on separate storage and migration-from-older-schema coverage remain open.
 
 **Files:**
 - Modify: `agora/ontology/store.py`
@@ -118,7 +118,7 @@
 - `backup(path: str | Path) -> Path` creates a consistent project-local ontology-store backup.
 - `verify_integrity(*, policy, audit) -> IntegrityReport` validates SQLite and foreign-key integrity, migration checksums, pack/binding fingerprints, object-reference metadata, and link-record shape. It does not validate external source-file availability or audit-event references.
 - `backup_dependency_manifest(backup_path, *, policy, audit) -> Mapping[str, Any]` binds the exact backup byte count and SHA-256 to pack/binding fingerprints and external source-file hashes, without copying source rows.
-- `restore(backup_path, *, policy, audit) -> Path` verifies a project-local backup and publishes it to an empty ontology-store destination without overwriting an existing store; source tabular snapshots are not copied.
+- `restore(backup_path, *, dependency_manifest, expected_manifest_sha256, policy, audit) -> Path` authenticates a private copy of a project-local backup and the referenced import content against the retained manifest digest, then publishes that copy to an empty ontology-store destination; source tabular snapshots are not copied.
 
 - [ ] **Step 1: Add tests** for transactional migration, backup/restore, missing source snapshots, corrupt fingerprints, and read-only behavior after restore.
 - [x] **Step 2: Implement** forward-only versioned migrations and a local integrity report; do not migrate existing graph or run databases. Backup and integrity methods do not yet prove external snapshot recovery.
