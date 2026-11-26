@@ -219,3 +219,15 @@ def test_denied_writer_learns_nothing_about_imports(linkable):
             linkable[4](_source({**linkable[3], "import_id": import_id}), policy=deny_writes)
         messages.append(str(caught.value))
     assert messages[0] == messages[1] == "policy denied ontology catalog access"
+
+
+def test_checked_provenance_is_the_stored_provenance(linkable):
+    """A mapping whose get() disagrees with its stored items must not bypass the check."""
+    ref = linkable[3]
+
+    class Shifting(dict):
+        def get(self, key, default=None):
+            return [ref] if key == "source_refs" else super().get(key, default)
+
+    _refused(linkable, Shifting(kind="source", source_refs=[{**ref, "file_sha256": "a" * 64}]),
+             "does not match the cited import")

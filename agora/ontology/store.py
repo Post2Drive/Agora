@@ -763,6 +763,8 @@ class OntologyObjectStore:
         if not isinstance(reason, str) or not reason.strip() or not isinstance(provenance, Mapping) or not provenance:
             raise OntologyError("link writes require a reason and provenance")
         provenance_json = _canonical(dict(provenance))
+        # Validate the exact content that will be stored, not the caller's mapping.
+        provenance = json.loads(provenance_json)
         kind = provenance.get("kind")
         if kind not in {"source", "manual_assertion", "derived"}:
             raise OntologyError("provenance kind must be source, manual_assertion, or derived")
