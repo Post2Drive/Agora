@@ -114,6 +114,7 @@ def admit_receipt(
     envelope: Mapping[str, Any], *, tenant: str, audit: AnchoredAuditChain,
     keys: Mapping[str, sr.KeyEntry], clock: Callable[[], datetime], expected: Mapping[str, str],
     allow_test_keys: bool = False,
+    guard: Callable[[sqlite3.Connection, datetime], None] | None = None,
 ) -> AdmittedReceipt:
     """Verify, then durably consume. Raises ``sr.ReceiptError``; the caller must not act on any exception.
 
@@ -121,7 +122,9 @@ def admit_receipt(
     request. ``clock`` must read the trusted time source; it is read again after the write lock is held, so a
     receipt that expires while waiting is refused. ``AUDIT_ANCHOR_WRITE_FAILED`` means the nonce IS consumed
     but the anchor was not written: the receipt is spent, the action is refused, and the chain refuses further
-    appends until an operator reconciles it.
+    appends until an operator reconciles it. ``guard``, when given, can only add a refusal: it runs inside the
+    consumption transaction with the second clock reading, and anything it raises rolls the consumption back
+    (see agora.security.key_list).
     """
     try:
         writer = require_anchored(audit)
@@ -145,6 +148,8 @@ def admit_receipt(
             raise sr.ReceiptError("BAD_CLOCK", "trusted time is naive or moved backwards")
         if second >= expires:
             raise sr.ReceiptError("EXPIRED")
+        if guard is not None:
+            guard(db, second)
         _record(db, row)
 
     event = {
