@@ -581,8 +581,22 @@ class OntologyObjectStore:
         if not isinstance(reason, str) or not reason.strip() or not isinstance(provenance, Mapping) or not provenance:
             raise OntologyError("link writes require a reason and provenance")
         provenance_json = _canonical(dict(provenance))
-        if provenance.get("kind") not in {"source", "manual_assertion", "derived"}:
+        kind = provenance.get("kind")
+        if kind not in {"source", "manual_assertion", "derived"}:
             raise OntologyError("provenance kind must be source, manual_assertion, or derived")
+        if kind == "source":
+            refs = provenance.get("source_refs")
+            if not isinstance(refs, list) or not refs:
+                raise OntologyError("source-backed links require exact source_refs")
+            for ref in refs:
+                if not isinstance(ref, Mapping) or not all(
+                    isinstance(ref.get(key), str) and ref[key].strip()
+                    for key in ("import_id", "file_sha256", "locator")
+                ):
+                    raise OntologyError("each source_ref requires import_id, file_sha256, and locator")
+                digest = ref["file_sha256"]
+                if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+                    raise OntologyError("source_ref file_sha256 must be a 64-character SHA-256")
         pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
         link_type = self._link_type(pack, link_type_id, link_type_version)
         types = {x.type_id: x for x in pack.object_types}
