@@ -26,6 +26,12 @@ from .binding import (
 )
 from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
 
+_MIGRATIONS_TABLE_SCHEMA = """CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    checksum TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+)"""
+
 _STORE_SCHEMA = (
     """CREATE TABLE ontology_packs (
         fingerprint TEXT PRIMARY KEY,
@@ -131,6 +137,27 @@ _LINKS_SCHEMA = (
        BEGIN SELECT RAISE(ABORT, 'ontology links are immutable'); END""",
 )
 _LINKS_CHECKSUM = hashlib.sha256("\n".join(_LINKS_SCHEMA).encode("utf-8")).hexdigest()
+
+
+def _schema_objects(conn: sqlite3.Connection) -> set[tuple[str, str, str, str]]:
+    """Every schema object with whitespace-normalised DDL, minus SQLite bookkeeping tables."""
+    bookkeeping = {"sqlite_sequence", "sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+    return {
+        (str(row[0]), str(row[1]), str(row[2]), " ".join(str(row[3] or "").split()))
+        for row in conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master")
+        if not (row[0] == "table" and row[1] in bookkeeping)
+    }
+
+
+def _expected_schema_objects() -> set[tuple[str, str, str, str]]:
+    """Build the schema this code creates, in memory, as the verification reference."""
+    reference = sqlite3.connect(":memory:")
+    try:
+        for statement in (_MIGRATIONS_TABLE_SCHEMA, *_STORE_SCHEMA, *_OBJECT_REFS_SCHEMA, *_LINKS_SCHEMA):
+            reference.execute(statement)
+        return _schema_objects(reference)
+    finally:
+        reference.close()
 
 
 def _canonical_timestamp(value: str | datetime, field: str) -> str:
@@ -281,13 +308,7 @@ class OntologyObjectStore:
         return conn
 
     def _initialize(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS schema_migrations (
-                version INTEGER PRIMARY KEY,
-                checksum TEXT NOT NULL,
-                applied_at TEXT NOT NULL
-            )"""
-        )
+        conn.execute(_MIGRATIONS_TABLE_SCHEMA)
         migrations = (
             (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
             (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
@@ -1167,6 +1188,10 @@ class OntologyObjectStore:
         expected = [(version, checksum) for version, checksum, _ in migrations]
         if actual != expected:
             raise OntologyError("ontology store migration history is unknown or incomplete")
+        # Migration rows are only claims. Compare the real tables, indexes and
+        # immutability triggers, and refuse anything missing, changed or added.
+        if _schema_objects(conn) != _expected_schema_objects():
+            raise OntologyError("ontology store schema objects do not match the expected schema")
 
         packs = conn.execute("SELECT fingerprint, pack_id, schema_version, content_json FROM ontology_packs")
         for row in packs:
@@ -1181,7 +1206,9 @@ class OntologyObjectStore:
             ):
                 raise OntologyError("ontology pack fingerprint or metadata does not match its content")
 
-        bindings = conn.execute("SELECT fingerprint, content_json FROM bindings")
+        bindings = conn.execute(
+            "SELECT fingerprint, binding_id, binding_version, content_json FROM bindings"
+        )
         for row in bindings:
             try:
                 binding = load_binding(json.loads(row["content_json"]))
@@ -1189,6 +1216,11 @@ class OntologyObjectStore:
                 raise OntologyError("ontology binding content is not valid") from exc
             if binding.fingerprint != row["fingerprint"]:
                 raise OntologyError("ontology binding fingerprint does not match its content")
+            if (
+                binding.binding_id != row["binding_id"]
+                or binding.binding_version != row["binding_version"]
+            ):
+                raise OntologyError("ontology binding metadata does not match its content")
 
         refs = conn.execute(
             "SELECT file_sha256, source_locator_json, property_sensitivity_json FROM ontology_object_refs"
@@ -1264,6 +1296,8 @@ class OntologyObjectStore:
         conn = self._connect()
         try:
             return self._verify_connection_integrity(conn)
+        except OntologyError:
+            raise
         except (sqlite3.Error, ValueError, TypeError, json.JSONDecodeError) as exc:
             raise OntologyError("ontology store integrity verification failed") from exc
         finally:

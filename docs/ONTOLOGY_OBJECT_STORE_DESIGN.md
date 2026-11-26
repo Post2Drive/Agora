@@ -118,3 +118,7 @@ An O1 implementation is ready only when evidence demonstrates:
 10. External systems, the simulation engine, and `VALIDATED_PREDICTION_ENABLED` remain untouched.
 
 Implementation scope, module boundaries, and execution authorization remain a separate review step.
+
+## Schema object verification
+
+Integrity checks (`verify_integrity` and backup verification) compare every table, index, view and trigger (whitespace-normalised DDL, excluding SQLite statistics and sequence tables) with the schema this code creates. A store or backup with a missing, changed or added schema object, including a removed immutability trigger, is refused. Binding ID and version columns must match the binding content. Limit: this does not detect an internally consistent rewrite of row data, or removing a trigger, editing rows and restoring the identical trigger. Detecting that needs a separately retained digest or signature.
