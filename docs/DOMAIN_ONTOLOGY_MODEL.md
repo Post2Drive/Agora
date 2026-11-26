@@ -1,10 +1,10 @@
 # Domain Ontology Model — Rung 2 Design
 
-**Status:** proposal / documentation only. This document defines a target logical model; it does not implement a type registry, change graph.db, migrate existing records, add connectors, or enable actions against external systems.
+**Status:** target logical model and acceptance contract. Main now includes a partial implementation of versioned domain-pack parsing, an in-memory type registry, and read-only snapshot bindings. This document remains the target contract; it does not imply that persistent ontology storage, graph queries, general action execution, user-level authorization, data migration, general connectors, or external write-back are complete.
 
 **Relationship to the existing specification:** this document extends the Agora artefact ontology in [ONTOLOGY_SPEC.md](ONTOLOGY_SPEC.md). The existing SourceDocument, DocumentChunk, Entity, Relation, Scenario, SimulationRun, Agent and EvidenceRecord concepts remain valid. This proposal adds a user-defined domain ontology that scenarios and runs can instantiate.
 
-## 1. Goals and non-goals
+## Current implementation status — 26 November 2026\n\nThe registry, loader, binding module, domain packs, and their tests are present in main. The registry is in-memory and materialized bound instances are read-only/in-memory. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for the current capability scorecard and remaining staged work.\n\n## 1. Goals and non-goals
 
 The domain ontology gives a project a versioned vocabulary for:
 
