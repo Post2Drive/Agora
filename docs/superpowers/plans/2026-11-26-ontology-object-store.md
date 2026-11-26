@@ -106,7 +106,7 @@
 
 ### Task 5: Migration, recovery, and contract documentation
 
-**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, a hash-bound dependency inventory, and a no-overwrite restore path are implemented in PR #241. Source-snapshot availability checks, restore acceptance evidence, and feature-specific test execution are still open.
+**Status:** Partial implementation in progress. Local SQLite backup, integrity inspection, a hash-bound dependency inventory, and a no-overwrite restore path are implemented in PR #241. Restore now checks target-side tabular import availability and exact provenance metadata; it does not copy the tabular database. Restore acceptance evidence and feature-specific test execution are still open.
 
 **Files:**
 - Modify: `agora/ontology/store.py`
