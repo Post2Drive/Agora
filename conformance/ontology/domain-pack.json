@@ -176,10 +176,987 @@
       "timezone": "Asia/Kolkata",
       "allowed_values": [
        "a",
+       "b"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-integer",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "integer",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       1,
+       2
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-decimal",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "decimal",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
        1,
        1.5,
-       true,
+       "2.50"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-boolean",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "boolean",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       true
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-date",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "date",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "2026-01-31"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-timestamp",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "timestamp",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "2026-01-31T10:00:00+00:00"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-null-when-nullable",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": true,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "a",
        null
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-mixed-types",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "a",
+       1
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-boolean-as-integer",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "integer",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       true
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-decimal-not-a-number",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "decimal",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "NaN"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-date-not-canonical",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "date",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "20260131"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-timestamp-not-utc-form",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "timestamp",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "2026-01-31T10:00:00Z"
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-null-when-not-nullable",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       null
+      ],
+      "source_binding": {
+       "source_registry_id": "reg",
+       "locator": "row"
+      }
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "allowed-values-structured-object",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "source_binding": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "structured_object",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal",
+      "units": null,
+      "precision": 10,
+      "scale": 2,
+      "timezone": "Asia/Kolkata",
+      "allowed_values": [
+       "a"
       ],
       "source_binding": {
        "source_registry_id": "reg",
@@ -467,7 +1444,7 @@
    "schema_valid": false,
    "agora_valid": false,
    "document": {
-    "pack_id": "\u00a0\u3000\u001c",
+    "pack_id": " 　\u001c",
     "schema_version": "1.0.0",
     "object_types": [
      {
@@ -594,7 +1571,7 @@
    "agora_valid": false,
    "document": {
     "pack_id": "conformance-pack",
-    "schema_version": "\u0661.0.0",
+    "schema_version": "١.0.0",
     "object_types": [
      {
       "type_id": "demo:Item",
