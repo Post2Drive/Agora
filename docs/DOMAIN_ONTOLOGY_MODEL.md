@@ -4,7 +4,11 @@
 
 **Relationship to the existing specification:** this document extends the Agora artefact ontology in [ONTOLOGY_SPEC.md](ONTOLOGY_SPEC.md). The existing SourceDocument, DocumentChunk, Entity, Relation, Scenario, SimulationRun, Agent and EvidenceRecord concepts remain valid. This proposal adds a user-defined domain ontology that scenarios and runs can instantiate.
 
-## Current implementation status — 26 November 2026\n\nThe registry, loader, binding module, domain packs, and their tests are present in main. The registry is in-memory and materialized bound instances are read-only/in-memory. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for the current capability scorecard and remaining staged work.\n\n## 1. Goals and non-goals
+## Current implementation status — 26 November 2026
+
+The registry, loader, binding module, domain packs, and their tests are present in main. The registry is in-memory and materialized bound instances are read-only/in-memory. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for the current capability scorecard and remaining staged work.
+
+## 1. Goals and non-goals
 
 The domain ontology gives a project a versioned vocabulary for:
 
