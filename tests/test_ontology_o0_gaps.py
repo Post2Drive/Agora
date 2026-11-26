@@ -1,6 +1,6 @@
 """O0 close-out: rules the pack and binding code must enforce. All data is synthetic."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -45,6 +45,15 @@ def _pack_data(*, email="sensitive", tier=None):
 
 def _pack(**kwargs):
     return parse_domain_pack(_pack_data(**kwargs))
+
+
+def _unchecked_pack(data_type, allowed):
+    """A hand-built pack whose allowed values the parser would refuse."""
+    pack = _pack(tier={"data_type": data_type})
+    return replace(pack, property_types=tuple(
+        replace(item, allowed_values=tuple(allowed)) if item.property_id == TIER else item
+        for item in pack.property_types
+    ))
 
 
 def _binding_data(**overrides):
@@ -236,8 +245,7 @@ def test_nullable_property_and_listed_values_are_accepted(tmp_path):
     assert sorted(str(i["property_values"][TIER]) for i in instances) == ["None", "gold"]
 
 
-@pytest.mark.parametrize("allowed, accepted", [([1.5], True), (["1.500"], True), ([2], False),
-                                               ([True, None, "not-a-number"], False)])
+@pytest.mark.parametrize("allowed, accepted", [([1.5], True), (["1.500"], True), ([2], False)])
 def test_decimal_allowed_values_compare_numerically(tmp_path, allowed, accepted):
     import_id = _import(tmp_path, ["C1,a@example.test,1.50"], tier_type="decimal")
     pack = _pack(tier={"data_type": "decimal", "allowed_values": allowed})
@@ -248,9 +256,16 @@ def test_decimal_allowed_values_compare_numerically(tmp_path, allowed, accepted)
             materialize_instances(_binding(), pack, tmp_path, import_id)
 
 
+def test_source_check_skips_entries_that_cannot_be_decimals(tmp_path):
+    import_id = _import(tmp_path, ["C1,a@example.test,1.50"], tier_type="decimal")
+    pack = _unchecked_pack("decimal", [True, None, "not-a-number"])
+    with pytest.raises(OntologyError, match="not allowed by property"):
+        materialize_instances(_binding(), pack, tmp_path, import_id)
+
+
 def test_allowed_values_do_not_treat_true_as_one(tmp_path):
     import_id = _import(tmp_path, ["C1,a@example.test,1"], tier_type="integer")
-    pack = _pack(tier={"data_type": "integer", "allowed_values": [True]})
+    pack = _unchecked_pack("integer", [True])
     with pytest.raises(OntologyError, match="not allowed by property"):
         materialize_instances(_binding(), pack, tmp_path, import_id)
 

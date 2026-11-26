@@ -77,7 +77,8 @@ These are real early ontology capabilities, not an integrated ontology platform.
 | Binding and registry checked against acceptance criteria | Gaps found and closed: a binding override could lower the classification the policy was asked about; mistyped override keys were ignored; `assigned` object types could be bound by record key; pack nullability and allowed values were not applied to source rows; a repeated binding key was not refused by `materialize_instances`; an object type could repeat a property. Rules: [ONTOLOGY_DATA_BINDING.md](ONTOLOGY_DATA_BINDING.md). |
 | Portable schemas, examples, compatibility policy | Published (links above). No third-party use. |
 | **Open: cardinality across imports** | Link cardinality compares exact endpoints, which include `import_id`. The same stable record read from two imports counts as two endpoints, so `one_to_one` and `one_to_many` can be broken across imports over overlapping valid time. Needs a rule for restating one relationship from a newer import. |
-| **Open: pack definition checks** | `allowed_values` entries are not checked against the property's `data_type` when a pack is parsed. Packs cannot declare uniqueness for non-key properties. |
+| Closed later: allowed value types | Pack parsing now refuses an `allowed_values` entry that does not match the property's `data_type`. Rules: [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md) section 2a. |
+| **Open: pack definition checks** | Packs cannot declare uniqueness for non-key properties. |
 | Not covered | Rung 2 criteria about scenario, agent and run mapping to ontology instances were not audited. |
 
 The exit test is met at library level by the `civic_in` and `retail_in` pack tests and the compatibility tests. **O0 is not marked complete** while the cardinality item is open.

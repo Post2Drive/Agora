@@ -116,9 +116,10 @@ def test_reorder_is_compatible(key, value, section, index, code):
 
 def test_allowed_value_of_another_scalar_type_is_a_change():
     old = base()
-    old["property_types"][1]["allowed_values"] = [1]
+    # Only decimal accepts more than one scalar type.
+    old["property_types"][1].update(data_type="decimal", allowed_values=[1])
     new = copy.deepcopy(old)
-    new["property_types"][1]["allowed_values"] = [True]
+    new["property_types"][1]["allowed_values"] = [1.0]
     report = compare_packs(parse_domain_pack(old), parse_domain_pack(new))
     assert [(c.code, c.level) for c in report.changes] == [("allowed_values_changed", BREAKING)]
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 import re
@@ -389,6 +391,12 @@ def _parse_property(value: Any, index: int) -> PropertyType:
     allowed_values = row.get("allowed_values", [])
     if not isinstance(allowed_values, list) or any(not isinstance(item, (str, int, float, bool, type(None))) for item in allowed_values):
         raise OntologyError(f"{context}.allowed_values must be a list of scalar values")
+    for position, item in enumerate(allowed_values):
+        if item is None:
+            if not row["nullable"]:
+                raise OntologyError(f"{context}.allowed_values[{position}] is null but the property is not nullable")
+        elif not _matches_data_type(item, data_type):
+            raise OntologyError(f"{context}.allowed_values[{position}] does not match data_type {data_type}")
     return PropertyType(
         _namespaced_id(row["property_id"], f"{context}.property_id"), _version(row["version"], f"{context}.version"),
         _required_text(row["name"], f"{context}.name"), data_type,
@@ -396,6 +404,39 @@ def _parse_property(value: Any, index: int) -> PropertyType:
         _optional_text(row.get("units"), f"{context}.units"), precision, scale,
         _optional_text(row.get("timezone"), f"{context}.timezone"),
     )
+
+
+def _matches_data_type(value: Any, data_type: str) -> bool:
+    """Whether a listed value could ever equal a source value of this data type.
+
+    The forms follow what tabular ingestion stores: dates and timestamps are
+    compared as text, so they must be written in the stored canonical form.
+    """
+    if data_type in {"string", "identifier", "enum"}:
+        return isinstance(value, str)
+    if data_type == "integer":
+        return type(value) is int
+    if data_type == "boolean":
+        return type(value) is bool
+    if data_type == "decimal":
+        # A boolean reads as "True" or "False", which is not a decimal.
+        try:
+            return Decimal(str(value)).is_finite()
+        except InvalidOperation:
+            return False
+    if data_type in {"date", "timestamp"}:
+        if not isinstance(value, str):
+            return False
+        try:
+            if data_type == "date":
+                return date.fromisoformat(value).isoformat() == value
+            parsed = datetime.fromisoformat(value)
+            # A time without an offset never equals its converted form.
+            return parsed.astimezone(timezone.utc).isoformat() == value
+        except (ValueError, OverflowError):
+            return False
+    # structured_object: a scalar can never equal an object value.
+    return False
 
 
 def _optional_text(value: Any, field: str) -> str | None:
