@@ -35,13 +35,16 @@
 **Files:**
 - Create: `agora/ontology/store.py`
 - Modify: `agora/ontology/__init__.py`
+- Modify: `agora/policy.py`
 - Test: `tests/test_ontology_store.py`
 
 **Interfaces:**
 - `OntologyObjectStore(project: str | Path)` opens `project/data/ontology.sqlite3`, enables foreign keys, and applies explicit transactional schema migrations.
-- `register_pack(pack: OntologyPack) -> str` stores canonical pack JSON and its fingerprint; repeated identical registration is idempotent; same fingerprint with different content is rejected.
-- `register_binding(pack_fingerprint: str, binding: DataBinding) -> str` stores the exact binding snapshot and fingerprint after validating the pack reference.
-- `get_pack(pack_fingerprint: str) -> OntologyPack` and `get_binding(binding_fingerprint: str) -> DataBinding` use exact fingerprints only.
+- `register_pack(pack: OntologyPack, *, policy, audit) -> str` stores canonical pack JSON and its fingerprint; repeated identical registration is idempotent; same fingerprint with different content is rejected.
+- `register_binding(pack_fingerprint: str, binding: DataBinding, *, policy, audit) -> str` stores the exact binding snapshot and fingerprint after validating the pack reference.
+- `get_pack(pack_fingerprint: str, *, policy, audit) -> OntologyPack` and `get_binding(pack_fingerprint: str, binding_fingerprint: str, *, policy, audit) -> DataBinding` use exact fingerprints only.
+- Add distinct `ontology_read` and `ontology_write` policy operations and bump `POLICY_VERSION`; no ontology operation is aliased to `binding`.
+- All catalog operations require a principal-bound decision and anchored audit in protected mode; allowed operations are audited before accessing or changing the catalog.
 
 - [ ] **Step 1: Add tests** for new database creation, schema version, idempotent registration, same-version content conflict, exact retrieval, and explicit rejection of unknown fingerprints.
 - [ ] **Step 2: Implement** the pack/binding catalog tables, append-only triggers, canonical serialization, and transactional registration.
