@@ -506,3 +506,238 @@ def test_restore_rejects_corrupt_backup_without_publishing(catalog):
         assert not restored_store.path.exists()
     finally:
         restored_audit.close()
+
+
+_SCHEMA = {
+    "schema_id": "customers-v1",
+    "schema_version": "1.0.0",
+    "dataset_name": "customers",
+    "columns": [
+        {"name": "customer_id", "type": "string", "nullable": False,
+         "primary_key": True, "sensitivity": "personal", "purpose": "account support",
+         "retention": "90 days"},
+        {"name": "email", "type": "string", "nullable": False, "sensitivity": "sensitive"},
+    ],
+}
+
+
+def _materialized_backup(catalog, rows="customer_id,email\nC-SECRET-001,private-value@example.test\n"):
+    project, store, audit, pack_fingerprint, binding_fingerprint = catalog
+    source = project / "customers.csv"
+    source.write_text(rows, encoding="utf-8")
+    imported = ingest_csv(project, source, _SCHEMA, data_role="context", policy=_allow, audit=audit)
+    store.materialize_binding(
+        pack_fingerprint, binding_fingerprint, imported["import_id"],
+        policy=_allow, audit=audit, purpose="account support", retention="90 days",
+    )
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+    return imported["import_id"], backup_path
+
+
+def _restore_with_tampered_snapshot(catalog, tmp_path, name, tamper, *, copy_snapshot=True):
+    project = catalog[0]
+    import_id, backup_path = _materialized_backup(catalog)
+    restored_project = tmp_path / name / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    if copy_snapshot:
+        tabular_copy = restored_data / "tabular.sqlite3"
+        shutil.copyfile(project / "data" / "tabular.sqlite3", tabular_copy)
+        connection = sqlite3.connect(tabular_copy)
+        try:
+            tamper(connection, import_id)
+            connection.commit()
+        finally:
+            connection.close()
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        with pytest.raises(OntologyError) as caught:
+            restored_store.restore(restored_backup, policy=_allow, audit=restored_audit)
+        assert not restored_store.path.exists()
+        return str(caught.value)
+    finally:
+        restored_audit.close()
+
+
+def test_restore_rejects_missing_snapshot_database(catalog, tmp_path):
+    message = _restore_with_tampered_snapshot(
+        catalog, tmp_path, "no-snapshot", lambda c, i: None, copy_snapshot=False,
+    )
+    assert "required tabular source snapshot database is" in message
+
+
+def test_restore_rejects_deleted_snapshot_row(catalog, tmp_path):
+    message = _restore_with_tampered_snapshot(
+        catalog, tmp_path, "deleted-row",
+        lambda c, i: c.execute("DELETE FROM import_rows WHERE import_id=?", (i,)),
+    )
+    assert "snapshot row is missing" in message
+
+
+def test_restore_rejects_uncommitted_source_import(catalog, tmp_path):
+    message = _restore_with_tampered_snapshot(
+        catalog, tmp_path, "uncommitted",
+        lambda c, i: c.execute("UPDATE imports SET status='failed' WHERE import_id=?", (i,)),
+    )
+    assert "missing or not committed" in message
+
+
+def test_restore_rejects_extra_snapshot_rows_for_import(catalog, tmp_path):
+    def add_row(conn, import_id):
+        conn.execute(
+            "INSERT INTO import_rows(row_id, record_key, import_id, source_record_number,"
+            " payload_json, locator_json) VALUES('extra-row','extra',?,99,'{}','{}')",
+            (import_id,),
+        )
+    message = _restore_with_tampered_snapshot(catalog, tmp_path, "extra-row", add_row)
+    assert "missing snapshot rows" in message
+
+
+def test_restore_rejects_changed_import_schema_fingerprint(catalog, tmp_path):
+    def change(conn, import_id):
+        manifest = json.loads(conn.execute(
+            "SELECT manifest_json FROM imports WHERE import_id=?", (import_id,)).fetchone()[0])
+        manifest["schema_fingerprint"] = "0" * 64
+        conn.execute("UPDATE imports SET manifest_json=? WHERE import_id=?",
+                     (json.dumps(manifest), import_id))
+    message = _restore_with_tampered_snapshot(catalog, tmp_path, "schema-fp", change)
+    assert "does not match its stored provenance" in message
+
+
+def test_restore_rejects_changed_import_dataset_id(catalog, tmp_path):
+    def change(conn, import_id):
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("INSERT INTO datasets SELECT 'other-dataset', schema_id, schema_version,"
+                     " schema_fingerprint, created_at FROM datasets LIMIT 1")
+        conn.execute("UPDATE imports SET dataset_id='other-dataset' WHERE import_id=?", (import_id,))
+    message = _restore_with_tampered_snapshot(catalog, tmp_path, "dataset-id", change)
+    assert "does not match its stored provenance" in message
+
+
+
+def _linked_backup(catalog, conflicting=False):
+    """Backup of a store with two customers and a link citing a second, object-free import."""
+    from agora.identity import stable_record_key
+    project, store, audit, _, _ = catalog
+    pack_data = {
+        "pack_id": "backup-link-pack", "schema_version": "1.0.0",
+        "object_types": [{
+            "type_id": "backup:Customer", "version": "1.0.0", "name": "Customer",
+            "description": "Customer",
+            "properties": ["backup:Customer.id", "backup:Customer.email"],
+            "identity_strategy": "record_key",
+        }],
+        "property_types": [
+            {"property_id": "backup:Customer.id", "version": "1.0.0", "name": "id",
+             "data_type": "identifier", "required": True, "nullable": False,
+             "sensitivity": "personal"},
+            {"property_id": "backup:Customer.email", "version": "1.0.0", "name": "email",
+             "data_type": "string", "required": True, "nullable": False,
+             "sensitivity": "sensitive"},
+        ],
+        "link_types": [{
+            "link_type_id": "backup:refers", "version": "1.0.0", "name": "refers",
+            "source_type_id": "backup:Customer", "target_type_id": "backup:Customer",
+            "predicate": "refers", "cardinality": "many_to_many",
+        }],
+        "action_types": [],
+    }
+    pack_fp = store.register_pack(parse_domain_pack(pack_data), policy=_allow, audit=audit)
+    binding_fp = store.register_binding(pack_fp, _binding(), policy=_allow, audit=audit)
+    source = project / "customers.csv"
+    source.write_text(
+        "customer_id,email\nC-1,one@example.test\nC-2,two@example.test\n", encoding="utf-8")
+    imported = ingest_csv(project, source, _SCHEMA, data_role="context", policy=_allow, audit=audit)
+    import_id = imported["import_id"]
+    assert store.materialize_binding(
+        pack_fp, binding_fp, import_id, policy=_allow, audit=audit,
+        purpose="account support", retention="90 days") == 2
+
+    def endpoint(key):
+        return {"project_id": store.project_id, "pack_fingerprint": pack_fp,
+                "type_id": "backup:Customer", "type_version": "1.0.0",
+                "import_id": import_id,
+                "record_key": stable_record_key("customers", key)}
+
+    other_source = project / "other.csv"
+    other_source.write_text("customer_id,email\nC-9,nine@example.test\n", encoding="utf-8")
+    other = ingest_csv(project, other_source, _SCHEMA, data_role="context", policy=_allow, audit=audit)
+    other_id = other["import_id"]
+    other_sha = hashlib.sha256(other_source.read_bytes()).hexdigest()
+    refs = [{"import_id": other_id, "file_sha256": other_sha, "locator": "row:2"}]
+    if conflicting:
+        refs.append({"import_id": other_id, "file_sha256": "b" * 64, "locator": "row:2"})
+    store.add_link(
+        pack_fp, "backup:refers", "1.0.0", endpoint("C-1"), endpoint("C-2"),
+        "2026-01-01T00:00:00+00:00", None, "referral",
+        {"kind": "source", "source_refs": refs},
+        policy=_allow, audit=audit)
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+    return other_id, backup_path
+
+
+def _restore_linked(catalog, tmp_path, name, tamper, *, expect_error, conflicting=False):
+    project = catalog[0]
+    import_id, backup_path = _linked_backup(catalog, conflicting)
+    restored_project = tmp_path / name / project.name
+    restored_data = restored_project / "data"
+    restored_data.mkdir(parents=True)
+    restored_backup = restored_data / backup_path.name
+    shutil.copyfile(backup_path, restored_backup)
+    tabular_copy = restored_data / "tabular.sqlite3"
+    shutil.copyfile(project / "data" / "tabular.sqlite3", tabular_copy)
+    connection = sqlite3.connect(tabular_copy)
+    try:
+        tamper(connection, import_id)
+        connection.commit()
+    finally:
+        connection.close()
+    restored_audit = AuditChainStore(restored_data / "audit_chain.sqlite3")
+    restored_store = OntologyObjectStore(restored_project)
+    try:
+        if expect_error is None:
+            restored_store.restore(restored_backup, policy=_allow, audit=restored_audit)
+            return restored_store, restored_backup, import_id
+        with pytest.raises(OntologyError) as caught:
+            restored_store.restore(restored_backup, policy=_allow, audit=restored_audit)
+        assert not restored_store.path.exists()
+        return str(caught.value)
+    finally:
+        restored_audit.close()
+
+
+def test_restore_accepts_source_backed_link_with_matching_snapshot(catalog, tmp_path):
+    _restore_linked(catalog, tmp_path, "link-ok", lambda c, i: None, expect_error=None)
+
+
+def test_restore_rejects_source_backed_link_when_import_hash_changed(catalog, tmp_path):
+    message = _restore_linked(
+        catalog, tmp_path, "link-hash",
+        lambda c, i: c.execute("UPDATE imports SET file_sha256=? WHERE import_id=?", ("a" * 64, i)),
+        expect_error=True,
+    )
+    assert "source-backed link references a missing or changed import" in message
+
+
+def test_restore_rejects_source_backed_link_import_with_extra_rows(catalog, tmp_path):
+    def add_row(conn, import_id):
+        conn.execute(
+            "INSERT INTO import_rows(row_id, record_key, import_id, source_record_number,"
+            " payload_json, locator_json) VALUES('extra-link-row','extra',?,99,'{}','{}')",
+            (import_id,),
+        )
+    message = _restore_linked(catalog, tmp_path, "link-rows", add_row, expect_error=True)
+    assert "source-backed link import is missing snapshot rows" in message
+
+
+def test_restore_rejects_conflicting_hashes_for_one_link_import(catalog, tmp_path):
+    message = _restore_linked(
+        catalog, tmp_path, "link-conflict", lambda c, i: None,
+        expect_error=True, conflicting=True,
+    )
+    assert "conflicting hashes for one source import" in message
