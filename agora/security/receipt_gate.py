@@ -2,9 +2,9 @@
 
 Design: docs/PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md sections 3A and 3B (items 1, 3, 4 and 6).
 
-A worker opens one ``ReceiptGate`` from its own configuration file. The tenant, release id, pinned root key,
-key mode and audit store paths come from that file and from nowhere else: a request cannot name a tenant, a
-release, a key, a clock or a test-key switch. Admission calls only ``key_list.admit_receipt_with_key_list``,
+A worker opens one ``ReceiptGate`` from its own configuration file. The tenant, release id, the two pinned root
+keys (current and standby), key mode and audit store paths come from that file and from nowhere else: a request
+cannot name a tenant, a release, a key, a clock or a test-key switch. Admission calls only ``key_list.admit_receipt_with_key_list``,
 so receipt keys come only from the newest accepted, fresh key list in the same store.
 
 The request fields are the scope being authorised. The worker MUST derive them from the action it is about to
@@ -31,11 +31,11 @@ from agora.security import receipt_ledger as ledger
 from agora.security import signed_receipt as sr
 
 CONFIG_TYPE = "receipt_gate_config"
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
 MAX_CONFIG_BYTES = 16 * 1024
 KEY_MODES = ("test", "production")
-_CONFIG_FIELDS = {"type", "v", "tenant", "release_id", "key_mode", "root_public", "audit_db", "audit_anchor",
-                  "chain_id"}
+_CONFIG_FIELDS = {"type", "v", "tenant", "release_id", "key_mode", "root_public", "standby_root_public",
+                  "audit_db", "audit_anchor", "chain_id"}
 WORKER_FIELDS = ("tenant", "release_id")
 REQUEST_FIELDS = tuple(name for name in sr.SCOPE_FIELDS if name not in WORKER_FIELDS)
 
@@ -46,6 +46,7 @@ class GateConfig:
     release_id: str
     key_mode: str
     root_public: bytes
+    standby_root_public: bytes
     audit_db: Path
     audit_anchor: Path
     chain_id: str
@@ -60,6 +61,17 @@ def _unique(pairs):
     if len(set(names)) != len(names):
         raise _bad_config("duplicate field")
     return dict(pairs)
+
+
+def _root_public(data: Mapping[str, Any], name: str) -> bytes:
+    text = data[name]
+    if not isinstance(text, str) or len(text) != 72 or not text.startswith("ed25519:") \
+            or any(c not in "0123456789abcdef" for c in text[8:]):
+        raise _bad_config(name)
+    public = bytes.fromhex(text[8:])
+    if not kl._usable_point(public):
+        raise _bad_config(f"{name} is not a usable Ed25519 point")
+    return public
 
 
 def load_gate_config(path: str | Path) -> GateConfig:
@@ -82,13 +94,10 @@ def load_gate_config(path: str | Path) -> GateConfig:
             raise _bad_config(name)
     if data["key_mode"] not in KEY_MODES:
         raise _bad_config("key_mode must be test or production")
-    text = data["root_public"]
-    if not isinstance(text, str) or len(text) != 72 or not text.startswith("ed25519:") \
-            or any(c not in "0123456789abcdef" for c in text[8:]):
-        raise _bad_config("root_public")
-    root_public = bytes.fromhex(text[8:])
-    if not kl._usable_point(root_public):
-        raise _bad_config("root_public is not a usable Ed25519 point")
+    root_public = _root_public(data, "root_public")
+    standby_public = _root_public(data, "standby_root_public")
+    if standby_public == root_public:
+        raise _bad_config("standby_root_public must differ from root_public")
     paths = []
     for name in ("audit_db", "audit_anchor"):
         value = data[name]
@@ -98,8 +107,8 @@ def load_gate_config(path: str | Path) -> GateConfig:
         paths.append(Path(value))
     if not isinstance(data["chain_id"], str) or not sr._TOKEN.match(data["chain_id"]):
         raise _bad_config("chain_id")
-    return GateConfig(data["tenant"], data["release_id"], data["key_mode"], root_public, paths[0], paths[1],
-                      data["chain_id"])
+    return GateConfig(data["tenant"], data["release_id"], data["key_mode"], root_public, standby_public,
+                      paths[0], paths[1], data["chain_id"])
 
 
 class ReceiptGate:
@@ -111,6 +120,7 @@ class ReceiptGate:
         self._clock, self._monotonic = clock, monotonic
         test = config.key_mode == "test"
         self._root = kl.RootKey(config.root_public, test=test)
+        self._standby = kl.RootKey(config.standby_root_public, test=test)
         self._allow_test_keys = test
         self._key_list: kl.TrustedKeyList | None = None
 
@@ -122,8 +132,19 @@ class ReceiptGate:
         """Accept a signed key list. On refusal the previously loaded list, if any, is kept: it is still
         re-checked as newest and fresh at every admission, so a bad envelope cannot extend or revive it."""
         accepted = kl.accept_key_list(
-            envelope, tenant=self._config.tenant, root=self._root, audit=self._audit, clock=self._clock,
-            monotonic=self._monotonic, allow_test_keys=self._allow_test_keys,
+            envelope, tenant=self._config.tenant, root=self._root, standby=self._standby, audit=self._audit,
+            clock=self._clock, monotonic=self._monotonic, allow_test_keys=self._allow_test_keys,
+        )
+        self._key_list = accepted
+        return accepted.list_version
+
+    def rotate_root(self, change_envelope: Mapping[str, Any], list_envelope: Mapping[str, Any]) -> int:
+        """Apply a signed root rollover or revocation together with the new root's first key list (see
+        ``key_list.accept_root_change``). On refusal the previously loaded list is kept, as above."""
+        accepted = kl.accept_root_change(
+            change_envelope, list_envelope, tenant=self._config.tenant, root=self._root, standby=self._standby,
+            audit=self._audit, clock=self._clock, monotonic=self._monotonic,
+            allow_test_keys=self._allow_test_keys,
         )
         self._key_list = accepted
         return accepted.list_version

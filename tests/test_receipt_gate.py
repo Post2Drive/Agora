@@ -19,6 +19,7 @@ LISTS = json.loads((HERE / "vectors" / "key_list_vectors.json").read_text(encodi
 BASE = RECEIPTS["base_receipt"]
 SEED = bytes.fromhex(RECEIPTS["test_key"]["seed_hex"])
 ROOT_SEED = bytes([7]) * 32  # test root, never a production key
+STANDBY_SEED = bytes([8]) * 32  # test standby root, never a production key
 NOW = datetime(2026, 11, 24, 12, 1, tzinfo=timezone.utc)
 
 
@@ -48,8 +49,9 @@ def paths(tmp_path):
 
 
 def settings(paths, **changes):
-    return {"type": "receipt_gate_config", "v": 1, "tenant": BASE["tenant"], "release_id": BASE["release_id"],
+    return {"type": "receipt_gate_config", "v": 2, "tenant": BASE["tenant"], "release_id": BASE["release_id"],
             "key_mode": "test", "root_public": "ed25519:" + sr.public_key(ROOT_SEED).hex(),
+            "standby_root_public": "ed25519:" + sr.public_key(STANDBY_SEED).hex(),
             "audit_db": str(paths[0]), "audit_anchor": str(paths[1]), "chain_id": "tenant-a-chain", **changes}
 
 
@@ -188,7 +190,9 @@ def test_a_revocation_accepted_by_another_gate_stops_an_older_one(tmp_path, path
 
 
 @pytest.mark.parametrize("changes", [
-    {"type": "other"}, {"v": 2}, {"v": True}, {"tenant": ""}, {"tenant": 5}, {"release_id": "a b"},
+    {"type": "other"}, {"v": 1}, {"v": True},
+    {"standby_root_public": "ed25519:" + "00" * 32}, {"standby_root_public": None},
+    {"standby_root_public": "ed25519:" + sr.public_key(ROOT_SEED).hex()}, {"tenant": ""}, {"tenant": 5}, {"release_id": "a b"},
     {"key_mode": "dev"}, {"root_public": "ed25519:" + "00" * 32}, {"root_public": "ed25519:" + "AB" * 32},
     {"root_public": sr.public_key(ROOT_SEED).hex()},
     {"root_public": "ed25519:" + sr.public_key(ROOT_SEED).hex().upper()},
@@ -261,6 +265,8 @@ def _called_names(path):
     ("verify_receipt", {"security/signed_receipt.py", "security/receipt_ledger.py"}),
     ("admit_receipt_with_key_list", {"security/key_list.py", "security/receipt_gate.py"}),
     ("accept_key_list", {"security/key_list.py", "security/receipt_gate.py"}),
+    ("accept_root_change", {"security/key_list.py", "security/receipt_gate.py"}),
+    ("_record_acceptance", {"security/key_list.py"}),
 ])
 def test_no_other_package_module_reaches_the_lower_level_functions(name, allowed):
     """A source check against accidental second paths, not a defence against code that hides the name."""
