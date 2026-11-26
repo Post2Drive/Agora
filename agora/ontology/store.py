@@ -1047,11 +1047,11 @@ class OntologyObjectStore:
             else:
                 rows = conn.execute(
                     """SELECT l.* FROM ontology_links l WHERE l.project_id=? AND l.pack_fingerprint=?
-                       AND l.link_type_id=? AND l.link_type_version=? AND l.link_id>?
+                       AND l.link_type_id=? AND l.link_type_version=? AND l.created_at<=? AND l.link_id>?
                        AND l.""" + match + """_type_id=? AND l.""" + match + """_type_version=?
                        AND l.""" + match + """_import_id=? AND l.""" + match + """_record_key=?
                        ORDER BY l.link_id LIMIT ?""",
-                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, last_id or "",
+                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, as_of, last_id or "",
                      *self._link_key(ref), page_size + 1),
                 ).fetchall()
             page = rows[:page_size]
