@@ -134,3 +134,21 @@ def test_forged_binding_metadata_is_refused(catalog, column, value):
 
     with pytest.raises(OntologyError, match="binding metadata does not match"):
         store.verify_integrity(policy=_allow, audit=audit)
+
+
+def test_restore_refuses_backup_with_a_removed_immutability_trigger(catalog):
+    project, store, audit = catalog
+    backup = store.backup(project / "data" / "restore.sqlite3", policy=_allow, audit=audit)
+    conn = sqlite3.connect(backup)
+    try:
+        conn.execute("DROP TRIGGER ontology_packs_no_delete")
+        conn.commit()
+    finally:
+        conn.close()
+    for suffix in ("", "-wal", "-shm"):
+        store.path.with_name(store.path.name + suffix).unlink(missing_ok=True)
+
+    with pytest.raises(OntologyError, match="schema objects do not match"):
+        store.restore(backup, policy=_allow, audit=audit)
+
+    assert not store.path.exists()
