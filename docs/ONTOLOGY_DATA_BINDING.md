@@ -2,7 +2,11 @@
 
 **Status:** design contract with a partial implementation. Main includes binding parsing, validation, and read-only materialization against explicitly selected tabular snapshots. It does not add a general connector framework, migrate storage, mutate snapshots, or enable simulation or external write-back.
 
-## Current implementation status — 26 November 2026\n\nThe matching implementation is in `agora/ontology/binding.py` and is covered by `tests/test_ontology_binding.py`. Materialization returns in-memory instances; this contract does not establish a persistent ontology object store or general query/API service. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for staged capability targets.\n\n## 1. Purpose and boundaries
+## Current implementation status — 26 November 2026
+
+The matching implementation is in `agora/ontology/binding.py` and is covered by `tests/test_ontology_binding.py`. Materialization returns in-memory instances; this contract does not establish a persistent ontology object store or general query/API service. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for staged capability targets.
+
+## 1. Purpose and boundaries
 
 A binding maps one versioned ontology `ObjectType` and its `PropertyType` definitions to an explicit tabular dataset snapshot. It is the boundary where typed imported records become typed ontology instances while retaining source provenance and sensitivity controls.
 
