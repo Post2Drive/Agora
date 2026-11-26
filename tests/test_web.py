@@ -1,6 +1,8 @@
 """Local web app: API flow and the safety checks that keep it local."""
 import base64
+import faulthandler
 import json
+import sys
 import threading
 import time
 import urllib.error
@@ -42,6 +44,10 @@ def call(base, method, path, body=None, headers=None):
             return e.code, json.loads(raw)
         except ValueError:
             return e.code, raw
+    except OSError as e:  # stall or dropped connection: show every thread's stack, then still fail
+        print(f"[web-test] {method} {path} failed: {e!r}", file=sys.stderr, flush=True)
+        faulthandler.dump_traceback(file=sys.__stderr__, all_threads=True)
+        raise
 
 
 def wait_job(base, pid, timeout=60):
