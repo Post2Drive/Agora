@@ -455,6 +455,8 @@ class OntologyObjectStore:
         binding = self.get_binding(
             pack_fingerprint, binding_fingerprint, policy=policy, audit=audit,
         )
+        if binding.object_type_id != type_id or binding.object_type_version != type_version:
+            raise OntologyError("object reference does not match its binding object type/version")
         instance = materialize_source_object(
             binding, pack, self.project, import_id, expected["snapshot_row_id"],
             record_key, policy=policy, audit=audit, purpose=purpose, retention=retention,
