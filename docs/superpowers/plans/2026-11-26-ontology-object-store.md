@@ -55,12 +55,14 @@
 
 **Files:**
 - Modify: `agora/ontology/store.py`
-- Modify: `agora/ontology/binding.py` only if a narrow reusable helper is required
+- Modify: `agora/ontology/binding.py` for policy-gated reference enumeration and exact-row materialization
+- Modify: `agora/tabular.py` for bounded snapshot iteration and exact row lookup
 - Test: `tests/test_ontology_store.py`
 
 **Interfaces:**
-- `materialize_binding(pack_fingerprint: str, binding_fingerprint: str, import_id: str, *, policy, audit, purpose, retention) -> int` validates the exact stored pack, binding, import manifest, and policy, then records one immutable object reference per row without copying row payload values.
-- `get_object(pack_fingerprint: str, type_id: str, type_version: str, record_key: str, import_id: str, *, policy, audit) -> dict` reads the reference, resolves the exact snapshot row via the existing binding contract, and returns typed values plus provenance and sensitivity.
+- `materialize_binding(pack_fingerprint: str, binding_fingerprint: str, import_id: str, *, policy, audit, purpose, retention) -> int` validates exact pack/binding/import identity, then streams bounded source rows into immutable references without storing row payload values.
+- `get_object(pack_fingerprint: str, type_id: str, type_version: str, record_key: str, import_id: str, *, policy, audit, purpose, retention) -> dict` resolves one exact snapshot row after binding policy authorization and returns typed values plus provenance and sensitivity.
+- Source references include schema fingerprint, exact snapshot row ID, and source locator/hash. The tabular reader must bound memory for full-import indexing and avoid scanning/materializing every row for one-object retrieval.
 
 - [ ] **Step 1: Add tests** for stable record identity across two imports, distinct row-version identities, exact import selection, provenance fields, policy denial before snapshot access, sealed holdout denial, and snapshot immutability.
 - [ ] **Step 2: Implement** immutable object-reference rows and exact-snapshot materialization by reusing `materialize_instances`.
