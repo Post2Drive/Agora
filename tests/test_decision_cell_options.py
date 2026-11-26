@@ -105,6 +105,13 @@ def test_delegate_works_only_when_recorded_and_still_needs_the_role():
     assert not gate(req(Option.CONTINUE), AD.issue("reader"), record=record).executable
 
 
+@pytest.mark.parametrize("delegates", ["a2-and-others", ["a2"], None])
+def test_delegates_must_be_a_set_so_text_cannot_match_by_substring(delegates):
+    record = replace(RECORD, delegate_subject_ids=delegates)
+    result = gate(req(Option.CONTINUE), AD.issue("other_approver"), record=record)
+    assert "not_designated_approver" in result.failures
+
+
 @pytest.mark.parametrize("option,wanted", [(Option.CONTINUE, 10), (Option.FORK_FROM_EVENT, 6),
                                            (Option.FORK_FROM_EARLIER, 3)])
 def test_snapshot_is_checked_for_the_right_round(option, wanted):

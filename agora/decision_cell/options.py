@@ -212,7 +212,11 @@ def evaluate_option(
                                           required_role="approver")
         if role is None:
             fail(f"approver_required:{approval['reason']}")
-        if subject != record.owner_subject_id and subject not in record.delegate_subject_ids:
+        delegates = record.delegate_subject_ids
+        # A string would match by substring, so anything but a set counts as no delegates.
+        if not isinstance(delegates, frozenset):
+            delegates = frozenset()
+        if subject != record.owner_subject_id and subject not in delegates:
             fail("not_designated_approver")
 
     # -- escalation ----------------------------------------------------------
