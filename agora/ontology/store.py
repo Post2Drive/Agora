@@ -9,7 +9,6 @@ from dataclasses import asdict
 import base64
 from datetime import datetime, timezone
 import hashlib
-import hmac
 import json
 import os
 from pathlib import Path
@@ -192,62 +191,6 @@ def _link_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: 
     return endpoint
 
 
-def _frame(digest: Any, value: str) -> None:
-    raw = value.encode("utf-8")
-    digest.update(len(raw).to_bytes(8, "big"))
-    digest.update(raw)
-
-
-def _source_snapshot_digest(conn: sqlite3.Connection | None, import_ids: Any) -> str:
-    """Deterministic digest of the exact tabular snapshot rows an ontology depends on.
-
-    Covers each import's identity, hash, status and manifest plus every row's key,
-    position, locator and a SHA-256 of its payload, so changed values are detected
-    without the digest or any manifest carrying row values. It does not depend on
-    SQLite file bytes, which vary between otherwise identical databases.
-    """
-    digest = hashlib.sha256()
-    digest.update(b"agora.ontology.source-snapshot.v1\0")
-    for import_id in sorted(set(import_ids)):
-        row = conn.execute(
-            """SELECT dataset_id, source_registry_id, file_sha256, status, manifest_json
-               FROM imports WHERE import_id=?""",
-            (import_id,),
-        ).fetchone()
-        if row is None:
-            raise OntologyError("a source snapshot import is missing")
-        try:
-            manifest = json.loads(row["manifest_json"])
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise OntologyError("a source snapshot import manifest is invalid") from exc
-        _frame(digest, _canonical({
-            "import_id": import_id, "dataset_id": row["dataset_id"],
-            "source_registry_id": row["source_registry_id"],
-            "file_sha256": str(row["file_sha256"]).lower(), "status": row["status"],
-            "manifest": manifest,
-        }))
-        for item in conn.execute(
-            """SELECT row_id, record_key, source_record_number, payload_json, locator_json
-               FROM import_rows WHERE import_id=? ORDER BY source_record_number, row_id""",
-            (import_id,),
-        ):
-            _frame(digest, _canonical({
-                "row_id": item["row_id"], "record_key": item["record_key"],
-                "source_record_number": item["source_record_number"],
-                "payload_sha256": hashlib.sha256(str(item["payload_json"]).encode("utf-8")).hexdigest(),
-                "locator_json": item["locator_json"],
-            }))
-    return digest.hexdigest()
-
-
-def _normalise_anchored_digest(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value):
-        raise OntologyError("expected_source_snapshot_digest must be a 64-character SHA-256")
-    return value.lower()
-
-
 def _encode_cursor(payload: Mapping[str, Any]) -> str:
     raw = _canonical(dict(payload)).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
@@ -273,6 +216,75 @@ def _canonical(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise OntologyError(f"value is not canonically serializable: {exc}") from exc
+
+
+_MANIFEST_FORMAT = "agora-ontology-backup-dependencies/v2"
+_IMPORT_DIGEST_ALGORITHM = "agora-import-content-sha256/v1"
+_IMPORT_COLUMNS = (
+    "import_id", "idempotency_key", "dataset_id", "source_registry_id",
+    "file_sha256", "status", "manifest_json", "created_at",
+)
+_IMPORT_ROW_COLUMNS = (
+    "row_id", "record_key", "import_id", "source_record_number",
+    "payload_json", "locator_json",
+)
+
+
+def _import_content_attestation(conn: sqlite3.Connection, import_id: str) -> dict[str, Any]:
+    """Digest one import's stored record and every one of its rows.
+
+    The digest covers logical content, not database file bytes, so later imports,
+    VACUUM, or journal state do not change it. Each line is canonical JSON (which
+    never contains a raw newline), so line boundaries are unambiguous.
+    """
+    header = conn.execute(
+        f"SELECT {', '.join(_IMPORT_COLUMNS)} FROM imports WHERE import_id=?", (import_id,)
+    ).fetchone()
+    if header is None:
+        raise OntologyError("a referenced source import is missing or not committed")
+    digest = hashlib.sha256()
+    digest.update((_canonical([_IMPORT_DIGEST_ALGORITHM, list(header)]) + "\n").encode("utf-8"))
+    row_count = 0
+    for row in conn.execute(
+        f"SELECT {', '.join(_IMPORT_ROW_COLUMNS)} FROM import_rows "
+        "WHERE import_id=? ORDER BY source_record_number, row_id", (import_id,)
+    ):
+        digest.update((_canonical(list(row)) + "\n").encode("utf-8"))
+        row_count += 1
+    return {
+        "import_id": import_id,
+        "algorithm": _IMPORT_DIGEST_ALGORITHM,
+        "row_count": row_count,
+        "content_sha256": digest.hexdigest(),
+    }
+
+
+def _stage_private_copy(source: Path, destination: Path) -> tuple[int, str]:
+    """Copy a closed SQLite file to a new private path, hashing the copied bytes.
+
+    A non-empty journal beside the source is refused: SQLite would read it, but
+    the hash of the main file would not cover it.
+    """
+    for suffix in ("-wal", "-journal"):
+        sidecar = Path(str(source) + suffix)
+        if sidecar.exists() and sidecar.stat().st_size:
+            raise OntologyError("ontology backup has a pending SQLite journal; its bytes are incomplete")
+    digest = hashlib.sha256()
+    size = 0
+    with source.open("rb") as reader, destination.open("xb") as writer:
+        while chunk := reader.read(1024 * 1024):
+            digest.update(chunk)
+            writer.write(chunk)
+            size += len(chunk)
+    return size, digest.hexdigest()
+
+
+def _discard_staged_copy(path: Path) -> None:
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        try:
+            Path(str(path) + suffix).unlink()
+        except OSError:
+            pass
 
 
 def _utc_now() -> str:
@@ -1360,11 +1372,14 @@ class OntologyObjectStore:
 
 
     def _verify_source_snapshot_dependencies(
-        self, ontology_conn: sqlite3.Connection, expected_digest: str | None = None,
-    ) -> None:
-        """Confirm every referenced import exists in this project's tabular snapshot DB.
+        self, ontology_conn: sqlite3.Connection,
+        before_content_read: Any | None = None,
+    ) -> list[dict[str, Any]]:
+        """Check every referenced import and return its content attestation.
 
-        Only import metadata is read; no source row payloads are selected.
+        Provenance metadata is checked first. ``before_content_read`` then runs
+        before any row payload is read for digesting. Payload values are hashed
+        and never returned. All reads share one SQLite read transaction.
         """
         dependencies = [
             dict(row) for row in ontology_conn.execute(
@@ -1390,9 +1405,7 @@ class OntologyObjectStore:
                     if previous != digest.lower():
                         raise OntologyError("backup contains conflicting hashes for one source import")
         if not dependencies and not link_refs:
-            if expected_digest is not None and _source_snapshot_digest(None, []) != expected_digest:
-                raise OntologyError("source snapshot does not match the anchored digest")
-            return
+            return []
         snapshot_path = self.project / "data" / "tabular.sqlite3"
         try:
             require_safe_path(snapshot_path)
@@ -1403,6 +1416,7 @@ class OntologyObjectStore:
         except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
             raise OntologyError("required tabular source snapshot database is unavailable") from exc
         try:
+            conn.execute("BEGIN")
             for object_ref in object_rows:
                 snapshot_row = conn.execute(
                     "SELECT locator_json FROM import_rows WHERE import_id=? AND row_id=?",
@@ -1464,12 +1478,10 @@ class OntologyObjectStore:
                 ).fetchone()[0]
                 if row_count != manifest["accepted_records"]:
                     raise OntologyError("a source-backed link import is missing snapshot rows")
-            if expected_digest is not None:
-                actual = _source_snapshot_digest(
-                    conn, [d["import_id"] for d in dependencies] + list(link_refs),
-                )
-                if not hmac.compare_digest(actual, expected_digest):
-                    raise OntologyError("source snapshot does not match the anchored digest")
+            if before_content_read is not None:
+                before_content_read()
+            referenced = sorted({item["import_id"] for item in dependencies} | set(link_refs))
+            return [_import_content_attestation(conn, import_id) for import_id in referenced]
         except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError) as exc:
             if isinstance(exc, OntologyError):
                 raise
@@ -1477,26 +1489,51 @@ class OntologyObjectStore:
         finally:
             conn.close()
 
+    def _authorize_source_content_read(
+        self, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> None:
+        """Digesting row payloads is a write-role operation at the highest sensitivity."""
+        self._authorize(
+            "ontology_write", ["store_source_attestation"],
+            policy=policy, audit=audit, sensitivity="sensitive",
+        )
+
     def restore(
-        self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
-        expected_source_snapshot_digest: str | None = None,
+        self, backup_path: str | Path, *,
+        dependency_manifest: Mapping[str, Any], expected_manifest_sha256: str,
+        policy: PolicyCallable | None, audit: Any | None,
     ) -> Path:
-        """Restore a verified, project-local backup without overwriting an existing store.
+        """Restore an authenticated, project-local backup without overwriting a store.
 
-        The destination is published only after a temporary SQLite copy passes the
-        same integrity checks as a live store. Source tabular snapshots are not copied.
-
-        Without ``expected_source_snapshot_digest`` the tabular snapshot is only checked
-        for consistency with the backup, which a tampered snapshot can satisfy. Pass the
-        ``source_snapshot_digest`` from a dependency manifest anchored somewhere the
-        snapshot's holder cannot rewrite to authenticate the snapshot's contents.
+        ``expected_manifest_sha256`` is the trust root: the caller must have kept
+        it separately from the backup, the manifest, and the tabular database. It
+        pins the manifest, which pins the exact backup bytes and the content of
+        every referenced source import. Verification runs on a private copy, and
+        that copy is what gets published. Source tabular snapshots are not copied.
+        This is a digest comparison, not a signature.
         """
-        anchored_digest = _normalise_anchored_digest(expected_source_snapshot_digest)
         self._authorize("ontology_write", ["store_restore"], policy=policy, audit=audit)
+        if not isinstance(expected_manifest_sha256, str) or len(expected_manifest_sha256) != 64 or any(
+            char not in "0123456789abcdef" for char in expected_manifest_sha256
+        ):
+            raise OntologyError("restore requires the separately retained lowercase manifest SHA-256")
+        if not isinstance(dependency_manifest, Mapping):
+            raise OntologyError("restore requires the backup dependency manifest")
+        manifest = dict(dependency_manifest)
+        embedded = manifest.pop("manifest_sha256", None)
+        computed = hashlib.sha256(_canonical(manifest).encode("utf-8")).hexdigest()
+        if computed != expected_manifest_sha256 or embedded != computed:
+            raise OntologyError("dependency manifest does not match the retained manifest SHA-256")
+        if manifest.get("format") != _MANIFEST_FORMAT or manifest.get("project_id") != self.project_id:
+            raise OntologyError("dependency manifest format or project is not accepted")
+        backup_record = manifest.get("ontology_backup")
+        attestations = manifest.get("source_import_attestations")
+        if not isinstance(backup_record, Mapping) or not isinstance(attestations, list):
+            raise OntologyError("dependency manifest is incomplete")
+
         backup_file = Path(backup_path)
         temporary = self.path.with_name(self.path.name + ".restore-" + uuid.uuid4().hex + ".tmp")
-        source_conn = None
-        restore_conn = None
+        staged_conn = None
         created_temporary = False
         try:
             require_safe_path(self.project)
@@ -1517,25 +1554,27 @@ class OntologyObjectStore:
             )
             if self.path.exists() or temporary.exists() or any(path.exists() for path in sidecars):
                 raise OntologyError("restore destination already exists or has SQLite sidecars")
-            source_conn = sqlite3.connect(resolved_backup.as_uri() + "?mode=ro", uri=True, timeout=30.0)
-            source_conn.row_factory = sqlite3.Row
-            self._verify_connection_integrity(source_conn)
-            self._verify_source_snapshot_dependencies(source_conn, anchored_digest)
+            created_temporary = True
+            size, digest = _stage_private_copy(backup_file, temporary)
+            if backup_record.get("bytes") != size or backup_record.get("sha256") != digest:
+                raise OntologyError("backup bytes do not match the dependency manifest")
+            staged_conn = sqlite3.connect(temporary.resolve().as_uri() + "?mode=rw", uri=True, timeout=30.0)
+            staged_conn.row_factory = sqlite3.Row
+            self._verify_connection_integrity(staged_conn)
             for table in ("ontology_object_refs", "ontology_links"):
-                foreign_projects = source_conn.execute(
+                foreign_projects = staged_conn.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE project_id<>?", (self.project_id,)
                 ).fetchone()[0]
                 if foreign_projects:
                     raise OntologyError("backup contains ontology records for a different project")
-            restore_conn = sqlite3.connect(str(temporary), timeout=30.0)
-            restore_conn.row_factory = sqlite3.Row
-            created_temporary = True
-            source_conn.backup(restore_conn)
-            self._verify_connection_integrity(restore_conn)
-            restore_conn.close()
-            restore_conn = None
-            source_conn.close()
-            source_conn = None
+            actual = self._verify_source_snapshot_dependencies(
+                staged_conn,
+                lambda: self._authorize_source_content_read(policy=policy, audit=audit),
+            )
+            if _canonical(actual) != _canonical(attestations):
+                raise OntologyError("tabular source content does not match the dependency manifest")
+            staged_conn.close()
+            staged_conn = None
             require_safe_path(temporary)
             # Hard-link publication is atomic and fails rather than replacing a
             # destination created concurrently after the initial existence check.
@@ -1543,43 +1582,18 @@ class OntologyObjectStore:
             # Publication has succeeded. A cleanup failure must not report a
             # failed restore while leaving the destination live.
             created_temporary = False
-            try:
-                temporary.unlink()
-            except OSError:
-                pass
+            _discard_staged_copy(temporary)
             require_safe_path(self.path)
             return self.path
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
-            if created_temporary and temporary.exists():
-                try:
-                    temporary.unlink()
-                except OSError:
-                    pass
             if isinstance(exc, OntologyError):
                 raise
             raise OntologyError("ontology restore failed or did not pass verification") from exc
         finally:
-            if restore_conn is not None:
-                restore_conn.close()
-            if source_conn is not None:
-                source_conn.close()
-
-    def _current_source_snapshot_digest(self, import_ids: Any) -> str:
-        if not import_ids:
-            return _source_snapshot_digest(None, [])
-        snapshot_path = self.project / "data" / "tabular.sqlite3"
-        try:
-            require_safe_path(snapshot_path)
-            conn = sqlite3.connect(snapshot_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30.0)
-            conn.row_factory = sqlite3.Row
-        except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
-            raise OntologyError("required tabular source snapshot database is unavailable") from exc
-        try:
-            return _source_snapshot_digest(conn, import_ids)
-        except sqlite3.Error as exc:
-            raise OntologyError("source snapshot digest could not be computed") from exc
-        finally:
-            conn.close()
+            if staged_conn is not None:
+                staged_conn.close()
+            if created_temporary:
+                _discard_staged_copy(temporary)
 
     def backup_dependency_manifest(
         self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
@@ -1595,20 +1609,18 @@ class OntologyObjectStore:
             raise OntologyError("ontology backup path is unsafe or unavailable") from exc
         if resolved_backup == self.path.resolve() or not backup_file.is_file():
             raise OntologyError("dependency manifest requires an existing backup file")
+        temporary = backup_file.with_name(backup_file.name + ".attest-" + uuid.uuid4().hex + ".tmp")
+        conn = None
         try:
             require_safe_path(backup_file)
-            backup_digest = hashlib.sha256()
-            backup_bytes = 0
-            with backup_file.open("rb") as source:
-                while chunk := source.read(1024 * 1024):
-                    backup_digest.update(chunk)
-                    backup_bytes += len(chunk)
-        except (OSError, UnsafePathError) as exc:
-            raise OntologyError("ontology backup path is unsafe or unavailable") from exc
-        conn = sqlite3.connect(backup_file.resolve().as_uri() + "?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        try:
+            require_safe_path(temporary)
+            backup_bytes, backup_digest = _stage_private_copy(backup_file, temporary)
+            conn = sqlite3.connect(temporary.resolve().as_uri() + "?mode=rw", uri=True, timeout=30.0)
+            conn.row_factory = sqlite3.Row
             self._verify_connection_integrity(conn)
+            attestations = self._verify_source_snapshot_dependencies(
+                conn, lambda: self._authorize_source_content_read(policy=policy, audit=audit),
+            )
             packs = [
                 {
                     "fingerprint": row["fingerprint"],
@@ -1665,11 +1677,8 @@ class OntologyObjectStore:
                 link_source_references_by_key[key]
                 for key in sorted(link_source_references_by_key)
             ]
-            snapshot_import_ids = {d["import_id"] for d in dependencies}
-            snapshot_import_ids.update(ref["import_id"] for ref in link_source_references)
-            source_snapshot_digest = self._current_source_snapshot_digest(snapshot_import_ids)
             payload = {
-                "format": "agora-ontology-backup-dependencies/v1",
+                "format": _MANIFEST_FORMAT,
                 "project_id": self.project_id,
                 "created_at": _utc_now(),
                 "ontology_schema_version": 3,
@@ -1678,16 +1687,20 @@ class OntologyObjectStore:
                 "ontology_backup": {
                     "file_name": backup_file.name,
                     "bytes": backup_bytes,
-                    "sha256": backup_digest.hexdigest(),
+                    "sha256": backup_digest,
                 },
                 "source_snapshot_files": dependencies,
-                "source_snapshot_digest": source_snapshot_digest,
                 "link_source_references": link_source_references,
+                "source_import_attestations": attestations,
                 "source_row_values_included": False,
             }
             digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
             return {**payload, "manifest_sha256": digest}
-        except (sqlite3.Error, ValueError, TypeError, json.JSONDecodeError) as exc:
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            if isinstance(exc, OntologyError):
+                raise
             raise OntologyError("ontology backup dependency manifest could not be created") from exc
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
+            _discard_staged_copy(temporary)
