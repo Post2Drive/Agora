@@ -27,6 +27,7 @@ from .binding import (
 from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
 
 _MAX_LINK_SOURCE_REFS = 100
+_MAX_REPORTED_CONFLICTS = 100
 _BACKUP_ANCHOR_PREFIX = "ontology-backup-anchor-"
 _BACKUP_ANCHOR_TYPE = "ontology_backup_anchored"
 # Matches the record numbering tabular ingestion assigns (the CSV header is record 1).
@@ -196,6 +197,54 @@ def _link_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: 
     if endpoint["import_id"] == "latest":
         raise OntologyError("link endpoints require an exact import_id")
     return endpoint
+
+
+def _cardinality_key(type_id: str, record_key: str) -> tuple[str, ...]:
+    """The identity cardinality counts: the stable object, whichever import it was read from.
+
+    ``record_key`` already includes the dataset identity, so equal keys under one
+    object type mean the same primary key in the same dataset.
+    """
+    return (type_id, record_key)
+
+
+def _cardinality_conflicts(conn: sqlite3.Connection, packs: Mapping[str, OntologyPack]) -> list[str]:
+    """IDs of active stored links that break their declared cardinality over overlapping time."""
+    declared = {
+        (fingerprint, item.link_type_id, item.version): item.cardinality
+        for fingerprint, pack in packs.items() for item in pack.link_types
+    }
+    groups: dict[tuple, list[tuple[str, str, str]]] = {}
+    rows = conn.execute(
+        """SELECT l.link_id, l.project_id, l.pack_fingerprint, l.link_type_id, l.link_type_version,
+                  l.source_type_id, l.source_record_key,
+                  l.target_type_id, l.target_record_key, l.valid_from, l.valid_to
+           FROM ontology_links l
+           WHERE NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)"""
+    )
+    for row in rows:
+        selector = (row["pack_fingerprint"], row["link_type_id"], row["link_type_version"])
+        if selector not in declared:
+            raise OntologyError("ontology link does not resolve to a link type in its pack")
+        cardinality = declared[selector]
+        if cardinality == "many_to_many":
+            continue
+        sides = ("source", "target") if cardinality == "one_to_one" else ("target",)
+        for side in sides:
+            key = _cardinality_key(row[side + "_type_id"], row[side + "_record_key"])
+            groups.setdefault((row["project_id"], *selector, side, key), []).append(
+                (row["valid_from"], row["valid_to"] or "9999-12-31T23:59:59.999999Z", row["link_id"]))
+    conflicts: set[str] = set()
+    for intervals in groups.values():
+        latest_end, holder = "", ""
+        # In start order, an interval overlaps an earlier one exactly when it starts
+        # before the furthest end seen so far.
+        for start, end, link_id in sorted(intervals):
+            if start < latest_end:
+                conflicts.update((holder, link_id))
+            if end > latest_end:
+                latest_end, holder = end, link_id
+    return sorted(conflicts)
 
 
 def _encode_cursor(payload: Mapping[str, Any]) -> str:
@@ -862,11 +911,14 @@ class OntologyObjectStore:
                     continue
                 if not (start < (row["valid_to"] or infinity) and row["valid_from"] < (end or infinity)):
                     continue
-                old_src = (row["source_type_id"], row["source_type_version"], row["source_import_id"], row["source_record_key"])
-                old_dst = (row["target_type_id"], row["target_type_version"], row["target_import_id"], row["target_record_key"])
-                if link_type.cardinality == "one_to_one" and (src_key == old_src or dst_key == old_dst):
+                same_source, same_target = (
+                    _cardinality_key(end_ref["type_id"], end_ref["record_key"])
+                    == _cardinality_key(row[side + "_type_id"], row[side + "_record_key"])
+                    for side, end_ref in (("source", src), ("target", dst))
+                )
+                if link_type.cardinality == "one_to_one" and (same_source or same_target):
                     raise OntologyError("link violates one_to_one cardinality over overlapping valid time")
-                if link_type.cardinality == "one_to_many" and dst_key == old_dst:
+                if link_type.cardinality == "one_to_many" and same_target:
                     raise OntologyError("link violates one_to_many cardinality over overlapping valid time")
             conn.execute(
                 """INSERT INTO ontology_links(
@@ -1285,6 +1337,7 @@ class OntologyObjectStore:
             raise OntologyError("ontology store schema objects do not match the expected schema")
 
         packs = conn.execute("SELECT fingerprint, pack_id, schema_version, content_json FROM ontology_packs")
+        parsed_packs: dict[str, OntologyPack] = {}
         for row in packs:
             try:
                 pack = parse_domain_pack(json.loads(row["content_json"]))
@@ -1296,6 +1349,7 @@ class OntologyObjectStore:
                 or pack.schema_version != row["schema_version"]
             ):
                 raise OntologyError("ontology pack fingerprint or metadata does not match its content")
+            parsed_packs[pack.fingerprint] = pack
 
         bindings = conn.execute(
             "SELECT fingerprint, binding_id, binding_version, content_json FROM bindings"
@@ -1366,6 +1420,10 @@ class OntologyObjectStore:
                     if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
                         raise OntologyError("source-backed link provenance has an invalid SHA-256")
 
+        # Reported rather than refused: links are immutable, so refusing here would
+        # also stop backup and restore of a store written before this rule.
+        conflicts = _cardinality_conflicts(conn, parsed_packs)
+
         return {
             "ok": True,
             "schema_version": actual[-1][0],
@@ -1375,6 +1433,9 @@ class OntologyObjectStore:
             "binding_fingerprints": "ok",
             "object_reference_metadata": "ok",
             "link_records": "ok",
+            "link_cardinality": "conflicts" if conflicts else "ok",
+            "link_cardinality_conflict_count": len(conflicts),
+            "link_cardinality_conflict_ids": conflicts[:_MAX_REPORTED_CONFLICTS],
             "source_snapshots": "not_checked",
             "audit_event_references": "not_stored",
         }
