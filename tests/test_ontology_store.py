@@ -481,12 +481,13 @@ def test_restore_refuses_stale_sqlite_sidecars(catalog):
     project, store, audit, _pack_fingerprint, _binding_fingerprint = catalog
     backup_path = project / "data" / "ontology.backup.sqlite3"
     store.backup(backup_path, policy=_allow, audit=audit)
+    original_database = store.path.read_bytes()
     sidecar = Path(str(store.path) + "-wal")
     sidecar.write_bytes(b"stale wal marker")
 
     with pytest.raises(OntologyError, match="SQLite sidecars"):
         store.restore(backup_path, policy=_allow, audit=audit)
-    assert not store.path.exists()
+    assert store.path.read_bytes() == original_database
     assert sidecar.read_bytes() == b"stale wal marker"
 
 
