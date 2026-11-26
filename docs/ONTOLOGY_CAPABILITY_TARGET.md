@@ -16,7 +16,7 @@ At main commit `745e98e4abdf9d2008e479cf1cdbd0240a3642f6`, Agora contains:
 
 - Domain-pack parsing and versioned `ObjectType`, `PropertyType`, `LinkType`, and `ActionType` definitions in `agora/ontology/registry.py`.
 - A fingerprinted, version-aware registry that rejects conflicting reuse of the same type ID/version. Registry state is currently in memory.
-- A project-local SQLite catalog persists immutable, fingerprinted pack and binding definitions behind principal-bound `ontology_read` / `ontology_write` policy and anchored audit. Object and link instances and ontology queries remain unimplemented.
+- A project-local SQLite catalog persists immutable, fingerprinted pack and binding definitions behind principal-bound `ontology_read` / `ontology_write` policy and anchored audit. O1 adds immutable source-row references and exact source-backed object reads; typed links and bounded ontology query APIs remain unimplemented.
 - YAML/JSON loading with duplicate-key rejection.
 - Read-only tabular snapshot bindings that check exact dataset/schema/import identity, property mappings, types, sensitivity, and provenance, then materialize instances in memory.
 - Registry and binding tests, including stable cross-snapshot record identity and rejection of type/sensitivity mismatches.
