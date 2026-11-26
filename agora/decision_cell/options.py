@@ -148,7 +148,7 @@ def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: St
         "event_round": request.event_round, "from_round": request.from_round,
         # key=repr: a malformed request must still be refused and audited, not crash the sort.
         "inputs": sorted(([i.input_id, i.sensitivity, i.data_owner_subject_id]
-                          for i in request.inputs)),
+                          for i in request.inputs), key=repr),
         "cost_units": cost,
     })
 
