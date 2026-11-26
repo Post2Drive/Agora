@@ -134,42 +134,38 @@ class OntologyObjectStore:
             )"""
         )
         rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
-        if not rows:
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                for statement in _STORE_SCHEMA:
-                    conn.execute(statement)
-                conn.execute(
-                    "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (1, ?, ?)",
-                    (_SCHEMA_CHECKSUM, _utc_now()),
-                )
-                for statement in _OBJECT_REFS_SCHEMA:
-                    conn.execute(statement)
-                conn.execute(
-                    "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (2, ?, ?)",
-                    (_OBJECT_REFS_CHECKSUM, _utc_now()),
-                )
-                conn.commit()
-                rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
-            except sqlite3.Error as exc:
-                conn.rollback()
-                raise OntologyError("ontology store migration failed") from exc
-        elif len(rows) == 1 and rows[0]["version"] == 1:
-            if rows[0]["checksum"] != _SCHEMA_CHECKSUM:
+        if not rows or (len(rows) == 1 and rows[0]["version"] == 1):
+            if rows and rows[0]["checksum"] != _SCHEMA_CHECKSUM:
                 raise OntologyError("ontology store v1 migration checksum changed")
             try:
                 conn.execute("BEGIN IMMEDIATE")
-                for statement in _OBJECT_REFS_SCHEMA:
-                    conn.execute(statement)
-                conn.execute(
-                    "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (2, ?, ?)",
-                    (_OBJECT_REFS_CHECKSUM, _utc_now()),
-                )
+                # Recheck after obtaining the write lock so concurrent first opens
+                # do not apply the same schema migration twice.
+                rows = conn.execute(
+                    "SELECT version, checksum FROM schema_migrations ORDER BY version"
+                ).fetchall()
+                if not rows:
+                    for statement in _STORE_SCHEMA:
+                        conn.execute(statement)
+                    conn.execute(
+                        "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (1, ?, ?)",
+                        (_SCHEMA_CHECKSUM, _utc_now()),
+                    )
+                    rows = [(1, _SCHEMA_CHECKSUM)]
+                if len(rows) == 1 and rows[0][0] == 1:
+                    if rows[0][1] != _SCHEMA_CHECKSUM:
+                        raise OntologyError("ontology store v1 migration checksum changed")
+                    for statement in _OBJECT_REFS_SCHEMA:
+                        conn.execute(statement)
+                    conn.execute(
+                        "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (2, ?, ?)",
+                        (_OBJECT_REFS_CHECKSUM, _utc_now()),
+                    )
                 conn.commit()
-                rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OntologyError) as exc:
                 conn.rollback()
                 raise OntologyError("ontology store migration failed") from exc
+            rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
         expected_versions = [(1, _SCHEMA_CHECKSUM), (2, _OBJECT_REFS_CHECKSUM)]
         if [(row["version"], row["checksum"]) for row in rows] != expected_versions:
             raise OntologyError("ontology store schema is unknown or a migration checksum changed")
