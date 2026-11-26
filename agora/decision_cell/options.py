@@ -18,13 +18,18 @@ import json
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
 from agora import protection as _protection
 from agora.policy import POLICY_VERSION, SENSITIVITY_RANK
 from agora.principal import Principal, decide_principal
+
+
+# The furthest ahead one HOLD may defer an item. The spec names no limit; without one, a single HOLD could
+# silence an item for good.
+MAX_RECHECK = timedelta(days=7)
 
 
 class DecisionCellError(PermissionError):
@@ -106,6 +111,7 @@ class OptionRequest:
     underlying: Option | None = None        # CHANGE_INPUTS only: the run option it modifies
     inputs: tuple[InputRef, ...] = ()       # CHANGE_INPUTS only: the full chosen evidence set
     confirmed_cost_units: int | None = None  # must equal the cost exactly when over budget
+    recheck_at: datetime | None = None      # HOLD only, and required there: when to look again
 
 
 @dataclass(frozen=True)
@@ -135,6 +141,16 @@ def _count(value: Any) -> bool:
     return type(value) is int and value >= 0
 
 
+def _aware_utc(value: Any) -> datetime | None:
+    """``value`` in UTC, or None if it is not a usable timezone-aware datetime."""
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        return None
+    try:
+        return value.astimezone(timezone.utc)
+    except (OverflowError, ValueError):
+        return None
+
+
 def _sha(value: Any) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=repr)
     return hashlib.sha256(raw.encode("utf-8", "surrogatepass")).hexdigest()
@@ -143,7 +159,7 @@ def _sha(value: Any) -> str:
 def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: StudyState,
                         cost: int) -> str:
     """What would actually run. Excludes who asks, their reason, budget and confirmation."""
-    return _sha({
+    action = {
         "project_id": record.project_id, "tenant_id": record.tenant_id, "study_id": study.study_id,
         "current_round": study.current_round, "event_id": request.event_id,
         "option": request.option, "underlying": request.underlying,
@@ -152,7 +168,11 @@ def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: St
         "inputs": sorted(([i.input_id, i.sensitivity, i.data_owner_subject_id]
                           for i in request.inputs), key=repr),
         "cost_units": cost,
-    })
+    }
+    if request.recheck_at is not None:  # added only when set, so other actions keep their fingerprint
+        due = _aware_utc(request.recheck_at)
+        action["recheck_at"] = due.isoformat() if due else repr(request.recheck_at)
+    return _sha(action)
 
 
 def evaluate_option(
@@ -184,6 +204,22 @@ def evaluate_option(
         fail("event_missing")
     if not _text(request.reason):
         fail("reason_missing")
+
+    # -- re-check time --------------------------------------------------------
+    if request.option is Option.HOLD:
+        if request.recheck_at is None:
+            fail("recheck_time_required")
+        else:
+            due = _aware_utc(request.recheck_at)
+            current = _aware_utc(datetime.now(timezone.utc) if now is None else now)
+            if due is None or current is None:
+                fail("recheck_time_invalid")
+            elif due <= current:
+                fail("recheck_time_not_in_future")
+            elif due - current > MAX_RECHECK:
+                fail("recheck_time_too_far")
+    elif request.recheck_at is not None:
+        fail("recheck_not_allowed")
 
     # -- permission ----------------------------------------------------------
     resource = {"project_id": record.project_id, "tenant_id": record.tenant_id,
