@@ -38,7 +38,9 @@ The logical tables are:
 
 - **ontology_packs:** pack ID, schema version, canonical pack fingerprint, serialized definition snapshot, lifecycle state, and creation metadata. A fingerprint is immutable; the same pack/version cannot be replaced with different content.
 - **bindings:** binding ID/version/fingerprint, exact object type ID/version, dataset ID, schema ID/version, and the compatible pack fingerprint.
-- **object_refs:** project ID, pack fingerprint, type ID/version, binding fingerprint if source-backed, exact import ID, dataset ID, stable record key, snapshot row ID, source hash/locator, and sensitivity. Unique identities are enforced in the declared scope.
+- **object_refs:** project ID, pack fingerprint, type ID/version, binding fingerprint if source-backed, exact import ID, dataset ID, stable record key, snapshot row ID, schema fingerprint, source hash/locator, and effective sensitivity. Unique identities are enforced in the declared scope. References contain no imported property values.
+
+Object-reference indexing streams source rows in bounded batches after binding policy authorization. Single-object reads resolve exactly one recorded row ID from the selected immutable import and then verify its stable key and provenance before returning typed values. A missing or mismatched source row fails closed.
 - **links:** link ID/version, pack fingerprint, link type ID/version, exact source and target object identities, valid-time interval, assertion status, source/provenance reference, actor, created-time, and audit-event reference.
 - **store_meta / schema_migrations:** schema version, integrity metadata, and applied migration IDs.
 
