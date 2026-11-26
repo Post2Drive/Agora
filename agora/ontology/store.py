@@ -194,6 +194,10 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _link_created_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 class OntologyObjectStore:
     """Immutable pack/binding catalog stored under project/data."""
 
@@ -702,7 +706,7 @@ class OntologyObjectStore:
                     valid_from, valid_to, created_at, actor_id, reason, provenance_json, supersedes_link_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (link_id, self.project_id, pack_fingerprint, link_type_id, link_type_version,
-                 *src_key, *dst_key, start, end, _utc_now(), decision["subject_id"],
+                 *src_key, *dst_key, start, end, _link_created_now(), decision["subject_id"],
                  reason.strip(), provenance_json, supersedes_link_id),
             )
             conn.commit()
@@ -1007,10 +1011,15 @@ class OntologyObjectStore:
         self._link_type(pack, link_type_id, link_type_version)
         cursor_value = _decode_cursor(cursor)
         last_id = None
+        as_of = _link_created_now()
+        if cursor_value is not None:
+            as_of = cursor_value.get("as_of")
+            if not isinstance(as_of, str) or _canonical_timestamp(as_of, "cursor time") != as_of:
+                raise OntologyError("traversal cursor time is invalid")
         cursor_identity = {
             "v": 1, "project_id": self.project_id, "pack": pack_fingerprint,
             "link_type_id": link_type_id, "link_type_version": link_type_version,
-            "endpoint": dict(ref), "import_id": import_id, "direction": direction,
+            "endpoint": dict(ref), "import_id": import_id, "direction": direction, "as_of": as_of,
         }
         if cursor_value is not None:
             if any(cursor_value.get(key) != value for key, value in cursor_identity.items()) or not isinstance(cursor_value.get("last_id"), str):
@@ -1028,11 +1037,11 @@ class OntologyObjectStore:
             if match == "both":
                 rows = conn.execute(
                     """SELECT l.* FROM ontology_links l WHERE l.project_id=? AND l.pack_fingerprint=?
-                       AND l.link_type_id=? AND l.link_type_version=? AND l.link_id>?
+                       AND l.link_type_id=? AND l.link_type_version=? AND l.created_at<=? AND l.link_id>?
                        AND ((l.source_type_id=? AND l.source_type_version=? AND l.source_import_id=? AND l.source_record_key=?)
                          OR (l.target_type_id=? AND l.target_type_version=? AND l.target_import_id=? AND l.target_record_key=?))
                        ORDER BY l.link_id LIMIT ?""",
-                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, last_id or "",
+                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, as_of, last_id or "",
                      *self._link_key(ref), *self._link_key(ref), page_size + 1),
                 ).fetchall()
             else:
