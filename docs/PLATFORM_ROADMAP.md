@@ -4,6 +4,12 @@
 
 **Baseline:** GitHub `main` at `33f44c18cfc1eebd24074694c6cfbe963200380a` (20 November 2026). Status statements below are assessed against that commit, not against later unmerged pull requests.
 
+## Current ontology status refresh — 26 November 2026
+
+The baseline above is historical. Since that commit, main includes ontology registry, pack-loader, and data-binding implementation in `agora/ontology/`, domain packs, and registry/binding tests. At current main `745e98e4abdf9d2008e479cf1cdbd0240a3642f6`, ontology is **partially implemented**, not design-only: the registry and fingerprints are in-memory, and bound snapshot records materialize read-only in memory. A durable ontology object/link store, general ontology query/API/SDK, managed action runtime, complete identity/authorization layer, and authoring experience are not established by those components.
+
+The [ontology capability target](ONTOLOGY_CAPABILITY_TARGET.md) sets a staged benchmark against published Gotham and Foundry capabilities. This status refresh does not claim platform parity or production readiness.
+
 ## Product direction
 
 AGORA is a governed decision platform. Data is integrated with provenance, represented through a domain ontology, used by one or more decision engines (including exploratory simulation), and connected to decisions whose inputs, approvals and outcomes can be audited.

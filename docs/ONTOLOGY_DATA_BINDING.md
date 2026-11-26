@@ -1,6 +1,10 @@
 # Ontology Data Binding — Rung 2/3 Contract
 
-**Status:** design specification only. This document defines a read-only binding contract; it does not add a connector, migrate storage, mutate snapshots, or enable simulation or external write-back.
+**Status:** design contract with a partial implementation. Main includes binding parsing, validation, and read-only materialization against explicitly selected tabular snapshots. It does not add a general connector framework, migrate storage, mutate snapshots, or enable simulation or external write-back.
+
+## Current implementation status — 26 November 2026
+
+The matching implementation is in `agora/ontology/binding.py` and is covered by `tests/test_ontology_binding.py`. Materialization returns in-memory instances; this contract does not establish a persistent ontology object store or general query/API service. See [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) for staged capability targets.
 
 ## 1. Purpose and boundaries
 
@@ -84,7 +88,7 @@ The provenance fields are copied from the explicit manifest and row data, never 
 
 ## 7. API and safety contract
 
-The implementation PR will provide:
+The current implementation provides:
 
 - `load_binding(path_or_payload)` — parse and validate the binding shape and fingerprint;
 - `validate_binding(pack, snapshot_manifest, binding)` — validate object/property existence, schema identity, mappings, stored-schema types, sensitivity, purpose, retention, and identity strategy;
