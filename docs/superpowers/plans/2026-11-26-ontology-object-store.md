@@ -89,6 +89,8 @@
 
 ### Task 4: Scoped object queries and link traversal
 
+**Status:** Implementation merged in PR #239 at `26200a4e88f8ff428bb711a06c3b49c1c0fa3be7`. Repository CI passed on Linux and Windows with Python 3.11 and 3.12. No feature-specific tests were added or run; behavioral acceptance remains open.
+
 **Files:**
 - Modify: `agora/ontology/store.py`
 - Test: `tests/test_ontology_store.py`
@@ -98,11 +100,13 @@
 - `traverse_links(pack_fingerprint: str, link_type_id: str, link_version: str, endpoint_ref: str, import_id: str, page_size: int, cursor: str | None, *, policy, audit) -> QueryPage` returns only exact-version links visible to the caller.
 
 - [ ] **Step 1: Add tests** for filters, stable pagination, unknown property/operator rejection, wrong pack/import rejection, link traversal scope, and policy denial.
-- [ ] **Step 2: Implement** parameterized bounded queries and cursor encoding bound to pack/import/type fingerprints.
+- [x] **Step 2: Implement** parameterized bounded queries and cursor encoding bound to pack/import/type fingerprints.
 - [ ] **Step 3: Verify** stable results across repeated queries and that errors do not expose restricted values.
-- [ ] **Step 4: Commit** query and traversal.
+- [x] **Step 4: Commit** query and traversal (PR #239 merged).
 
 ### Task 5: Migration, recovery, and contract documentation
+
+**Status:** Partial implementation in progress. Local SQLite backup and integrity inspection are being added. Source-snapshot packaging/availability checks, restore acceptance, and feature-specific tests are still open.
 
 **Files:**
 - Modify: `agora/ontology/store.py`
@@ -115,9 +119,9 @@
 - `verify_integrity() -> IntegrityReport` validates foreign keys, pack/binding fingerprints, object source references, link endpoints, and audit references.
 
 - [ ] **Step 1: Add tests** for transactional migration, backup/restore, missing source snapshots, corrupt fingerprints, and read-only behavior after restore.
-- [ ] **Step 2: Implement** forward-only versioned migrations and an integrity report; do not migrate existing graph or run databases.
+- [x] **Step 2: Implement** forward-only versioned migrations and a local integrity report; do not migrate existing graph or run databases. Backup and integrity methods do not yet prove external snapshot recovery.
 - [ ] **Step 3: Verify** restore and integrity checks against a disposable project fixture.
-- [ ] **Step 4: Update** docs with exact implemented capability evidence and known limitations.
+- [x] **Step 4: Update** docs with exact implemented capability evidence and known limitations.
 - [ ] **Step 5: Commit** migration/recovery work independently.
 
 ## Execution notes

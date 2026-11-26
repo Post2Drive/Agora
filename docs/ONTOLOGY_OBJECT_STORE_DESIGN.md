@@ -1,6 +1,6 @@
 # Ontology Object Store and Query Design
 
-**Status:** design contract with partial O1 implementation. The project-local store now includes immutable definitions, source-backed object references, and typed temporal links. Bounded queries, traversal, backup/restore verification, and feature-specific implementation evidence remain outstanding. This is not an O1 completion claim and does not enable external actions.
+**Status:** design contract with partial O1 implementation. The project-local store includes immutable definitions, source-backed object references, typed temporal links, bounded object queries, link traversal, a consistent local SQLite backup, and local integrity verification. Feature-specific tests and full recovery evidence remain outstanding. Backups contain only the ontology database; they do not package or verify external source snapshots. This is not an O1 completion claim and does not enable external actions.
 
 ## Intent
 
@@ -100,7 +100,7 @@ The first catalog slice uses separate `ontology_read` and `ontology_write` polic
 
 ## Migration and operations
 
-The sidecar implementation is in `agora/ontology/store.py` and currently uses checksummed, forward-only migrations through schema v3. Existing graph and run databases are not altered. Schema migrations are explicit and transactional. Existing databases are not automatically altered. Backups include the ontology database and its referenced snapshot manifests; restore verification checks pack, binding, link, and source-reference integrity. If a referenced snapshot is missing, queries fail closed and return an actionable provenance error.
+The sidecar implementation is in `agora/ontology/store.py` and uses checksummed, forward-only migrations through schema v3. Existing graph and run databases are not altered. Opening the store applies pending migrations transactionally. `backup(path, policy, audit)` creates an atomic, project-local SQLite backup and checks its database integrity, foreign keys, and ontology metadata before publishing it. `verify_integrity(policy, audit)` checks SQLite integrity, foreign keys, migration checksums, pack and binding fingerprints, object-reference metadata, and link record shape. These operations do not open or package the external source snapshots, verify that those files still exist, or validate audit-event references; the current link schema does not store an audit-event ID. Backup/restore and feature-specific recovery evidence remain incomplete. Queries still fail closed when an exact referenced snapshot cannot be resolved.
 
 ## Acceptance evidence for implementation
 

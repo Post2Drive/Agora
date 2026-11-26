@@ -12,17 +12,17 @@ Compare documented behavior and verified implementation, not marketing claims. M
 
 ## Current Agora evidence
 
-At main commit `3023cb369df94b90d78cf5d89faf3374e6ba0675`, Agora contains:
+At main commit `26200a4e88f8ff428bb711a06c3b49c1c0fa3be7`, Agora contains:
 
 - Domain-pack parsing and versioned `ObjectType`, `PropertyType`, `LinkType`, and `ActionType` definitions in `agora/ontology/registry.py`.
 - A fingerprinted, version-aware registry that rejects conflicting reuse of the same type ID/version. Registry state is currently in memory.
-- A project-local SQLite store persists immutable, fingerprinted pack and binding definitions, source-row references, exact source-backed object reads, and typed temporal links. Link writes enforce exact endpoints, declared cardinality, endpoint sensitivity, policy, principal-derived actor, and audit. Bounded object queries and link traversal remain unimplemented. The link slice has repository CI evidence but no feature-specific tests yet.
+- A project-local SQLite store persists immutable, fingerprinted pack and binding definitions, source-row references, exact source-backed object reads, and typed temporal links. Link writes enforce exact endpoints, declared cardinality, endpoint sensitivity, policy, principal-derived actor, and audit. Bounded keyset object queries and direction-aware link traversal are now implemented with exact import scope, typed filters, stable cursors, and bounded pages. Repository CI passed for the implementation, but feature-specific tests remain outstanding.
 - YAML/JSON loading with duplicate-key rejection.
 - Read-only tabular snapshot bindings that check exact dataset/schema/import identity, property mappings, types, sensitivity, and provenance, then materialize instances in memory.
 - Registry and binding tests, including stable cross-snapshot record identity and rejection of type/sensitivity mismatches.
 - Domain packs and fixtures.
 
-These are real early ontology capabilities, not an integrated ontology platform. A durable project-local ontology object-reference and link store now exists, but no general graph query service, stable external ontology API or generated SDK, managed object/link editing workflow, ontology authoring/browser UI, or complete identity and authorization layer is established. Action definitions are constrained to simulation-only, but there is not yet a general action runtime over persistent ontology objects. A permission field or design contract alone is not an enforced boundary.
+These are real early ontology capabilities, not an integrated ontology platform. A durable project-local ontology object-reference and link store with bounded internal queries and traversal now exists, but no public graph query service, stable external ontology API or generated SDK, managed object/link editing workflow, ontology authoring/browser UI, or complete identity and authorization layer is established. Action definitions are constrained to simulation-only, but there is not yet a general action runtime over persistent ontology objects. A permission field or design contract alone is not an enforced boundary.
 
 ## Product goals
 

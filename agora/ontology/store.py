@@ -1085,3 +1085,167 @@ class OntologyObjectStore:
             raise OntologyError("ontology link traversal failed") from exc
         finally:
             conn.close()
+
+
+    @staticmethod
+    def _verify_connection_integrity(conn: sqlite3.Connection) -> dict[str, Any]:
+        """Verify local SQLite structure and ontology metadata without reading source snapshots."""
+        integrity = [row[0] for row in conn.execute("PRAGMA integrity_check").fetchall()]
+        if integrity != ["ok"]:
+            raise OntologyError("ontology SQLite integrity check failed")
+        foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchmany(1)
+        if foreign_key_errors:
+            raise OntologyError("ontology store contains broken foreign-key references")
+
+        migrations = (
+            (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
+            (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
+            (3, _LINKS_CHECKSUM, _LINKS_SCHEMA),
+        )
+        actual = [
+            (int(row["version"]), row["checksum"])
+            for row in conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version")
+        ]
+        expected = [(version, checksum) for version, checksum, _ in migrations]
+        if actual != expected:
+            raise OntologyError("ontology store migration history is unknown or incomplete")
+
+        packs = conn.execute("SELECT fingerprint, pack_id, schema_version, content_json FROM ontology_packs")
+        for row in packs:
+            try:
+                pack = parse_domain_pack(json.loads(row["content_json"]))
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise OntologyError("ontology pack content is not valid") from exc
+            if (
+                pack.fingerprint != row["fingerprint"]
+                or pack.pack_id != row["pack_id"]
+                or pack.schema_version != row["schema_version"]
+            ):
+                raise OntologyError("ontology pack fingerprint or metadata does not match its content")
+
+        bindings = conn.execute("SELECT fingerprint, content_json FROM bindings")
+        for row in bindings:
+            try:
+                binding = load_binding(json.loads(row["content_json"]))
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise OntologyError("ontology binding content is not valid") from exc
+            if binding.fingerprint != row["fingerprint"]:
+                raise OntologyError("ontology binding fingerprint does not match its content")
+
+        refs = conn.execute(
+            "SELECT file_sha256, source_locator_json, property_sensitivity_json FROM ontology_object_refs"
+        )
+        for row in refs:
+            digest = row["file_sha256"]
+            if not isinstance(digest, str) or len(digest) != 64 or any(
+                char not in "0123456789abcdefABCDEF" for char in digest
+            ):
+                raise OntologyError("ontology object reference has an invalid source SHA-256")
+            try:
+                locator = json.loads(row["source_locator_json"])
+                sensitivity = json.loads(row["property_sensitivity_json"])
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise OntologyError("ontology object reference metadata is not valid JSON") from exc
+            if not isinstance(locator, dict) or not isinstance(sensitivity, dict):
+                raise OntologyError("ontology object reference metadata has an invalid shape")
+
+        links = conn.execute(
+            "SELECT valid_from, valid_to, created_at, actor_id, reason, provenance_json FROM ontology_links"
+        )
+        for row in links:
+            start = _canonical_timestamp(row["valid_from"], "valid_from")
+            end = _canonical_timestamp(row["valid_to"], "valid_to") if row["valid_to"] is not None else None
+            _canonical_timestamp(row["created_at"], "created_at")
+            if end is not None and end <= start:
+                raise OntologyError("ontology link has an invalid validity interval")
+            if not isinstance(row["actor_id"], str) or not row["actor_id"].strip():
+                raise OntologyError("ontology link has no actor identity")
+            if not isinstance(row["reason"], str) or not row["reason"].strip():
+                raise OntologyError("ontology link has no reason")
+            try:
+                provenance = json.loads(row["provenance_json"])
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise OntologyError("ontology link provenance is not valid JSON") from exc
+            if not isinstance(provenance, dict):
+                raise OntologyError("ontology link provenance has an invalid shape")
+
+        return {
+            "ok": True,
+            "schema_version": actual[-1][0],
+            "sqlite_integrity": "ok",
+            "foreign_keys": "ok",
+            "pack_fingerprints": "ok",
+            "binding_fingerprints": "ok",
+            "object_reference_metadata": "ok",
+            "link_records": "ok",
+            "source_snapshots": "not_checked",
+            "audit_event_references": "not_stored",
+        }
+
+    def verify_integrity(
+        self, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> dict[str, Any]:
+        """Check the local ontology database; external snapshot files are not opened."""
+        self._authorize("ontology_read", ["store_integrity"], policy=policy, audit=audit)
+        conn = self._connect()
+        try:
+            return self._verify_connection_integrity(conn)
+        except (sqlite3.Error, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise OntologyError("ontology store integrity verification failed") from exc
+        finally:
+            conn.close()
+
+    def backup(
+        self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> Path:
+        """Create an atomic project-local SQLite backup and verify its local integrity."""
+        self._authorize("ontology_read", ["store_backup"], policy=policy, audit=audit)
+        destination = Path(path)
+        temporary = destination.with_name(destination.name + ".tmp")
+        source_conn = None
+        backup_conn = None
+        created_temporary = False
+        try:
+            require_safe_path(self.project)
+            self.project.mkdir(parents=True, exist_ok=True)
+            root = self.project.resolve()
+            resolved_destination = destination.resolve()
+            resolved_destination.relative_to(root)
+            if resolved_destination == self.path.resolve():
+                raise OntologyError("backup destination cannot be the live ontology database")
+            require_safe_path(destination.parent)
+            require_safe_path(destination)
+            if destination.exists() or temporary.exists():
+                raise OntologyError("backup destination already exists")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            require_safe_path(destination.parent)
+            require_safe_path(temporary)
+            source_conn = self._connect()
+            backup_conn = sqlite3.connect(str(temporary), timeout=30.0)
+            backup_conn.row_factory = sqlite3.Row
+            created_temporary = True
+            source_conn.backup(backup_conn)
+            self._verify_connection_integrity(backup_conn)
+            backup_conn.close()
+            backup_conn = None
+            source_conn.close()
+            source_conn = None
+            require_safe_path(temporary)
+            temporary.replace(destination)
+            created_temporary = False
+            require_safe_path(destination)
+            return destination
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
+            if created_temporary and temporary.exists():
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("ontology store backup failed or did not pass verification") from exc
+        finally:
+            if backup_conn is not None:
+                backup_conn.close()
+            if source_conn is not None:
+                source_conn.close()
