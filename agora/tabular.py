@@ -19,7 +19,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .identity import stable_record_key
@@ -581,7 +581,7 @@ def _snapshot_row_record(row: sqlite3.Row) -> dict[str, Any]:
 
 def iter_snapshot_rows(
     project: str | Path, import_id: str, *, batch_size: int = 512,
-):
+) -> Iterator[dict[str, Any]]:
     """Yield rows from one explicit import in bounded batches."""
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ValueError("an explicit import_id is required")
