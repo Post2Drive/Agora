@@ -63,6 +63,16 @@ Links are assertions, not evidence of causation. They carry valid-time start/end
 
 Cardinality constraints apply to active links over overlapping valid-time intervals. Updates use one transaction so concurrent writes cannot violate a one-to-one or one-to-many rule.
 
+### Normative link contract
+
+- **Endpoint identity:** a link pins the project ID, pack fingerprint, object type ID/version, import ID, and stable record key for both endpoints. Both exact object references must exist in that project and pack. A link cannot resolve an endpoint through another import, pack, project, or implicit `latest` selector.
+- **Time intervals:** valid time uses half-open intervals `[valid_from, valid_to)`; a null end is unbounded. Timestamps must include a timezone and are normalized to UTC before comparison. Empty or reversed intervals are rejected. Creation time is transaction time and never substitutes for valid time.
+- **Cardinality:** `one_to_one` permits at most one active target per source and one active source per target at any overlapping instant. `one_to_many` permits multiple targets per source but at most one source per target at an overlapping instant. `many_to_many` adds no endpoint uniqueness restriction. Non-overlapping intervals do not conflict.
+- **Correction and concurrency:** a correction appends a successor that names the exact superseded link ID; the original row remains immutable. A link may have at most one direct successor. Cardinality checks and insertion run in the same write transaction, and superseded assertions are excluded from the active set. Conflicting or ambiguous corrections fail closed.
+- **Authority and evidence:** actor identity comes from the principal-bound policy decision, never from a caller-provided actor field. Writes require `ontology_write`, an anchored audit event, a non-empty reason, and canonical provenance. Source-backed provenance must identify the exact source snapshot/import; a manually asserted relationship must be labeled as an assertion and must not be presented as observed source data.
+
+These rules are the implementation contract for the typed-link slice. They do not authorize external write-back, live feeds, simulation changes, or public APIs.
+
 ## Query contract
 
 The first API is internal to the modular monolith and read-only for source-backed values:
