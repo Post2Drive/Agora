@@ -11,7 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Mapping
 import uuid
 
 from .. import protection as _protection
@@ -21,7 +21,7 @@ from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce
 from .binding import (
     DataBinding, iter_source_object_refs, load_binding, materialize_source_object,
 )
-from .registry import OntologyError, OntologyPack, parse_domain_pack
+from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
 
 _STORE_SCHEMA = (
     """CREATE TABLE ontology_packs (
@@ -90,6 +90,78 @@ _OBJECT_REFS_SCHEMA = (
 _OBJECT_REFS_CHECKSUM = hashlib.sha256("\n".join(_OBJECT_REFS_SCHEMA).encode("utf-8")).hexdigest()
 
 
+_LINKS_SCHEMA = (
+    """CREATE TABLE ontology_links (
+        link_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        pack_fingerprint TEXT NOT NULL,
+        link_type_id TEXT NOT NULL,
+        link_type_version TEXT NOT NULL,
+        source_type_id TEXT NOT NULL,
+        source_type_version TEXT NOT NULL,
+        source_import_id TEXT NOT NULL,
+        source_record_key TEXT NOT NULL,
+        target_type_id TEXT NOT NULL,
+        target_type_version TEXT NOT NULL,
+        target_import_id TEXT NOT NULL,
+        target_record_key TEXT NOT NULL,
+        valid_from TEXT NOT NULL,
+        valid_to TEXT,
+        created_at TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        provenance_json TEXT NOT NULL,
+        supersedes_link_id TEXT,
+        FOREIGN KEY (pack_fingerprint) REFERENCES ontology_packs(fingerprint),
+        FOREIGN KEY (project_id, pack_fingerprint, source_type_id, source_type_version, source_import_id, source_record_key)
+            REFERENCES ontology_object_refs(project_id, pack_fingerprint, type_id, type_version, import_id, record_key),
+        FOREIGN KEY (project_id, pack_fingerprint, target_type_id, target_type_version, target_import_id, target_record_key)
+            REFERENCES ontology_object_refs(project_id, pack_fingerprint, type_id, type_version, import_id, record_key),
+        FOREIGN KEY (supersedes_link_id) REFERENCES ontology_links(link_id)
+    )""",
+    "CREATE INDEX ontology_links_source_idx ON ontology_links(project_id, pack_fingerprint, link_type_id, link_type_version, source_type_id, source_type_version, source_import_id, source_record_key)",
+    "CREATE INDEX ontology_links_target_idx ON ontology_links(project_id, pack_fingerprint, link_type_id, link_type_version, target_type_id, target_type_version, target_import_id, target_record_key)",
+    "CREATE UNIQUE INDEX ontology_links_successor_idx ON ontology_links(supersedes_link_id) WHERE supersedes_link_id IS NOT NULL",
+    """CREATE TRIGGER ontology_links_no_update BEFORE UPDATE ON ontology_links
+       BEGIN SELECT RAISE(ABORT, 'ontology links are immutable'); END""",
+    """CREATE TRIGGER ontology_links_no_delete BEFORE DELETE ON ontology_links
+       BEGIN SELECT RAISE(ABORT, 'ontology links are immutable'); END""",
+)
+_LINKS_CHECKSUM = hashlib.sha256("\n".join(_LINKS_SCHEMA).encode("utf-8")).hexdigest()
+
+
+def _canonical_timestamp(value: str | datetime, field: str) -> str:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        except ValueError as exc:
+            raise OntologyError(f"{field} must be an ISO-8601 timestamp with a timezone") from exc
+    else:
+        raise OntologyError(f"{field} must be an ISO-8601 timestamp with a timezone")
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise OntologyError(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _link_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: str) -> dict[str, str]:
+    required = {"project_id", "pack_fingerprint", "type_id", "type_version", "import_id", "record_key"}
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise OntologyError("link endpoint must contain exactly the pinned object identity fields")
+    endpoint = {}
+    for key in required:
+        item = value[key]
+        if not isinstance(item, str) or not item.strip() or item != item.strip():
+            raise OntologyError(f"link endpoint {key} must be a non-empty canonical string")
+        endpoint[key] = item
+    if endpoint["project_id"] != project_id or endpoint["pack_fingerprint"] != pack_fingerprint:
+        raise OntologyError("link endpoints must belong to this project and exact ontology pack")
+    if endpoint["import_id"] == "latest":
+        raise OntologyError("link endpoints require an exact import_id")
+    return endpoint
+
+
 def _canonical(value: Any) -> str:
     try:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
@@ -133,47 +205,37 @@ class OntologyObjectStore:
                 applied_at TEXT NOT NULL
             )"""
         )
-        rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
-        if not rows or (len(rows) == 1 and rows[0]["version"] == 1):
-            if rows and rows[0]["checksum"] != _SCHEMA_CHECKSUM:
-                raise OntologyError("ontology store v1 migration checksum changed")
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                # Recheck after obtaining the write lock so concurrent first opens
-                # do not apply the same schema migration twice.
-                rows = conn.execute(
-                    "SELECT version, checksum FROM schema_migrations ORDER BY version"
-                ).fetchall()
-                if not rows:
-                    for statement in _STORE_SCHEMA:
-                        conn.execute(statement)
-                    conn.execute(
-                        "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (1, ?, ?)",
-                        (_SCHEMA_CHECKSUM, _utc_now()),
-                    )
-                    rows = [(1, _SCHEMA_CHECKSUM)]
-                if len(rows) == 1 and rows[0][0] == 1:
-                    if rows[0][1] != _SCHEMA_CHECKSUM:
-                        raise OntologyError("ontology store v1 migration checksum changed")
-                    for statement in _OBJECT_REFS_SCHEMA:
-                        conn.execute(statement)
-                    conn.execute(
-                        "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (2, ?, ?)",
-                        (_OBJECT_REFS_CHECKSUM, _utc_now()),
-                    )
-                conn.commit()
-            except (sqlite3.Error, OntologyError) as exc:
-                conn.rollback()
-                raise OntologyError("ontology store migration failed") from exc
+        migrations = (
+            (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
+            (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
+            (3, _LINKS_CHECKSUM, _LINKS_SCHEMA),
+        )
+        try:
+            conn.execute("BEGIN IMMEDIATE")
             rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
-        expected_versions = [(1, _SCHEMA_CHECKSUM), (2, _OBJECT_REFS_CHECKSUM)]
-        if [(row["version"], row["checksum"]) for row in rows] != expected_versions:
+            actual = [(int(row["version"]), row["checksum"]) for row in rows]
+            expected = [(version, checksum) for version, checksum, _ in migrations[:len(actual)]]
+            if actual != expected or len(actual) > len(migrations):
+                raise OntologyError("ontology store schema is unknown or a migration checksum changed")
+            for version, checksum, statements in migrations[len(actual):]:
+                for statement in statements:
+                    conn.execute(statement)
+                conn.execute(
+                    "INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (?, ?, ?)",
+                    (version, checksum, _utc_now()),
+                )
+            conn.commit()
+        except (sqlite3.Error, OntologyError) as exc:
+            conn.rollback()
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("ontology store migration failed") from exc
+        rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
+        expected = [(version, checksum) for version, checksum, _ in migrations]
+        if [(int(row["version"]), row["checksum"]) for row in rows] != expected:
             raise OntologyError("ontology store schema is unknown or a migration checksum changed")
-        expected = {"ontology_packs", "bindings", "ontology_object_refs"}
-        present = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
-        if not expected.issubset(present):
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if not {"ontology_packs", "bindings", "ontology_object_refs", "ontology_links"}.issubset(tables):
             raise OntologyError("ontology store schema is incomplete")
 
     def _authorize(
