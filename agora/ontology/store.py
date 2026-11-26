@@ -199,7 +199,7 @@ def _link_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: 
     return endpoint
 
 
-def _cardinality_key(type_id: str, import_id: str, record_key: str) -> tuple[str, ...]:
+def _cardinality_key(type_id: str, record_key: str) -> tuple[str, ...]:
     """The identity cardinality counts: the stable object, whichever import it was read from.
 
     ``record_key`` already includes the dataset identity, so equal keys under one
@@ -217,8 +217,8 @@ def _cardinality_conflicts(conn: sqlite3.Connection, packs: Mapping[str, Ontolog
     groups: dict[tuple, list[tuple[str, str, str]]] = {}
     rows = conn.execute(
         """SELECT l.link_id, l.project_id, l.pack_fingerprint, l.link_type_id, l.link_type_version,
-                  l.source_type_id, l.source_import_id, l.source_record_key,
-                  l.target_type_id, l.target_import_id, l.target_record_key, l.valid_from, l.valid_to
+                  l.source_type_id, l.source_record_key,
+                  l.target_type_id, l.target_record_key, l.valid_from, l.valid_to
            FROM ontology_links l
            WHERE NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)"""
     )
@@ -231,8 +231,7 @@ def _cardinality_conflicts(conn: sqlite3.Connection, packs: Mapping[str, Ontolog
             continue
         sides = ("source", "target") if cardinality == "one_to_one" else ("target",)
         for side in sides:
-            key = _cardinality_key(
-                row[side + "_type_id"], row[side + "_import_id"], row[side + "_record_key"])
+            key = _cardinality_key(row[side + "_type_id"], row[side + "_record_key"])
             groups.setdefault((row["project_id"], *selector, side, key), []).append(
                 (row["valid_from"], row["valid_to"] or "9999-12-31T23:59:59.999999Z", row["link_id"]))
     conflicts: set[str] = set()
@@ -913,9 +912,8 @@ class OntologyObjectStore:
                 if not (start < (row["valid_to"] or infinity) and row["valid_from"] < (end or infinity)):
                     continue
                 same_source, same_target = (
-                    _cardinality_key(end_ref["type_id"], end_ref["import_id"], end_ref["record_key"])
-                    == _cardinality_key(
-                        row[side + "_type_id"], row[side + "_import_id"], row[side + "_record_key"])
+                    _cardinality_key(end_ref["type_id"], end_ref["record_key"])
+                    == _cardinality_key(row[side + "_type_id"], row[side + "_record_key"])
                     for side, end_ref in (("source", src), ("target", dst))
                 )
                 if link_type.cardinality == "one_to_one" and (same_source or same_target):
