@@ -1,6 +1,6 @@
 """Decision cell: human options for a new event (docs/DECISION_CELL_SPEC.md)."""
 from .options import (
-    DecisionCellError, Escalation, EscalationStatus, GateResult, InputGrant, InputRef,
+    MAX_RECHECK, DecisionCellError, Escalation, EscalationStatus, GateResult, InputGrant, InputRef,
     Option, OptionRequest, ProjectRecord, StudyState, evaluate_option, request_option,
 )
 from .project_store import (
@@ -8,8 +8,8 @@ from .project_store import (
     write_project_record,
 )
 from .response_window import (
-    ResponseWindow, ResponseWindowError, load_response_window, open_response_window,
-    respond_to_item, sweep_response_windows,
+    UNREVIEWED_EVENT_PENDING, ResponseWindow, ResponseWindowError, load_response_window,
+    open_response_window, respond_to_item, sweep_response_windows, unreviewed_items,
 )
 
 __all__ = [
@@ -19,4 +19,5 @@ __all__ = [
     "write_project_record",
     "ResponseWindow", "ResponseWindowError", "load_response_window", "open_response_window",
     "respond_to_item", "sweep_response_windows",
+    "MAX_RECHECK", "UNREVIEWED_EVENT_PENDING", "unreviewed_items",
 ]

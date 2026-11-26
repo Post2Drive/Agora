@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -14,6 +14,8 @@ from agora.decision_cell import (
     DecisionCellError, Escalation, EscalationStatus, InputGrant, InputRef, Option, OptionRequest,
     ProjectRecord, StudyState, evaluate_option, request_option,
 )
+from agora.decision_cell import MAX_RECHECK
+from agora.decision_cell.options import _sha
 from agora.principal import Principal, SyntheticFixtureAdapter
 
 NOW = datetime(2026, 11, 26, 12, tzinfo=timezone.utc)
@@ -49,7 +51,8 @@ RUNS = [Option.CONTINUE, Option.FORK_FROM_EVENT, Option.FORK_FROM_EARLIER, Optio
 def req(option, **kw):
     base = {"option": option, "event_id": "ev-1", "reason": "because", "budget_units": 1000,
             "event_round": 6 if option is not Option.CONTINUE else None,
-            "from_round": 3 if option is Option.FORK_FROM_EARLIER else None}
+            "from_round": 3 if option is Option.FORK_FROM_EARLIER else None,
+            "recheck_at": NOW + timedelta(hours=1) if option is Option.HOLD else None}
     base.update(kw)
     return OptionRequest(**base)
 
@@ -326,3 +329,52 @@ def test_failed_audit_write_means_no_result(monkeypatch):
 
     with pytest.raises(DecisionCellError, match="could not be recorded"):
         request_option(OWNER, req(Option.IGNORE), audit=Broken(), record=RECORD, study=STUDY, now=NOW)
+
+
+# -- HOLD re-check time -------------------------------------------------------
+
+@pytest.mark.parametrize("value, code", [
+    (None, "recheck_time_required"),
+    ("2026-11-26T13:00:00+00:00", "recheck_time_invalid"),
+    (datetime(2026, 11, 26, 13), "recheck_time_invalid"),
+    (datetime.max.replace(tzinfo=timezone(-timedelta(hours=1))), "recheck_time_invalid"),
+    (NOW, "recheck_time_not_in_future"),
+    (NOW - timedelta(seconds=1), "recheck_time_not_in_future"),
+    (NOW + MAX_RECHECK + timedelta(microseconds=1), "recheck_time_too_far"),
+])
+def test_a_hold_needs_a_usable_future_recheck_time(value, code):
+    result = gate(req(Option.HOLD, recheck_at=value))
+    assert not result.executable and result.failures == (code,)
+
+
+@pytest.mark.parametrize("ahead", [timedelta(microseconds=1), MAX_RECHECK])
+def test_the_recheck_time_limits_are_inclusive_of_the_maximum(ahead):
+    assert gate(req(Option.HOLD, recheck_at=NOW + ahead)).executable
+
+
+def test_a_hold_is_judged_against_the_real_clock_when_none_is_given():
+    past = gate(req(Option.HOLD, recheck_at=datetime(2000, 1, 1, tzinfo=timezone.utc)), now=None)
+    assert "recheck_time_not_in_future" in past.failures
+
+
+@pytest.mark.parametrize("option", [o for o in Option if o is not Option.HOLD])
+def test_only_a_hold_may_carry_a_recheck_time(option):
+    assert "recheck_not_allowed" in gate(req(option, recheck_at=NOW + timedelta(hours=1))).failures
+
+
+def test_the_recheck_time_is_part_of_the_action_fingerprint():
+    one = gate(req(Option.HOLD, recheck_at=NOW + timedelta(hours=1)))
+    two = gate(req(Option.HOLD, recheck_at=NOW + timedelta(hours=2)))
+    same = gate(req(Option.HOLD, recheck_at=(NOW + timedelta(hours=1)).astimezone(
+        timezone(timedelta(hours=5, minutes=30)))))
+    assert one.action_fingerprint != two.action_fingerprint
+    assert one.action_fingerprint == same.action_fingerprint
+
+
+def test_other_actions_keep_the_fingerprint_they_had_before_the_recheck_field():
+    expected = _sha({
+        "project_id": "p1", "tenant_id": "t1", "study_id": "s1", "current_round": 10, "event_id": "ev-1",
+        "option": Option.IGNORE, "underlying": None, "event_round": 6, "from_round": None,
+        "inputs": [], "cost_units": 0,
+    })
+    assert gate(req(Option.IGNORE)).action_fingerprint == expected

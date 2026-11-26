@@ -14,6 +14,7 @@ from agora.decision_cell import (
     ProjectRecordError, ResponseWindowError, StudyState, load_project_record, load_response_window,
     open_response_window, respond_to_item, sweep_response_windows, write_project_record,
 )
+from agora.decision_cell import UNREVIEWED_EVENT_PENDING, unreviewed_items
 from agora.decision_cell import response_window as rw
 from agora.principal import SyntheticFixtureAdapter
 
@@ -71,7 +72,9 @@ def sweep(audit, now, lookup=lambda study: APPROVED, project="p1"):
 
 def respond(audit, principal=OWNER, option=Option.IGNORE, now=T0 + timedelta(minutes=2),
             lookup=lambda study: APPROVED, item="n1", **kw):
-    request = OptionRequest(option=option, event_id=item, reason="reviewed", budget_units=0)
+    due = kw.pop("recheck_at", now + timedelta(hours=1) if option is Option.HOLD else None)
+    request = OptionRequest(option=option, event_id=item, reason="reviewed", budget_units=0,
+                            recheck_at=due)
     return respond_to_item(principal, request, tenant_id="t1", project_id="p1", study=STUDY,
                            audit=audit, approved_result_hash_for=lookup, now=now, **kw)
 
@@ -385,3 +388,258 @@ def test_the_alert_list_uses_the_record_current_at_expiry(audit):
     opened(audit)
     name_backup(audit)
     assert sweep(audit, LATE)[0].alert_due_subject_ids == ("owner", "bo")
+
+
+# -- HOLD: re-check time and "unreviewed event pending" -----------------------
+
+T_HOLD = T0 + timedelta(minutes=2)
+DUE = T_HOLD + timedelta(hours=1)
+
+
+def hold(audit, principal=OWNER, now=T_HOLD, due=DUE, **kw):
+    return respond(audit, principal, Option.HOLD, now=now, recheck_at=due, **kw)
+
+
+def pending(audit, study="s1", project="p1"):
+    return [w.item_id for w in unreviewed_items(tenant_id="t1", project_id=project, study_id=study,
+                                                audit=audit)]
+
+
+def test_a_hold_defers_the_item_and_leaves_it_unreviewed(audit):
+    opened(audit)
+    result, window = hold(audit)
+    assert result.executable and window.status == "DEFERRED" and window.unreviewed_event_pending
+    assert (window.recheck_at, window.latest_option, window.latest_subject_id, window.decision_count) == (
+        DUE, "HOLD", "owner", 1)
+    assert window.recheck_alert_due_subject_ids == () and load(audit) == window
+    (answer,) = events(audit, "answered")
+    assert f"recheck:{DUE.isoformat()}" in answer["resource_ids"]
+    assert answer["action_fingerprint"] == result.action_fingerprint
+    assert pending(audit) == ["n1"]
+    assert UNREVIEWED_EVENT_PENDING == "unreviewed event pending"
+
+
+@pytest.mark.parametrize("due", [None, T_HOLD, "soon"])
+def test_a_hold_without_a_usable_time_neither_answers_nor_stops_the_clock(audit, due):
+    opened(audit)
+    result, window = hold(audit, due=due)
+    assert not result.executable and window.status == "OPEN" and events(audit, "answered") == []
+    assert [w.status for w in sweep(audit, LATE)] == ["HELD"]
+
+
+def test_nothing_lapses_before_the_recheck_time(audit):
+    opened(audit)
+    hold(audit)
+    assert sweep(audit, DUE - timedelta(microseconds=1)) == ()
+    assert load(audit).status == "DEFERRED" and events(audit, "lapsed") == []
+
+
+def test_at_the_recheck_time_the_sweep_records_one_new_alert(audit):
+    name_backup(audit)
+    opened(audit)
+    hold(audit, AD.issue("member"))
+    (due,) = sweep(audit, DUE)
+    assert due.status == "RECHECK_DUE" and due.unreviewed_event_pending
+    assert due.recheck_alert_due_subject_ids == ("owner", "bo") and due.recheck_lapse_count == 1
+    assert due.hold_reason is None  # the 15-minute window itself was answered in time
+    assert sweep(audit, DUE + timedelta(days=1)) == () and len(events(audit, "lapsed")) == 1
+    (event,) = events(audit, "lapsed")
+    assert event["reason"] == "recheck_time_passed_without_decision" and event["sequence"] == 1
+    assert "approved_result_hash" not in event and audit.verify()["valid"]
+
+
+def test_a_decision_before_the_recheck_time_closes_the_item(audit):
+    opened(audit)
+    hold(audit)
+    result, window = respond(audit, AD.issue("member"), now=DUE - timedelta(minutes=1))
+    assert result.executable and window.status == "ANSWERED" and not window.unreviewed_event_pending
+    assert (window.latest_option, window.latest_subject_id, window.decision_count) == ("IGNORE", "mia", 2)
+    assert window.recheck_at is None and window.answered_option == "HOLD"
+    assert events(audit, "redecided")[0]["reason"] == "decided_before_recheck"
+    assert sweep(audit, DUE + timedelta(days=1)) == () and events(audit, "lapsed") == []
+    assert pending(audit) == []
+
+
+@pytest.mark.parametrize("now", [DUE, DUE + timedelta(hours=3)])
+def test_a_late_decision_cannot_erase_the_lapse(audit, now):
+    opened(audit)
+    hold(audit)
+    _, window = respond(audit, now=now)  # no sweep ran
+    assert window.status == "ANSWERED" and window.recheck_lapse_count == 1
+    assert events(audit, "redecided")[0]["reason"] == "decided_after_recheck_lapsed"
+    kinds = [e["event_type"] for e in events(audit)]
+    assert kinds.index("decision_cell_window_lapsed") < len(kinds) - 1 - kinds[::-1].index(
+        "decision_cell_option")
+
+
+def test_holding_again_defers_again_and_can_lapse_again(audit):
+    opened(audit)
+    hold(audit)
+    sweep(audit, DUE)
+    second = DUE + timedelta(hours=2)
+    _, window = hold(audit, now=DUE + timedelta(minutes=1), due=second)
+    assert (window.status, window.recheck_at, window.decision_count) == ("DEFERRED", second, 2)
+    assert window.recheck_alert_due_subject_ids == ()
+    assert sweep(audit, second - timedelta(seconds=1)) == ()
+    (due,) = sweep(audit, second)
+    assert due.status == "RECHECK_DUE" and due.recheck_lapse_count == 2
+    _, window = respond(audit, now=second + timedelta(minutes=1))
+    assert (window.decision_count, window.status) == (3, "ANSWERED")
+    assert [e["sequence"] for e in events(audit, "redecided")] == [2, 3]
+    assert [e["sequence"] for e in events(audit, "lapsed")] == [1, 2]
+
+
+def test_a_hold_after_the_window_expired_keeps_both_facts(audit):
+    opened(audit)
+    _, window = hold(audit, now=LATE, due=LATE + timedelta(hours=1))
+    assert window.status == "DEFERRED" and window.hold_reason == rw.HELD_LAST_APPROVED
+    assert window.alert_due_subject_ids == ("owner",) and window.unreviewed_event_pending
+
+
+@pytest.mark.parametrize("principal, option", [
+    (None, Option.IGNORE), (AD.issue("outsider"), Option.IGNORE),
+    (AD.issue("member"), Option.RERUN_FROM_START), (OWNER, Option.COMPARE),
+])
+def test_refused_or_non_deciding_choices_leave_a_deferral_in_force(audit, principal, option):
+    opened(audit)
+    hold(audit)
+    _, window = respond(audit, principal, option, now=DUE - timedelta(minutes=1), branch_cost_units=1)
+    assert (window.status, window.decision_count) == ("DEFERRED", 1)
+    assert [w.status for w in sweep(audit, DUE)] == ["RECHECK_DUE"]
+
+
+def test_after_a_final_decision_no_further_decision_is_recorded(audit):
+    opened(audit)
+    respond(audit)
+    result, window = hold(audit, now=T0 + timedelta(minutes=5))
+    assert result.executable and (window.latest_option, window.decision_count) == ("IGNORE", 1)
+    assert events(audit, "redecided") == [] and pending(audit) == []
+
+
+def test_open_and_expired_items_are_pending_and_the_list_is_scoped_and_ordered(audit):
+    opened(audit, item="b")
+    opened(audit, item="a")
+    opened(audit, item="c", study="s2")
+    assert pending(audit) == ["a", "b"] and pending(audit, "s2") == ["c"]
+    sweep(audit, LATE)
+    assert pending(audit) == ["a", "b"] and pending(audit, project="p2") == []
+
+
+def test_a_decision_landing_during_a_lapse_wins_and_no_lapse_is_written(audit, monkeypatch):
+    opened(audit)
+    hold(audit)
+    real = rw._alert_recipients
+    done = []
+
+    def decide_then_list(writer, window):
+        if not done:
+            done.append(True)
+            respond(audit, now=DUE - timedelta(seconds=1))
+        return real(writer, window)
+
+    monkeypatch.setattr(rw, "_alert_recipients", decide_then_list)
+    assert sweep(audit, DUE) == ()
+    assert load(audit).status == "ANSWERED" and events(audit, "lapsed") == []
+    assert audit.verify()["valid"]
+
+
+def test_a_lapse_landing_during_an_in_time_decision_refuses_that_decision(audit, monkeypatch):
+    opened(audit)
+    hold(audit)
+    real = rw.request_project_option
+
+    def lapse_then_judge(*args, **kwargs):
+        sweep(audit, DUE)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rw, "request_project_option", lapse_then_judge)
+    refused("WINDOW_CHANGED", lambda: respond(audit, now=DUE - timedelta(seconds=1)))
+    assert load(audit).status == "RECHECK_DUE" and events(audit, "redecided") == []
+
+
+def test_two_concurrent_later_decisions_record_one(audit, monkeypatch):
+    opened(audit)
+    hold(audit)
+    real = rw.request_project_option
+
+    def other_decides_first(*args, **kwargs):
+        monkeypatch.setattr(rw, "request_project_option", real)
+        respond(audit, AD.issue("member"), now=T_HOLD + timedelta(minutes=1))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rw, "request_project_option", other_decides_first)
+    refused("WINDOW_CHANGED", lambda: respond(audit, now=T_HOLD + timedelta(minutes=1)))
+    assert load(audit).latest_subject_id == "mia" and len(events(audit, "redecided")) == 1
+
+
+def test_two_sweepers_record_one_lapse(audit, monkeypatch):
+    opened(audit)
+    hold(audit)
+    real = rw._alert_recipients
+    inner = []
+
+    def sweep_inside(writer, window):
+        if not inner:
+            inner.append(None)
+            inner[0] = sweep(audit, DUE)
+        return real(writer, window)
+
+    monkeypatch.setattr(rw, "_alert_recipients", sweep_inside)
+    outer = sweep(audit, DUE)
+    assert outer == inner[0] and len(events(audit, "lapsed")) == 1
+
+
+def forge(audit, suffix, kind, **fields):
+    key = rw._key_hash("t1", "p1", "s1", "n1")
+    fields.setdefault("resource_ids", rw._scope("t1", "p1", "s1", "n1"))
+    audit.append({"event_id": rw._event_id(suffix, key), "event_type": f"decision_cell_window_{kind}",
+                  "subject_id": "x", "duration_ms": 1, "recorded_at": T0.isoformat(), **fields})
+
+
+def recheck_scope(*times):
+    return rw._scope("t1", "p1", "s1", "n1") + [f"recheck:{t}" for t in times]
+
+
+@pytest.mark.parametrize("operation, times", [
+    ("HOLD", []), ("HOLD", [DUE.isoformat(), DUE.isoformat()]), ("IGNORE", [DUE.isoformat()]),
+])
+def test_a_stored_answer_with_the_wrong_recheck_times_is_refused(audit, operation, times):
+    forge(audit, "opened", "opened")
+    forge(audit, "answered", "answered", operation=operation, resource_ids=recheck_scope(*times))
+    refused("STORE_INCONSISTENT", lambda: load(audit))
+
+
+@pytest.mark.parametrize("suffix, kind, fields", [
+    ("redecided-3", "redecided", {"sequence": 3, "operation": "IGNORE"}),          # gap
+    ("redecided-2", "redecided", {"sequence": 3, "operation": "IGNORE"}),          # id and number differ
+    ("redecided-1", "redecided", {"sequence": 1, "operation": "IGNORE"}),          # below the first number
+    ("redecided-2", "redecided", {"operation": "IGNORE"}),                         # no number
+    ("lapsed-2", "lapsed", {"sequence": 2}),                                       # no such decision
+    ("lapsed-0", "lapsed", {"sequence": 0}),
+])
+def test_a_misnumbered_stored_event_is_refused(audit, suffix, kind, fields):
+    forge(audit, "opened", "opened")
+    forge(audit, "answered", "answered", operation="HOLD", resource_ids=recheck_scope(DUE.isoformat()))
+    forge(audit, suffix, kind, **fields)
+    refused("STORE_INCONSISTENT", lambda: load(audit))
+
+
+@pytest.mark.parametrize("suffix, kind, fields", [
+    ("redecided-2", "redecided", {"sequence": 2, "operation": "IGNORE"}),
+    ("lapsed-1", "lapsed", {"sequence": 1}),
+])
+def test_nothing_may_follow_a_stored_final_decision(audit, suffix, kind, fields):
+    forge(audit, "opened", "opened")
+    forge(audit, "answered", "answered", operation="IGNORE")
+    forge(audit, suffix, kind, **fields)
+    refused("STORE_INCONSISTENT", lambda: load(audit))
+
+
+@pytest.mark.parametrize("suffix, kind, fields", [
+    ("redecided-2", "redecided", {"sequence": 2, "operation": "IGNORE"}),
+    ("lapsed-1", "lapsed", {"sequence": 1}),
+])
+def test_a_stored_later_event_without_a_first_answer_is_refused(audit, suffix, kind, fields):
+    forge(audit, "opened", "opened")
+    forge(audit, suffix, kind, **fields)
+    refused("STORE_INCONSISTENT", lambda: load(audit))
