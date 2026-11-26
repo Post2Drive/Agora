@@ -76,6 +76,8 @@ class OntologyObjectStore:
 
     def _connect(self) -> sqlite3.Connection:
         try:
+            require_safe_path(self.project)
+            require_safe_path(self.path.parent)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             require_safe_path(self.path)
             conn = sqlite3.connect(str(self.path), timeout=30.0, isolation_level=None)
