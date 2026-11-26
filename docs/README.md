@@ -20,6 +20,7 @@ For the one authoritative statement of what is implemented, read [Rung status](R
 
 - [Ontology specification](ONTOLOGY_SPEC.md), [domain ontology model](DOMAIN_ONTOLOGY_MODEL.md), [data binding](ONTOLOGY_DATA_BINDING.md). Current.
 - [Ontology capability target](ONTOLOGY_CAPABILITY_TARGET.md) and [object store design](ONTOLOGY_OBJECT_STORE_DESIGN.md). Design, partly implemented; each states its own status.
+- [Ontology pack compatibility policy](ONTOLOGY_COMPATIBILITY.md). Current; a check you run, not enforced by the store.
 - [Ingestion specification](INGESTION_SPEC.md), [run provenance](RUN_PROVENANCE_SPEC.md). Current.
 
 ## 4. Decisions and outcomes
