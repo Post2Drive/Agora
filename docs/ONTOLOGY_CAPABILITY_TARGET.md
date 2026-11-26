@@ -76,7 +76,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 - The task-by-task implementation sequence is in [the O1 implementation plan](superpowers/plans/2026-11-26-ontology-object-store.md).
 - Persist versioned object instances, links, provenance, and validity intervals with stable identity.
 - Add scoped queries with explicit versions/snapshots, pagination, filters, and predictable consistency.
-- Prove integrity constraints, backup/restore, target-side source-import availability, source snapshot database integrity/attestation, and migration behavior without silently reinterpreting existing graph records.
+- Prove integrity constraints, backup/restore, target-side source-import availability, source snapshot content attestation against a separately retained digest (implemented as a digest comparison, not a signature; separate-storage recovery rehearsal still open), and migration behavior without silently reinterpreting existing graph records.
 - Keep writes limited to local ontology storage and approved simulated workflows.
 
 ### O2 — Governed action layer
