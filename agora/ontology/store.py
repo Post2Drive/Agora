@@ -768,9 +768,11 @@ class OntologyObjectStore:
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT l.* FROM ontology_links l WHERE " + " AND ".join(clauses) + " ORDER BY l.valid_from, l.link_id",
+                "SELECT l.* FROM ontology_links l WHERE " + " AND ".join(clauses) + " ORDER BY l.valid_from, l.link_id LIMIT 101",
                 params,
             ).fetchall()
+            if len(rows) > 100:
+                raise OntologyError("use traverse_links pagination for link sets larger than 100")
             self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
             sensitivities = []
             for row in rows:
@@ -854,12 +856,12 @@ class OntologyObjectStore:
             if not isinstance(spec, Mapping) or set(spec) != {"op", "value"}:
                 raise OntologyError("each filter must contain exactly op and value")
             op, value, prop = spec["op"], spec["value"], properties[property_id]
-            if op not in allowed_ops:
+            if not isinstance(op, str) or op not in allowed_ops:
                 raise OntologyError("unsupported ontology filter operator")
             if op in {"gt", "gte", "lt", "lte"} and prop.data_type not in {"string", "identifier", "date", "timestamp", "integer", "decimal"}:
                 raise OntologyError("ordering is not supported for this property type")
-            if op == "contains" and prop.data_type != "string":
-                raise OntologyError("contains is supported only for string properties")
+            if op == "contains" and (prop.data_type != "string" or value is None):
+                raise OntologyError("contains requires a non-null value and a string property")
             if op == "in":
                 if not isinstance(value, list) or not value or len(value) > 100:
                     raise OntologyError("in requires a list of 1 to 100 typed values")
