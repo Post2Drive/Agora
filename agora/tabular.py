@@ -569,17 +569,59 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         conn.close()
 
 
-def read_snapshot(project: str | Path, import_id: str) -> list[dict[str, Any]]:
-    """Read typed rows from one explicit immutable snapshot."""
+def _snapshot_row_record(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "row_id": row["row_id"],
+        "record_key": row["record_key"],
+        "source_record_number": row["source_record_number"],
+        "values": json.loads(row["payload_json"]),
+        "source_locator": json.loads(row["locator_json"]),
+    }
+
+
+def iter_snapshot_rows(
+    project: str | Path, import_id: str, *, batch_size: int = 512,
+):
+    """Yield rows from one explicit import in bounded batches."""
+    if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
+        raise ValueError("an explicit import_id is required")
+    if type(batch_size) is not int or not 1 <= batch_size <= 5000:
+        raise ValueError("batch_size must be between 1 and 5000")
     conn = _db(Path(project))
     try:
-        rows = conn.execute(
+        cursor = conn.execute(
             "SELECT row_id,record_key,source_record_number,payload_json,locator_json "
             "FROM import_rows WHERE import_id=? ORDER BY source_record_number", (import_id,)
-        ).fetchall()
-        return [{"row_id": r["row_id"], "record_key": r["record_key"],
-                 "source_record_number": r["source_record_number"],
-                 "values": json.loads(r["payload_json"]), "source_locator": json.loads(r["locator_json"])}
-                for r in rows]
+        )
+        while True:
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+            for row in rows:
+                yield _snapshot_row_record(row)
     finally:
         conn.close()
+
+
+def read_snapshot_row(
+    project: str | Path, import_id: str, row_id: str,
+) -> dict[str, Any] | None:
+    """Read one exact row from an explicit import; caller enforces binding policy."""
+    if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
+        raise ValueError("an explicit import_id is required")
+    if not isinstance(row_id, str) or not row_id.strip():
+        raise ValueError("row_id is required")
+    conn = _db(Path(project))
+    try:
+        row = conn.execute(
+            "SELECT row_id,record_key,source_record_number,payload_json,locator_json "
+            "FROM import_rows WHERE import_id=? AND row_id=?", (import_id, row_id)
+        ).fetchone()
+        return _snapshot_row_record(row) if row is not None else None
+    finally:
+        conn.close()
+
+
+def read_snapshot(project: str | Path, import_id: str) -> list[dict[str, Any]]:
+    """Read typed rows from one explicit immutable snapshot."""
+    return list(iter_snapshot_rows(project, import_id))
