@@ -422,7 +422,7 @@ def _matches_data_type(value: Any, data_type: str) -> bool:
         # A boolean reads as "True" or "False", which is not a decimal.
         try:
             return Decimal(str(value)).is_finite()
-        except InvalidOperation:
+        except (InvalidOperation, ValueError):  # ValueError: an integer too long to print
             return False
     if data_type in {"date", "timestamp"}:
         if not isinstance(value, str):

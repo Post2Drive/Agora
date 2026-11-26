@@ -57,3 +57,8 @@ def test_null_entry_follows_nullability():
     assert parse_domain_pack(_pack("string", ["a", None], nullable=True))
     with pytest.raises(OntologyError, match="not nullable"):
         parse_domain_pack(_pack("string", ["a", None]))
+
+
+def test_an_integer_too_long_to_print_is_refused_as_an_ontology_error():
+    with pytest.raises(OntologyError):
+        parse_domain_pack(_pack("decimal", [10 ** 10000]))
