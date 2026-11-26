@@ -9,13 +9,15 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
+import uuid
 
 import yaml
 
 from ..identity import stable_record_key
+from ..audit_anchor import require_anchored
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
-from ..tabular import read_snapshot
+from ..tabular import iter_snapshot_rows, read_snapshot, read_snapshot_row
 from .loader import _UniqueKeyLoader
 from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
 
@@ -311,3 +313,149 @@ def materialize_instances(
             "property_sensitivity": effective_sensitivity,
         })
     return instances
+
+
+
+def _authorize_source_snapshot(
+    binding: DataBinding, pack: OntologyPack, project: Path, import_id: str, *,
+    policy: PolicyCallable | None, audit: Any | None, purpose: str | None,
+    retention: str | None,
+) -> tuple[DataBinding, dict[str, Any]]:
+    """Authorize before reading import metadata or snapshot rows."""
+    binding = load_binding(binding.as_dict() if isinstance(binding, DataBinding) else binding)
+    _object, properties = _properties(pack, binding)
+    if policy is not None or _protection.POLICY_REQUIRED:
+        source_sensitivity = max(
+            (binding.property_sensitivity.get(property_id, properties[property_id].sensitivity)
+             for property_id in binding.column_map.values()),
+            key=lambda value: _SENSITIVITY_RANK[value],
+        )
+        try:
+            decision = enforce_policy(
+                policy, audit=audit, project=project, operation="binding",
+                resource={
+                    "project_id": project.name or str(project),
+                    "resource_ids": [binding.binding_id, binding.dataset_id, import_id],
+                    "binding_id": binding.binding_id,
+                    "dataset_id": binding.dataset_id,
+                    "import_id": import_id,
+                    "source_sensitivity": source_sensitivity,
+                    "target_sensitivity": source_sensitivity,
+                    "purpose": purpose,
+                    "retention": retention,
+                    "downstream_use": True,
+                },
+            )
+        except PolicyEnforcementError as exc:
+            raise OntologyError("Policy denied ontology materialization.") from exc
+        if audit is not None or _protection.ANCHOR_REQUIRED:
+            writer = require_anchored(audit) if _protection.ANCHOR_REQUIRED else audit
+            writer.append({
+                "event_id": f"ontology-binding-{uuid.uuid4().hex}",
+                "event_type": "ontology_binding_read_authorized",
+                "operation": "binding",
+                "decision": "allow",
+                "subject_id": str(decision.get("subject_id", "unknown")) if decision else "unknown",
+                "policy_version": str(decision.get("policy_version", "unknown")) if decision else "unknown",
+                "resource_ids": [binding.binding_id, binding.dataset_id, import_id],
+                "reason": "policy_allow",
+            })
+    manifest = _snapshot_manifest(project, import_id)
+    validate_binding(pack, manifest, binding)
+    return binding, manifest
+
+
+def _effective_property_sensitivity(
+    pack: OntologyPack, binding: DataBinding, manifest: Mapping[str, Any],
+) -> dict[str, str]:
+    properties = {item.property_id: item for item in pack.property_types}
+    return {
+        property_id: max(
+            (binding.property_sensitivity.get(property_id, "public"),
+             manifest["column_sensitivity"][column],
+             properties[property_id].sensitivity),
+            key=lambda value: _SENSITIVITY_RANK[value],
+        )
+        for column, property_id in binding.column_map.items()
+    }
+
+
+def iter_source_object_refs(
+    binding: DataBinding | Mapping[str, Any], pack: OntologyPack,
+    project: str | Path, import_id: str, *,
+    policy: PolicyCallable | None = None, audit: Any | None = None,
+    purpose: str | None = None, retention: str | None = None,
+    batch_size: int = 512,
+) -> Iterator[dict[str, Any]]:
+    """Yield bounded provenance references without retaining source property values."""
+    project = Path(project)
+    binding, manifest = _authorize_source_snapshot(
+        binding if isinstance(binding, DataBinding) else load_binding(binding),
+        pack, project, import_id, policy=policy, audit=audit,
+        purpose=purpose, retention=retention,
+    )
+    effective_sensitivity = _effective_property_sensitivity(pack, binding, manifest)
+    for row in iter_snapshot_rows(project, import_id, batch_size=batch_size):
+        primary_value = row["values"].get(binding.identity.primary_key_column)
+        if primary_value is None:
+            raise OntologyError("primary key value is missing")
+        locator = row["source_locator"]
+        yield {
+            "object_type_id": binding.object_type_id,
+            "object_type_version": binding.object_type_version,
+            "record_key": stable_record_key(binding.dataset_id, primary_value),
+            "row_id": row["row_id"],
+            "import_id": import_id,
+            "dataset_id": binding.dataset_id,
+            "schema_id": binding.schema_id,
+            "schema_version": binding.schema_version,
+            "schema_fingerprint": manifest["schema_fingerprint"],
+            "source_registry_id": locator.get("source_registry_id"),
+            "file_sha256": locator.get("file_sha256"),
+            "source_locator": locator,
+            "binding_id": binding.binding_id,
+            "binding_version": binding.binding_version,
+            "binding_fingerprint": binding.fingerprint,
+            "property_sensitivity": effective_sensitivity,
+        }
+
+
+def materialize_source_object(
+    binding: DataBinding | Mapping[str, Any], pack: OntologyPack,
+    project: str | Path, import_id: str, row_id: str, expected_record_key: str, *,
+    policy: PolicyCallable | None = None, audit: Any | None = None,
+    purpose: str | None = None, retention: str | None = None,
+) -> dict[str, Any]:
+    """Read one exact source row after policy and binding validation."""
+    project = Path(project)
+    binding, manifest = _authorize_source_snapshot(
+        binding if isinstance(binding, DataBinding) else load_binding(binding),
+        pack, project, import_id, policy=policy, audit=audit,
+        purpose=purpose, retention=retention,
+    )
+    row = read_snapshot_row(project, import_id, row_id)
+    if row is None:
+        raise OntologyError("referenced snapshot row was not found")
+    primary_value = row["values"].get(binding.identity.primary_key_column)
+    if primary_value is None or stable_record_key(binding.dataset_id, primary_value) != expected_record_key:
+        raise OntologyError("referenced snapshot row does not match the stable object identity")
+    reverse = {column: property_id for column, property_id in binding.column_map.items()}
+    return {
+        "object_type_id": binding.object_type_id,
+        "object_type_version": binding.object_type_version,
+        "property_values": {reverse[column]: row["values"].get(column) for column in reverse},
+        "record_key": expected_record_key,
+        "row_id": row["row_id"],
+        "import_id": import_id,
+        "dataset_id": binding.dataset_id,
+        "schema_id": binding.schema_id,
+        "schema_version": binding.schema_version,
+        "schema_fingerprint": manifest["schema_fingerprint"],
+        "source_registry_id": row["source_locator"].get("source_registry_id"),
+        "file_sha256": row["source_locator"].get("file_sha256"),
+        "source_locator": row["source_locator"],
+        "binding_id": binding.binding_id,
+        "binding_version": binding.binding_version,
+        "binding_fingerprint": binding.fingerprint,
+        "property_sensitivity": _effective_property_sensitivity(pack, binding, manifest),
+    }
