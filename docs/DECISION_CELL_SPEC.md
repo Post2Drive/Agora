@@ -56,6 +56,8 @@ Showing an option is not the same as being able to run it. An option is executab
 
 Rules: no snapshot means the option is shown as unavailable, not silently replaced by a rerun. Budget exceedance requires an explicit confirmation by the approver, recorded with the amount. Permissions come from the Principal and policy path already in AGORA; nothing here widens them.
 
+**Implementation status (26 Nov 2026):** `agora/decision_cell/` implements only the gate for this matrix: permission, snapshot-probe, budget, sensitive-input grant, escalation, second approval, kill switch, and an audit entry for allowed and blocked attempts. It does not run any option and has no UI, intake, verification labels (2A), suggested-action card or response timeout. Choices made here: a second approval covers one exact action; a rejected escalation blocks approver options; a pending one blocks every option; cost is counted in agent-rounds, two branches for a fork; over budget, the confirmed amount must equal the cost. Limits: the project record, study state, escalation, grants, input sensitivity, cost estimate and snapshot probe are trusted service-layer inputs that the gate cannot authenticate, and no service layer supplies them yet. The audit chain keeps hashes of the action and reason text, not the text, amounts other than the cost, or the identity of a snapshot. A gate result is not an authorization token.
+
 ## 4. Data the human can use
 Anything already approved and bound for the study: the study's own sources, the governed package, previous branches, and event items that passed section 2. New feeds and new datasets need separate named owner approval. Personal data stays excluded unless a consent review passes.
 
