@@ -242,7 +242,7 @@ class OntologyObjectStore:
         self, operation: str, resource_ids: list[str], *,
         policy: PolicyCallable | None, audit: Any | None,
         sensitivity: str = "internal",
-    ) -> None:
+    ) -> Mapping[str, Any] | None:
         try:
             decision = enforce_policy(
                 policy,
@@ -271,6 +271,7 @@ class OntologyObjectStore:
                 "resource_ids": resource_ids,
                 "reason": "policy_allow",
             })
+            return decision
         except PolicyEnforcementError as exc:
             raise OntologyError("policy denied ontology catalog access") from exc
 
@@ -533,3 +534,203 @@ class OntologyObjectStore:
         ):
             raise OntologyError("snapshot provenance no longer matches the stored object reference")
         return instance
+
+
+    @staticmethod
+    def _link_key(endpoint: Mapping[str, str]) -> tuple[str, str, str, str]:
+        return (endpoint["type_id"], endpoint["type_version"], endpoint["import_id"], endpoint["record_key"])
+
+    @staticmethod
+    def _canonical_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: str) -> dict[str, str]:
+        required = {"project_id", "pack_fingerprint", "type_id", "type_version", "import_id", "record_key"}
+        if not isinstance(value, Mapping) or set(value) != required:
+            raise OntologyError("link endpoint must contain exactly the pinned object identity fields")
+        result = {}
+        for key in required:
+            item = value[key]
+            if not isinstance(item, str) or not item.strip() or item != item.strip():
+                raise OntologyError(f"link endpoint {key} must be a non-empty canonical string")
+            result[key] = item
+        if result["project_id"] != project_id or result["pack_fingerprint"] != pack_fingerprint:
+            raise OntologyError("link endpoint crosses project or pack scope")
+        if result["import_id"] == "latest":
+            raise OntologyError("link endpoints require an explicit import_id")
+        return result
+
+    def _link_type(self, pack: OntologyPack, type_id: str, version: str) -> LinkType:
+        found = [x for x in pack.link_types if x.link_type_id == type_id and x.version == version]
+        if len(found) != 1:
+            raise OntologyError("link type/version does not resolve in the selected pack")
+        result = found[0]
+        if result.cardinality not in {"one_to_one", "one_to_many", "many_to_many"}:
+            raise OntologyError("unsupported ontology link cardinality")
+        return result
+
+    def _write_link(
+        self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
+        source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
+        valid_to: str | datetime | None, reason: str, provenance: Mapping[str, Any],
+        *, policy: PolicyCallable | None, audit: Any | None, supersedes_link_id: str | None = None,
+    ) -> str:
+        src = self._canonical_endpoint(source, self.project_id, pack_fingerprint)
+        dst = self._canonical_endpoint(target, self.project_id, pack_fingerprint)
+        start = _canonical_timestamp(valid_from, "valid_from")
+        end = _canonical_timestamp(valid_to, "valid_to") if valid_to is not None else None
+        if end is not None and end <= start:
+            raise OntologyError("valid_to must be later than valid_from")
+        if not isinstance(reason, str) or not reason.strip() or not isinstance(provenance, Mapping) or not provenance:
+            raise OntologyError("link writes require a reason and provenance")
+        provenance_json = _canonical(dict(provenance))
+        if provenance.get("kind") not in {"source", "manual_assertion", "derived"}:
+            raise OntologyError("provenance kind must be source, manual_assertion, or derived")
+        pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
+        link_type = self._link_type(pack, link_type_id, link_type_version)
+        types = {x.type_id: x for x in pack.object_types}
+        if link_type.source_type_id not in types or link_type.target_type_id not in types:
+            raise OntologyError("link type endpoints do not resolve in the selected pack")
+        if (src["type_id"], src["type_version"]) != (link_type.source_type_id, types[link_type.source_type_id].version):
+            raise OntologyError("source endpoint does not match the selected LinkType")
+        if (dst["type_id"], dst["type_version"]) != (link_type.target_type_id, types[link_type.target_type_id].version):
+            raise OntologyError("target endpoint does not match the selected LinkType")
+        src_key, dst_key = self._link_key(src), self._link_key(dst)
+        decision = self._authorize(
+            "ontology_write", [pack_fingerprint, link_type_id, link_type_version, *src_key, *dst_key],
+            policy=policy, audit=audit,
+        )
+        if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
+            raise OntologyError("link writes require a principal-bound actor identity")
+        link_id = "link-" + uuid.uuid4().hex
+        infinity = "9999-12-31T23:59:59.999999Z"
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            for key in (src_key, dst_key):
+                if conn.execute(
+                    """SELECT 1 FROM ontology_object_refs
+                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=? AND import_id=? AND record_key=?""",
+                    (self.project_id, pack_fingerprint, *key),
+                ).fetchone() is None:
+                    raise OntologyError("link endpoint is not materialized in the exact import")
+            if supersedes_link_id:
+                old = conn.execute(
+                    "SELECT link_type_id, link_type_version FROM ontology_links WHERE project_id=? AND pack_fingerprint=? AND link_id=?",
+                    (self.project_id, pack_fingerprint, supersedes_link_id),
+                ).fetchone()
+                if old is None or (old["link_type_id"], old["link_type_version"]) != (link_type_id, link_type_version):
+                    raise OntologyError("superseded link does not match this project, pack, and type")
+                if conn.execute("SELECT 1 FROM ontology_links WHERE supersedes_link_id=?", (supersedes_link_id,)).fetchone():
+                    raise OntologyError("link already has a successor")
+            rows = conn.execute(
+                """SELECT l.link_id, l.source_type_id, l.source_type_version, l.source_import_id, l.source_record_key,
+                          l.target_type_id, l.target_type_version, l.target_import_id, l.target_record_key, l.valid_from, l.valid_to
+                   FROM ontology_links l
+                   WHERE l.project_id=? AND l.pack_fingerprint=? AND l.link_type_id=? AND l.link_type_version=?
+                     AND NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)""",
+                (self.project_id, pack_fingerprint, link_type_id, link_type_version),
+            ).fetchall()
+            for row in rows:
+                if row["link_id"] == supersedes_link_id:
+                    continue
+                if not (start < (row["valid_to"] or infinity) and row["valid_from"] < (end or infinity)):
+                    continue
+                old_src = (row["source_type_id"], row["source_type_version"], row["source_import_id"], row["source_record_key"])
+                old_dst = (row["target_type_id"], row["target_type_version"], row["target_import_id"], row["target_record_key"])
+                if link_type.cardinality == "one_to_one" and (src_key == old_src or dst_key == old_dst):
+                    raise OntologyError("link violates one_to_one cardinality over overlapping valid time")
+                if link_type.cardinality == "one_to_many" and dst_key == old_dst:
+                    raise OntologyError("link violates one_to_many cardinality over overlapping valid time")
+            conn.execute(
+                """INSERT INTO ontology_links(
+                    link_id, project_id, pack_fingerprint, link_type_id, link_type_version,
+                    source_type_id, source_type_version, source_import_id, source_record_key,
+                    target_type_id, target_type_version, target_import_id, target_record_key,
+                    valid_from, valid_to, created_at, actor_id, reason, provenance_json, supersedes_link_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (link_id, self.project_id, pack_fingerprint, link_type_id, link_type_version,
+                 *src_key, *dst_key, start, end, _utc_now(), decision["subject_id"],
+                 reason.strip(), provenance_json, supersedes_link_id),
+            )
+            conn.commit()
+        except (sqlite3.Error, OntologyError):
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return link_id
+
+    def add_link(
+        self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
+        source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
+        valid_to: str | datetime | None, reason: str, provenance: Mapping[str, Any],
+        *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> str:
+        """Create an immutable relationship between exact imported objects."""
+        return self._write_link(
+            pack_fingerprint, link_type_id, link_type_version, source, target,
+            valid_from, valid_to, reason, provenance, policy=policy, audit=audit,
+        )
+
+    def supersede_link(
+        self, pack_fingerprint: str, link_id: str, source: Mapping[str, Any],
+        target: Mapping[str, Any], valid_from: str | datetime, valid_to: str | datetime | None,
+        reason: str, provenance: Mapping[str, Any], *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> str:
+        """Append a correction and retain the original link unchanged."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT link_type_id, link_type_version FROM ontology_links WHERE project_id=? AND pack_fingerprint=? AND link_id=?",
+                (self.project_id, pack_fingerprint, link_id),
+            ).fetchone()
+            if row is None:
+                raise OntologyError("link to supersede was not found")
+            link_type_id, version = row["link_type_id"], row["link_type_version"]
+        finally:
+            conn.close()
+        return self._write_link(
+            pack_fingerprint, link_type_id, version, source, target, valid_from, valid_to,
+            reason, provenance, policy=policy, audit=audit, supersedes_link_id=link_id,
+        )
+
+    def get_links(
+        self, pack_fingerprint: str, link_type_id: str, link_type_version: str, *,
+        source: Mapping[str, Any] | None = None, target: Mapping[str, Any] | None = None,
+        include_superseded: bool = False, policy: PolicyCallable | None, audit: Any | None,
+    ) -> list[dict[str, Any]]:
+        """List link records for one exact pack and link-type version."""
+        pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
+        self._link_type(pack, link_type_id, link_type_version)
+        src = self._canonical_endpoint(source, self.project_id, pack_fingerprint) if source is not None else None
+        dst = self._canonical_endpoint(target, self.project_id, pack_fingerprint) if target is not None else None
+        clauses = ["l.project_id=?", "l.pack_fingerprint=?", "l.link_type_id=?", "l.link_type_version=?"]
+        params: list[Any] = [self.project_id, pack_fingerprint, link_type_id, link_type_version]
+        for side, endpoint in (("source", src), ("target", dst)):
+            if endpoint:
+                clauses.extend([f"l.{side}_type_id=?", f"l.{side}_type_version=?", f"l.{side}_import_id=?", f"l.{side}_record_key=?"])
+                params.extend(self._link_key(endpoint))
+        if not include_superseded:
+            clauses.append("NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)")
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT l.* FROM ontology_links l WHERE " + " AND ".join(clauses) + " ORDER BY l.valid_from, l.link_id",
+                params,
+            ).fetchall()
+            self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
+            return [{
+                "link_id": row["link_id"], "pack_fingerprint": pack_fingerprint,
+                "link_type_id": link_type_id, "link_type_version": link_type_version,
+                "source": {"project_id": self.project_id, "pack_fingerprint": pack_fingerprint,
+                           "type_id": row["source_type_id"], "type_version": row["source_type_version"],
+                           "import_id": row["source_import_id"], "record_key": row["source_record_key"]},
+                "target": {"project_id": self.project_id, "pack_fingerprint": pack_fingerprint,
+                           "type_id": row["target_type_id"], "type_version": row["target_type_version"],
+                           "import_id": row["target_import_id"], "record_key": row["target_record_key"]},
+                "valid_from": row["valid_from"], "valid_to": row["valid_to"], "created_at": row["created_at"],
+                "actor_id": row["actor_id"], "reason": row["reason"],
+                "provenance": json.loads(row["provenance_json"]), "supersedes_link_id": row["supersedes_link_id"],
+            } for row in rows]
+        except (sqlite3.Error, json.JSONDecodeError) as exc:
+            raise OntologyError("ontology link records could not be read") from exc
+        finally:
+            conn.close()
