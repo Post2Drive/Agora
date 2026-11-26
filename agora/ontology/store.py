@@ -18,7 +18,7 @@ from typing import Any, Mapping
 import uuid
 
 from .. import protection as _protection
-from ..audit_anchor import require_anchored
+from ..audit_anchor import require_anchored, verify_anchored
 from ..pathsafe import UnsafePathError, require_safe_path
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 from .binding import (
@@ -27,6 +27,8 @@ from .binding import (
 from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
 
 _MAX_LINK_SOURCE_REFS = 100
+_BACKUP_ANCHOR_PREFIX = "ontology-backup-anchor-"
+_BACKUP_ANCHOR_TYPE = "ontology_backup_anchored"
 # Matches the record numbering tabular ingestion assigns (the CSV header is record 1).
 _ROW_LOCATOR = re.compile(r"row:([1-9][0-9]{0,11})")
 
@@ -1668,6 +1670,123 @@ class OntologyObjectStore:
                 staged_conn.close()
             if created_temporary:
                 _discard_staged_copy(temporary)
+
+    def create_anchored_backup(
+        self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> dict[str, Any]:
+        """Back up the live store and record the manifest digest in the anchored audit chain.
+
+        The recorded digest becomes the trust root for ``restore_anchored``, so this
+        needs a write decision at ``sensitive`` sensitivity, an identified actor and
+        an anchored writer, and it only describes a backup that this call produced
+        from an existing live store. On any failure the new backup file is removed.
+        Returns the dependency manifest; keep it with the backup.
+        """
+        writer, subject_id, policy_version = self._authorize_anchor_operation(
+            "store_anchored_backup", policy=policy, audit=audit,
+        )
+        # Opening a missing store would create an empty one, and its backup would
+        # then supersede the last good anchor after the live database was lost.
+        if not self.path.is_file():
+            raise OntologyError("anchored backup requires an existing live ontology store")
+        destination = self.backup(path, policy=policy, audit=writer)
+        try:
+            manifest = self.backup_dependency_manifest(destination, policy=policy, audit=writer)
+            digest = manifest["manifest_sha256"]
+            writer.append({
+                "event_id": _BACKUP_ANCHOR_PREFIX + digest,
+                "event_type": _BACKUP_ANCHOR_TYPE,
+                "operation": "ontology_backup_anchor",
+                "decision": "allow",
+                "subject_id": subject_id,
+                "policy_version": policy_version,
+                "resource_ids": [f"project:{self.project_id}"],
+                "manifest_hash": digest,
+                "backup_hash": manifest["ontology_backup"]["sha256"],
+                "reason": "policy_allow",
+            })
+        except BaseException as exc:
+            _discard_staged_copy(destination)
+            if isinstance(exc, OntologyError) or not isinstance(exc, Exception):
+                raise
+            raise OntologyError("ontology backup could not be anchored in the audit chain") from exc
+        return manifest
+
+    def restore_anchored(
+        self, backup_path: str | Path, *, dependency_manifest: Mapping[str, Any],
+        policy: PolicyCallable | None, audit: Any | None,
+    ) -> Path:
+        """Restore using the digest recorded in the anchored audit chain.
+
+        Accepts only the newest backup anchored for this project, so an older one
+        cannot be substituted through this path. Restoring an older backup needs
+        ``restore`` with a separately retained digest. There is no override here.
+        The chain and its anchor must come from service configuration, not from
+        the backup set. This is not a signature.
+        """
+        writer, _, _ = self._authorize_anchor_operation(
+            "store_restore_anchored", policy=policy, audit=audit,
+        )
+        if not isinstance(dependency_manifest, Mapping):
+            raise OntologyError("restore requires the backup dependency manifest")
+        body = {k: v for k, v in dependency_manifest.items() if k != "manifest_sha256"}
+        try:
+            digest = hashlib.sha256(_canonical(body).encode("utf-8")).hexdigest()
+        except (TypeError, ValueError) as exc:
+            raise OntologyError("dependency manifest is not canonical JSON") from exc
+        newest = self._newest_anchored_manifest_hash(writer)
+        if newest is None:
+            raise OntologyError("no anchored ontology backup exists for this project")
+        if newest != digest:
+            raise OntologyError("manifest is not the newest anchored backup for this project")
+        return self.restore(
+            backup_path, dependency_manifest=dependency_manifest,
+            expected_manifest_sha256=newest, policy=policy, audit=writer,
+        )
+
+    def _authorize_anchor_operation(
+        self, resource_id: str, *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> tuple[Any, str, str]:
+        """Anchoring is never relaxed here: without it there is no trust root."""
+        try:
+            writer = require_anchored(audit)
+        except PermissionError as exc:
+            raise OntologyError("this operation requires an anchored audit writer") from exc
+        decision = self._authorize(
+            "ontology_write", [resource_id], policy=policy, audit=writer, sensitivity="sensitive",
+        )
+        subject_id = decision.get("subject_id") if isinstance(decision, Mapping) else None
+        if not isinstance(subject_id, str) or not subject_id.strip() or subject_id == "unknown":
+            raise OntologyError("this operation requires a principal-bound actor identity")
+        return writer, subject_id, str(decision.get("policy_version", "unknown"))
+
+    def _newest_anchored_manifest_hash(self, writer: Any) -> str | None:
+        """Newest anchored backup digest for this project, read from a verified chain."""
+        try:
+            with writer.anchors.lock():
+                if not verify_anchored(writer.chain, writer.anchors)["valid"]:
+                    raise OntologyError("audit chain is not cleanly anchored")
+                rows = writer.chain.db.execute(
+                    "SELECT event_id, event_json FROM audit_events "
+                    "WHERE substr(event_id, 1, ?)=? ORDER BY seq DESC",
+                    (len(_BACKUP_ANCHOR_PREFIX), _BACKUP_ANCHOR_PREFIX),
+                ).fetchall()
+            for event_id, raw in rows:
+                event = json.loads(raw)
+                if event.get("resource_ids") != [f"project:{self.project_id}"]:
+                    continue
+                digest = event.get("manifest_hash")
+                if (event.get("event_type") != _BACKUP_ANCHOR_TYPE
+                        or event.get("decision") != "allow" or not isinstance(digest, str)
+                        or event_id != _BACKUP_ANCHOR_PREFIX + digest):
+                    # Do not fall back to an older anchor past an unreadable newer one.
+                    raise OntologyError("the newest backup anchor event is not well formed")
+                return digest
+            return None
+        except OntologyError:
+            raise
+        except Exception as exc:
+            raise OntologyError("backup anchors could not be read from the audit chain") from exc
 
     def backup_dependency_manifest(
         self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
