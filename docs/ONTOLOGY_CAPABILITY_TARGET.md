@@ -12,7 +12,7 @@ Compare documented behavior and verified implementation, not marketing claims. M
 
 ## Current Agora evidence
 
-At main commit `26200a4e88f8ff428bb711a06c3b49c1c0fa3be7`, Agora contains:
+At main commit `3b907e5fb384de67a4ce78bece78e400e23c1531`, Agora contains:
 
 - Domain-pack parsing and versioned `ObjectType`, `PropertyType`, `LinkType`, and `ActionType` definitions in `agora/ontology/registry.py`.
 - A fingerprinted, version-aware registry that rejects conflicting reuse of the same type ID/version. Registry state is currently in memory.
@@ -76,7 +76,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 - The task-by-task implementation sequence is in [the O1 implementation plan](superpowers/plans/2026-11-26-ontology-object-store.md).
 - Persist versioned object instances, links, provenance, and validity intervals with stable identity.
 - Add scoped queries with explicit versions/snapshots, pagination, filters, and predictable consistency.
-- Prove integrity constraints, backup/restore, and migration behavior without silently reinterpreting existing graph records.
+- Prove integrity constraints, backup/restore, target-side source-import availability, source snapshot database integrity/attestation, and migration behavior without silently reinterpreting existing graph records.
 - Keep writes limited to local ontology storage and approved simulated workflows.
 
 ### O2 — Governed action layer
