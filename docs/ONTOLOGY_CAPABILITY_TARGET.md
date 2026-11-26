@@ -1,6 +1,6 @@
 # Agora Ontology Capability Target
 
-**Status:** Strategy and delivery proposal; documentation only. It sets a long-term capability target and staged direction. It does not authorize implementation, data acquisition, external integrations, action execution, or deployment.
+**Status:** Strategy and staged delivery proposal with partial O1 implementation. O1 remains incomplete; this document is not a parity claim and does not authorize data acquisition, external integrations, action execution, or deployment.
 
 **Strategic direction:** Build Agora to meet or exceed the useful ontology capabilities demonstrated by Palantir Gotham and Foundry, while differentiating on transparent provenance, portable schemas, explicit human authority, and independently verifiable behavior. This is a target, not a present capability claim.
 
@@ -12,17 +12,17 @@ Compare documented behavior and verified implementation, not marketing claims. M
 
 ## Current Agora evidence
 
-At main commit `745e98e4abdf9d2008e479cf1cdbd0240a3642f6`, Agora contains:
+At main commit `3023cb369df94b90d78cf5d89faf3374e6ba0675`, Agora contains:
 
 - Domain-pack parsing and versioned `ObjectType`, `PropertyType`, `LinkType`, and `ActionType` definitions in `agora/ontology/registry.py`.
 - A fingerprinted, version-aware registry that rejects conflicting reuse of the same type ID/version. Registry state is currently in memory.
-- A project-local SQLite catalog persists immutable, fingerprinted pack and binding definitions behind principal-bound `ontology_read` / `ontology_write` policy and anchored audit. O1 adds immutable source-row references and exact source-backed object reads; typed links and bounded ontology query APIs remain unimplemented.
+- A project-local SQLite store persists immutable, fingerprinted pack and binding definitions, source-row references, exact source-backed object reads, and typed temporal links. Link writes enforce exact endpoints, declared cardinality, endpoint sensitivity, policy, principal-derived actor, and audit. Bounded object queries and link traversal remain unimplemented. The link slice has repository CI evidence but no feature-specific tests yet.
 - YAML/JSON loading with duplicate-key rejection.
 - Read-only tabular snapshot bindings that check exact dataset/schema/import identity, property mappings, types, sensitivity, and provenance, then materialize instances in memory.
 - Registry and binding tests, including stable cross-snapshot record identity and rejection of type/sensitivity mismatches.
 - Domain packs and fixtures.
 
-These are real early ontology capabilities, not an integrated ontology platform. The listed components do not establish a durable ontology object/link store, general graph query service, stable external ontology API or generated SDK, managed object/link editing workflow, ontology authoring/browser UI, or complete identity and authorization layer. Action definitions are constrained to simulation-only, but there is not yet a general action runtime over persistent ontology objects. A permission field or design contract alone is not an enforced boundary.
+These are real early ontology capabilities, not an integrated ontology platform. A durable project-local ontology object-reference and link store now exists, but no general graph query service, stable external ontology API or generated SDK, managed object/link editing workflow, ontology authoring/browser UI, or complete identity and authorization layer is established. Action definitions are constrained to simulation-only, but there is not yet a general action runtime over persistent ontology objects. A permission field or design contract alone is not an enforced boundary.
 
 ## Product goals
 
@@ -51,7 +51,7 @@ These are real early ontology capabilities, not an integrated ontology platform.
 | Capability | Palantir reference | Agora evidence today | Target and proof |
 |---|---|---|---|
 | Semantic types | Gotham dynamic ontology; Foundry object, property, link, and interface types | Versioned pack definitions and parser | Portable schemas; independent domain packs use one contract; compatible evolution and explicit breaking changes |
-| Identity and links | Persistent objects and links exposed to applications | Stable record-key logic and typed link definitions; instances materialize in memory | Durable identities, link constraints, temporal validity, merge/split history, and cross-project identity rules |
+| Identity and links | Persistent objects and links exposed to applications | Durable source-backed object references and immutable typed temporal links with project/pack/type/import identity | Feature-specific integrity coverage, merge/split history, and cross-project identity rules |
 | Data connection and lineage | Ontology backed by platform data and APIs | Explicit snapshot binding contract, source IDs, hashes, locators, read-only materialization | Repeatable imports, full row lineage, schema evolution, reconciliation, retention/deletion handling, and connector boundaries |
 | Query and application APIs | Gotham REST APIs; Foundry REST APIs and generated OSDKs | No general ontology API/SDK established | Versioned query/mutation APIs, typed SDK, pagination, filters, consistency rules, compatibility promises, and API security evidence |
 | Actions and workflows | Foundry actions update ontology objects and support applications | Action contracts and simulated-only boundary; no general persistent-object action service | Policy-enforced transactions, validation, idempotency, audit, recovery, human approval, explicit side-effect boundaries |
