@@ -1315,6 +1315,14 @@ class OntologyObjectStore:
                     manifest = json.loads(row["manifest_json"])
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
                     raise OntologyError("a referenced source import manifest is invalid") from exc
+                if not isinstance(manifest, dict):
+                    raise OntologyError("a referenced source import manifest has an invalid shape")
+                row_count = conn.execute(
+                    "SELECT COUNT(*) FROM import_rows WHERE import_id=?",
+                    (dependency["import_id"],),
+                ).fetchone()[0]
+                if type(manifest.get("accepted_records")) is not int or row_count != manifest["accepted_records"]:
+                    raise OntologyError("a referenced source import is missing snapshot rows")
                 if (
                     row["dataset_id"] != dependency["dataset_id"]
                     or row["source_registry_id"] != dependency["source_registry_id"]
