@@ -197,3 +197,56 @@ def test_dependency_manifest_requires_existing_project_local_backup(catalog, tmp
         store.backup_dependency_manifest(
             tmp_path / "outside.sqlite3", policy=_allow, audit=audit,
         )
+
+
+def test_dependency_manifest_records_exact_source_file_hash_without_row_values(catalog):
+    project, store, audit, pack_fingerprint, binding_fingerprint = catalog
+    source = project / "customers.csv"
+    source.write_text(
+        "customer_id,email\\nC-SECRET-001,private-value@example.test\\n",
+        encoding="utf-8",
+    )
+    imported = ingest_csv(project, source, {
+        "schema_id": "customers-v1",
+        "schema_version": "1.0.0",
+        "dataset_name": "customers",
+        "columns": [
+            {
+                "name": "customer_id",
+                "type": "string",
+                "nullable": False,
+                "primary_key": True,
+                "sensitivity": "personal",
+                "purpose": "account support",
+                "retention": "90 days",
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "nullable": False,
+                "sensitivity": "sensitive",
+            },
+        ],
+    }, data_role="context")
+    assert store.materialize_binding(
+        pack_fingerprint, binding_fingerprint, imported["import_id"],
+        policy=_allow, audit=audit, purpose="account support", retention="90 days",
+    ) == 1
+
+    backup_path = project / "data" / "ontology.backup.sqlite3"
+    store.backup(backup_path, policy=_allow, audit=audit)
+    manifest = store.backup_dependency_manifest(
+        backup_path, policy=_allow, audit=audit,
+    )
+
+    assert len(manifest["source_snapshot_files"]) == 1
+    dependency = manifest["source_snapshot_files"][0]
+    assert dependency["import_id"] == imported["import_id"]
+    assert dependency["dataset_id"] == "customers"
+    assert dependency["schema_id"] == "customers-v1"
+    assert dependency["schema_version"] == "1.0.0"
+    assert dependency["source_registry_id"]
+    assert len(dependency["file_sha256"]) == 64
+    serialized = _canonical(manifest)
+    assert "C-SECRET-001" not in serialized
+    assert "private-value@example.test" not in serialized
