@@ -67,6 +67,8 @@ class ProjectRecord:
     delegate_subject_ids: frozenset[str] = frozenset()
     second_approver_subject_id: str | None = None
     requires_second_approval: bool = False
+    # Alerted (never authorised) when a response window expires. Only if the owner names one (spec 3).
+    backup_contact_subject_id: str | None = None
 
 
 @dataclass(frozen=True)

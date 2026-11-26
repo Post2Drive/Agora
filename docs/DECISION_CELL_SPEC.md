@@ -41,6 +41,8 @@ Options can be combined (e.g. fork from event with a different evidence set). Ea
 
 Timeout rule: each project has a 15-minute response window. If nobody responds within that window, the system **holds the last human-approved result** and alerts the designated project owner. If the owner has explicitly named a backup contact in the project record, that contact is alerted too; no backup is inferred. It publishes nothing new and changes no forecast. If no approved result exists, nothing is published and the item stays pending. The hold, the alert and the elapsed time are audit-logged.
 
+**Implementation status (library only):** `agora/decision_cell/response_window.py` records the window, the hold, the elapsed time and who is owed an alert in the anchored audit chain. Only an allowed IGNORE, HOLD or run choice answers a window; a refused attempt, COMPARE and ESCALATE do not stop the clock, and a late answer is recorded after the hold. The project record can name one backup contact, who is alerted and gains no authority. **Not built:** alert delivery, a timer that calls the sweep, a trusted time source, event intake, and any service, command or screen that uses this.
+
 ## 3A. Permission, snapshot and budget matrix
 Showing an option is not the same as being able to run it. An option is executable only when all three checks pass; otherwise it is displayed greyed with the failing reason and the attempt is logged.
 

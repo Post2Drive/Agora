@@ -60,6 +60,8 @@ _BODY_KEYS = frozenset({
     "tenant_id", "project_id", "version", "owner_subject_id", "delegate_subject_ids",
     "second_approver_subject_id", "requires_second_approval", "written_by_subject_id",
 })
+# Written only when a backup is named, so records stored before the field existed keep their exact form.
+_BACKUP_KEY = "backup_contact_subject_id"
 
 
 class ProjectRecordError(DecisionCellError):
@@ -153,7 +155,9 @@ def _latest(rows: list[tuple[str, str, int, str, str]], tenant_id: str,
         raise ProjectRecordError("STORE_INCONSISTENT", "record versions are not contiguous")
     _, _, version, body_json, _ = mine[-1]
     body = json.loads(body_json)
-    if (not isinstance(body, dict) or set(body) != _BODY_KEYS or body["tenant_id"] != tenant_id
+    if (not isinstance(body, dict) or set(body) - {_BACKUP_KEY} != _BODY_KEYS
+            or (_BACKUP_KEY in body and not _identifier(body[_BACKUP_KEY]))
+            or body["tenant_id"] != tenant_id
             or body["project_id"] != project_id or body["version"] != version):
         raise ProjectRecordError("STORE_INCONSISTENT", "record body does not match its row")
     record = ProjectRecord(
@@ -161,6 +165,7 @@ def _latest(rows: list[tuple[str, str, int, str, str]], tenant_id: str,
         delegate_subject_ids=frozenset(body["delegate_subject_ids"]),
         second_approver_subject_id=body["second_approver_subject_id"],
         requires_second_approval=body["requires_second_approval"],
+        backup_contact_subject_id=body.get(_BACKUP_KEY),
     )
     return StoredProjectRecord(record, version, _hash(body_json))
 
@@ -232,6 +237,9 @@ def write_project_record(
         raise refuse("RECORD_INVALID", "the owner is not a delegate")
     if second is not None and (not _identifier(second) or second == record.owner_subject_id):
         raise refuse("RECORD_INVALID", "the second approver must be another exact id")
+    backup = record.backup_contact_subject_id
+    if backup is not None and (not _identifier(backup) or backup == record.owner_subject_id):
+        raise refuse("RECORD_INVALID", "the backup contact must be another exact id")
     if type(record.requires_second_approval) is not bool:
         raise refuse("RECORD_INVALID", "requires_second_approval must be true or false")
     if record.requires_second_approval and second is None:
@@ -250,12 +258,15 @@ def write_project_record(
         raise refuse("OWNER_IMMUTABLE")
 
     version = expected_version + 1
-    body_json = _canonical({
+    body = {
         "tenant_id": record.tenant_id, "project_id": record.project_id, "version": version,
         "owner_subject_id": record.owner_subject_id, "delegate_subject_ids": sorted(delegates),
         "second_approver_subject_id": second,
         "requires_second_approval": record.requires_second_approval, "written_by_subject_id": subject,
-    })
+    }
+    if backup is not None:
+        body[_BACKUP_KEY] = backup
+    body_json = _canonical(body)
     record_hash = _hash(body_json)
     event_id = _event_id(record.tenant_id, record.project_id, version)
 
@@ -290,7 +301,7 @@ def write_project_record(
         raise ProjectRecordError("STORE_ERROR", "the version could not be committed") from exc
     return StoredProjectRecord(
         ProjectRecord(record.project_id, record.tenant_id, record.owner_subject_id, delegates, second,
-                      record.requires_second_approval), version, record_hash)
+                      record.requires_second_approval, backup), version, record_hash)
 
 
 def request_project_option(
