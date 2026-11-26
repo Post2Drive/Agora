@@ -6,6 +6,7 @@ source rows remain in tabular snapshots and are not copied here.
 from __future__ import annotations
 
 from dataclasses import asdict
+import base64
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -162,6 +163,26 @@ def _link_endpoint(value: Mapping[str, Any], project_id: str, pack_fingerprint: 
     return endpoint
 
 
+def _encode_cursor(payload: Mapping[str, Any]) -> str:
+    raw = _canonical(dict(payload)).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(value: str | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        raise OntologyError("query cursor is invalid")
+    try:
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        result = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise OntologyError("query cursor is invalid") from exc
+    if not isinstance(result, dict):
+        raise OntologyError("query cursor is invalid")
+    return result
+
+
 def _canonical(value: Any) -> str:
     try:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
@@ -171,6 +192,10 @@ def _canonical(value: Any) -> str:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _link_created_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 class OntologyObjectStore:
@@ -681,7 +706,7 @@ class OntologyObjectStore:
                     valid_from, valid_to, created_at, actor_id, reason, provenance_json, supersedes_link_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (link_id, self.project_id, pack_fingerprint, link_type_id, link_type_version,
-                 *src_key, *dst_key, start, end, _utc_now(), decision["subject_id"],
+                 *src_key, *dst_key, start, end, _link_created_now(), decision["subject_id"],
                  reason.strip(), provenance_json, supersedes_link_id),
             )
             conn.commit()
@@ -747,9 +772,11 @@ class OntologyObjectStore:
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT l.* FROM ontology_links l WHERE " + " AND ".join(clauses) + " ORDER BY l.valid_from, l.link_id",
+                "SELECT l.* FROM ontology_links l WHERE " + " AND ".join(clauses) + " ORDER BY l.valid_from, l.link_id LIMIT 101",
                 params,
             ).fetchall()
+            if len(rows) > 100:
+                raise OntologyError("use traverse_links pagination for link sets larger than 100")
             self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
             sensitivities = []
             for row in rows:
@@ -787,5 +814,274 @@ class OntologyObjectStore:
             } for row in rows]
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise OntologyError("ontology link records could not be read") from exc
+        finally:
+            conn.close()
+
+
+    @staticmethod
+    def _check_page_size(page_size: int) -> None:
+        if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 100:
+            raise OntologyError("page_size must be an integer from 1 to 100")
+
+    @staticmethod
+    def _validate_filter_value(prop: Any, value: Any) -> None:
+        if value is None:
+            if not prop.nullable:
+                raise OntologyError("null filter value is not allowed for this property")
+            return
+        kind = prop.data_type
+        valid = (
+            isinstance(value, str) if kind in {"string", "identifier", "enum", "date", "timestamp"}
+            else isinstance(value, int) and not isinstance(value, bool) if kind == "integer"
+            else isinstance(value, (int, float)) and not isinstance(value, bool) if kind == "decimal"
+            else isinstance(value, bool) if kind == "boolean"
+            else isinstance(value, (dict, list)) if kind == "structured_object"
+            else False
+        )
+        if not valid:
+            raise OntologyError(f"filter value does not match property type {kind}")
+        if kind == "enum" and prop.allowed_values and value not in prop.allowed_values:
+            raise OntologyError("enum filter value is not allowed by the property definition")
+
+    @classmethod
+    def _validate_filters(cls, pack: OntologyPack, type_id: str, filters: Mapping[str, Any]) -> list[tuple[str, str, Any]]:
+        obj = next((item for item in pack.object_types if item.type_id == type_id), None)
+        if obj is None:
+            raise OntologyError("unknown object type")
+        properties = {item.property_id: item for item in pack.property_types}
+        allowed_properties = set(obj.properties)
+        if not isinstance(filters, Mapping):
+            raise OntologyError("filters must map property IDs to typed filter objects")
+        checked = []
+        allowed_ops = {"eq", "in", "gt", "gte", "lt", "lte", "contains"}
+        for property_id, spec in filters.items():
+            if property_id not in allowed_properties or property_id not in properties:
+                raise OntologyError("filter references an unknown property for this object type")
+            if not isinstance(spec, Mapping) or set(spec) != {"op", "value"}:
+                raise OntologyError("each filter must contain exactly op and value")
+            op, value, prop = spec["op"], spec["value"], properties[property_id]
+            if not isinstance(op, str) or op not in allowed_ops:
+                raise OntologyError("unsupported ontology filter operator")
+            if op in {"gt", "gte", "lt", "lte"} and prop.data_type not in {"string", "identifier", "date", "timestamp", "integer", "decimal"}:
+                raise OntologyError("ordering is not supported for this property type")
+            if op == "contains" and (prop.data_type != "string" or value is None):
+                raise OntologyError("contains requires a non-null value and a string property")
+            if op == "in":
+                if not isinstance(value, list) or not value or len(value) > 100:
+                    raise OntologyError("in requires a list of 1 to 100 typed values")
+                for item in value:
+                    cls._validate_filter_value(prop, item)
+            else:
+                cls._validate_filter_value(prop, value)
+            checked.append((property_id, op, value))
+        return checked
+
+    @staticmethod
+    def _matches_filters(values: Mapping[str, Any], filters: list[tuple[str, str, Any]]) -> bool:
+        for property_id, op, expected in filters:
+            actual = values.get(property_id)
+            if op == "eq":
+                matched = _canonical(actual) == _canonical(expected)
+            elif op == "in":
+                matched = any(_canonical(actual) == _canonical(item) for item in expected)
+            elif actual is None:
+                matched = False
+            elif op == "contains":
+                matched = expected in actual
+            elif op == "gt":
+                matched = actual > expected
+            elif op == "gte":
+                matched = actual >= expected
+            elif op == "lt":
+                matched = actual < expected
+            else:
+                matched = actual <= expected
+            if not matched:
+                return False
+        return True
+
+    def query_objects(
+        self, pack_fingerprint: str, type_id: str, type_version: str, import_id: str,
+        filters: Mapping[str, Any], page_size: int, cursor: str | None, *,
+        policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded keyset page of exact-import source-backed objects."""
+        if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
+            raise OntologyError("query requires an explicit import_id")
+        self._check_page_size(page_size)
+        pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
+        if not any(item.type_id == type_id and item.version == type_version for item in pack.object_types):
+            raise OntologyError("object type/version does not resolve in selected pack")
+        checked_filters = self._validate_filters(pack, type_id, filters)
+        filter_fingerprint = hashlib.sha256(_canonical(dict(filters)).encode("utf-8")).hexdigest()
+        cursor_value = _decode_cursor(cursor)
+        last_key = None
+        if cursor_value is not None:
+            expected = {
+                "v": 1, "project_id": self.project_id, "pack": pack_fingerprint,
+                "type_id": type_id, "type_version": type_version, "import_id": import_id,
+                "filters": filter_fingerprint,
+            }
+            if any(cursor_value.get(key) != value for key, value in expected.items()) or not isinstance(cursor_value.get("last_key"), str):
+                raise OntologyError("query cursor does not match this project, type, import, and filter")
+            last_key = cursor_value["last_key"]
+        max_scan = min(10000, max(1000, page_size * 100))
+        conn = self._connect()
+        try:
+            if last_key is None:
+                rows = conn.execute(
+                    """SELECT record_key FROM ontology_object_refs
+                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=? AND import_id=?
+                       ORDER BY record_key LIMIT ?""",
+                    (self.project_id, pack_fingerprint, type_id, type_version, import_id, max_scan),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT record_key FROM ontology_object_refs
+                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                         AND import_id=? AND record_key>?
+                       ORDER BY record_key LIMIT ?""",
+                    (self.project_id, pack_fingerprint, type_id, type_version, import_id, last_key, max_scan),
+                ).fetchall()
+        finally:
+            conn.close()
+        results = []
+        scanned_key = last_key
+        for row in rows:
+            scanned_key = row["record_key"]
+            instance = self.get_object(
+                pack_fingerprint, type_id, type_version, scanned_key, import_id,
+                policy=policy, audit=audit, purpose=purpose, retention=retention,
+            )
+            if self._matches_filters(instance["property_values"], checked_filters):
+                results.append(instance)
+                if len(results) >= page_size:
+                    break
+        more = False
+        if scanned_key is not None:
+            conn = self._connect()
+            try:
+                more = conn.execute(
+                    """SELECT 1 FROM ontology_object_refs
+                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                         AND import_id=? AND record_key>? LIMIT 1""",
+                    (self.project_id, pack_fingerprint, type_id, type_version, import_id, scanned_key),
+                ).fetchone() is not None
+            finally:
+                conn.close()
+        next_cursor = None
+        if more:
+            next_cursor = _encode_cursor({
+                "v": 1, "project_id": self.project_id, "pack": pack_fingerprint,
+                "type_id": type_id, "type_version": type_version, "import_id": import_id,
+                "filters": filter_fingerprint, "last_key": scanned_key,
+            })
+        return {"objects": results, "next_cursor": next_cursor}
+
+    @staticmethod
+    def _link_result(row: sqlite3.Row, project_id: str, pack_fingerprint: str) -> dict[str, Any]:
+        return {
+            "link_id": row["link_id"], "pack_fingerprint": pack_fingerprint,
+            "link_type_id": row["link_type_id"], "link_type_version": row["link_type_version"],
+            "source": {"project_id": project_id, "pack_fingerprint": pack_fingerprint,
+                       "type_id": row["source_type_id"], "type_version": row["source_type_version"],
+                       "import_id": row["source_import_id"], "record_key": row["source_record_key"]},
+            "target": {"project_id": project_id, "pack_fingerprint": pack_fingerprint,
+                       "type_id": row["target_type_id"], "type_version": row["target_type_version"],
+                       "import_id": row["target_import_id"], "record_key": row["target_record_key"]},
+            "valid_from": row["valid_from"], "valid_to": row["valid_to"], "created_at": row["created_at"],
+            "actor_id": row["actor_id"], "reason": row["reason"],
+            "provenance": json.loads(row["provenance_json"]), "supersedes_link_id": row["supersedes_link_id"],
+        }
+
+    def traverse_links(
+        self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
+        endpoint: Mapping[str, Any], import_id: str, page_size: int, cursor: str | None, *,
+        direction: str = "both", policy: PolicyCallable | None, audit: Any | None,
+    ) -> dict[str, Any]:
+        """Return a bounded adjacent-link page for one exact endpoint import."""
+        self._check_page_size(page_size)
+        if direction not in {"out", "in", "both"}:
+            raise OntologyError("direction must be out, in, or both")
+        ref = self._canonical_endpoint(endpoint, self.project_id, pack_fingerprint)
+        if import_id != ref["import_id"] or import_id == "latest":
+            raise OntologyError("traversal import_id must match the exact endpoint reference")
+        pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
+        self._link_type(pack, link_type_id, link_type_version)
+        cursor_value = _decode_cursor(cursor)
+        last_id = None
+        as_of = _link_created_now()
+        if cursor_value is not None:
+            as_of = cursor_value.get("as_of")
+            if not isinstance(as_of, str) or _canonical_timestamp(as_of, "cursor time") != as_of:
+                raise OntologyError("traversal cursor time is invalid")
+        cursor_identity = {
+            "v": 1, "project_id": self.project_id, "pack": pack_fingerprint,
+            "link_type_id": link_type_id, "link_type_version": link_type_version,
+            "endpoint": dict(ref), "import_id": import_id, "direction": direction, "as_of": as_of,
+        }
+        if cursor_value is not None:
+            if any(cursor_value.get(key) != value for key, value in cursor_identity.items()) or not isinstance(cursor_value.get("last_id"), str):
+                raise OntologyError("traversal cursor does not match this endpoint and link selection")
+            last_id = cursor_value["last_id"]
+        self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version, *self._link_key(ref)], policy=policy, audit=audit)
+        if direction == "out":
+            match = "source"
+        elif direction == "in":
+            match = "target"
+        else:
+            match = "both"
+        conn = self._connect()
+        try:
+            if match == "both":
+                rows = conn.execute(
+                    """SELECT l.* FROM ontology_links l WHERE l.project_id=? AND l.pack_fingerprint=?
+                       AND l.link_type_id=? AND l.link_type_version=? AND l.created_at<=? AND l.link_id>?
+                       AND ((l.source_type_id=? AND l.source_type_version=? AND l.source_import_id=? AND l.source_record_key=?)
+                         OR (l.target_type_id=? AND l.target_type_version=? AND l.target_import_id=? AND l.target_record_key=?))
+                       ORDER BY l.link_id LIMIT ?""",
+                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, as_of, last_id or "",
+                     *self._link_key(ref), *self._link_key(ref), page_size + 1),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT l.* FROM ontology_links l WHERE l.project_id=? AND l.pack_fingerprint=?
+                       AND l.link_type_id=? AND l.link_type_version=? AND l.created_at<=? AND l.link_id>?
+                       AND l.""" + match + """_type_id=? AND l.""" + match + """_type_version=?
+                       AND l.""" + match + """_import_id=? AND l.""" + match + """_record_key=?
+                       ORDER BY l.link_id LIMIT ?""",
+                    (self.project_id, pack_fingerprint, link_type_id, link_type_version, as_of, last_id or "",
+                     *self._link_key(ref), page_size + 1),
+                ).fetchall()
+            page = rows[:page_size]
+            sensitivities = []
+            for row in page:
+                for side in ("source", "target"):
+                    key = (row[side + "_type_id"], row[side + "_type_version"],
+                           row[side + "_import_id"], row[side + "_record_key"])
+                    ref_row = conn.execute(
+                        """SELECT property_sensitivity_json FROM ontology_object_refs
+                           WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                             AND import_id=? AND record_key=?""",
+                        (self.project_id, pack_fingerprint, *key),
+                    ).fetchone()
+                    if ref_row:
+                        stored = json.loads(ref_row["property_sensitivity_json"])
+                        if isinstance(stored, dict):
+                            sensitivities.extend(v for v in stored.values() if isinstance(v, str))
+            rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+            sensitivity = max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
+            self._authorize(
+                "ontology_read", [pack_fingerprint, link_type_id, link_type_version, *self._link_key(ref)],
+                policy=policy, audit=audit, sensitivity=sensitivity,
+            )
+            next_cursor = None
+            if len(rows) > page_size and page:
+                next_cursor = _encode_cursor({**cursor_identity, "last_id": page[-1]["link_id"]})
+            return {"links": [self._link_result(row, self.project_id, pack_fingerprint) for row in page],
+                    "next_cursor": next_cursor}
+        except (sqlite3.Error, json.JSONDecodeError) as exc:
+            raise OntologyError("ontology link traversal failed") from exc
         finally:
             conn.close()
