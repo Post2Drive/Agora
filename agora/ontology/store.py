@@ -593,9 +593,29 @@ class OntologyObjectStore:
         if (dst["type_id"], dst["type_version"]) != (link_type.target_type_id, types[link_type.target_type_id].version):
             raise OntologyError("target endpoint does not match the selected LinkType")
         src_key, dst_key = self._link_key(src), self._link_key(dst)
+        resource_ids = [pack_fingerprint, link_type_id, link_type_version, *src_key, *dst_key]
+        self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
+        metadata_conn = self._connect()
+        try:
+            sensitivities = []
+            for key in (src_key, dst_key):
+                row = metadata_conn.execute(
+                    """SELECT property_sensitivity_json FROM ontology_object_refs
+                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                         AND import_id=? AND record_key=?""",
+                    (self.project_id, pack_fingerprint, *key),
+                ).fetchone()
+                if row is None:
+                    raise OntologyError("link endpoint is not materialized")
+                stored = json.loads(row["property_sensitivity_json"])
+                if isinstance(stored, dict):
+                    sensitivities.extend(v for v in stored.values() if isinstance(v, str))
+        finally:
+            metadata_conn.close()
+        rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+        sensitivity = max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
         decision = self._authorize(
-            "ontology_write", [pack_fingerprint, link_type_id, link_type_version, *src_key, *dst_key],
-            policy=policy, audit=audit,
+            "ontology_write", resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
         )
         if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
             raise OntologyError("link writes require a principal-bound actor identity")
