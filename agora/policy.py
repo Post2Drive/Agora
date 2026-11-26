@@ -1,8 +1,7 @@
 """Deny-by-default RBAC + ABAC policy decision point.
 
-This module is intentionally standalone. Callers may use the returned,
-audit-safe decision at an enforcement boundary; no existing path is wired to
-it yet.
+This module is intentionally standalone. Protected boundaries call it through
+the shared enforcement layer with an adapter-bound principal.
 """
 from __future__ import annotations
 
