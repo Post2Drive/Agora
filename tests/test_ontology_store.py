@@ -671,11 +671,15 @@ def _linked_backup(catalog, conflicting=False):
     refs = [{"import_id": other_id, "file_sha256": other_sha, "locator": "row:2"}]
     if conflicting:
         refs.append({"import_id": other_id, "file_sha256": "b" * 64, "locator": "row:2"})
-    store.add_link(
-        pack_fp, "backup:refers", "1.0.0", endpoint("C-1"), endpoint("C-2"),
-        "2026-01-01T00:00:00+00:00", None, "referral",
-        {"kind": "source", "source_refs": refs},
-        policy=_allow, audit=audit)
+    with pytest.MonkeyPatch.context() as patch:
+        if conflicting:
+            # Writes now refuse this; simulate a link stored before that check existed.
+            patch.setattr(store, "_verify_link_source_refs", lambda refs: None)
+        store.add_link(
+            pack_fp, "backup:refers", "1.0.0", endpoint("C-1"), endpoint("C-2"),
+            "2026-01-01T00:00:00+00:00", None, "referral",
+            {"kind": "source", "source_refs": refs},
+            policy=_allow, audit=audit)
     backup_path = project / "data" / "ontology.backup.sqlite3"
     store.backup(backup_path, policy=_allow, audit=audit)
     return other_id, backup_path
