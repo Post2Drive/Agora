@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Mapping
 import uuid
@@ -24,6 +25,10 @@ from .binding import (
     DataBinding, iter_source_object_refs, load_binding, materialize_source_object,
 )
 from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
+
+_MAX_LINK_SOURCE_REFS = 100
+# Matches the record numbering tabular ingestion assigns (the CSV header is record 1).
+_ROW_LOCATOR = re.compile(r"row:([1-9][0-9]{0,11})")
 
 _MIGRATIONS_TABLE_SCHEMA = """CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -682,6 +687,79 @@ class OntologyObjectStore:
             raise OntologyError("unsupported ontology link cardinality")
         return result
 
+    @staticmethod
+    def _parse_source_refs(refs: Any) -> list[tuple[str, str, int]]:
+        """Validate the shape of source_refs and return (import_id, sha256, record_number)."""
+        if not isinstance(refs, list) or not refs:
+            raise OntologyError("source-backed links require exact source_refs")
+        if len(refs) > _MAX_LINK_SOURCE_REFS:
+            raise OntologyError(f"a link may cite at most {_MAX_LINK_SOURCE_REFS} source_refs")
+        parsed = []
+        for ref in refs:
+            if not isinstance(ref, Mapping) or not all(
+                isinstance(ref.get(key), str) and ref[key].strip()
+                for key in ("import_id", "file_sha256", "locator")
+            ):
+                raise OntologyError("each source_ref requires import_id, file_sha256, and locator")
+            if ref["import_id"] != ref["import_id"].strip() or ref["import_id"] == "latest":
+                raise OntologyError("source_ref import_id must be an exact import identifier")
+            digest = ref["file_sha256"]
+            if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+                raise OntologyError("source_ref file_sha256 must be a 64-character SHA-256")
+            locator = _ROW_LOCATOR.fullmatch(ref["locator"])
+            if locator is None:
+                raise OntologyError("source_ref locator must have the form row:<source record number>")
+            parsed.append((ref["import_id"], digest.lower(), int(locator.group(1))))
+        return parsed
+
+    def _verify_link_source_refs(self, refs: list[tuple[str, str, int]]) -> None:
+        """Require every cited import and record to exist in this project's snapshot DB.
+
+        Reads import metadata and row numbers only; no source row payloads are selected.
+        """
+        snapshot_path = self.project / "data" / "tabular.sqlite3"
+        try:
+            require_safe_path(snapshot_path)
+            if not snapshot_path.is_file():
+                raise OntologyError("source-backed links require the project tabular snapshot database")
+            conn = sqlite3.connect(snapshot_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30.0)
+        except (OSError, sqlite3.Error, UnsafePathError, ValueError) as exc:
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("the project tabular snapshot database is unavailable") from exc
+        conn.row_factory = sqlite3.Row
+        try:
+            for import_id, digest, record_number in refs:
+                row = conn.execute(
+                    "SELECT file_sha256, status, manifest_json FROM imports WHERE import_id=?",
+                    (import_id,),
+                ).fetchone()
+                if row is None or row["status"] != "committed":
+                    raise OntologyError("a source_ref cites a missing or uncommitted import")
+                if str(row["file_sha256"]).lower() != digest:
+                    raise OntologyError("a source_ref file_sha256 does not match the cited import")
+                manifest = json.loads(row["manifest_json"])
+                row_count = conn.execute(
+                    "SELECT COUNT(*) FROM import_rows WHERE import_id=?", (import_id,)
+                ).fetchone()[0]
+                if (
+                    not isinstance(manifest, dict)
+                    or type(manifest.get("accepted_records")) is not int
+                    or row_count != manifest["accepted_records"]
+                ):
+                    raise OntologyError("a source_ref cites an incomplete import snapshot")
+                if conn.execute(
+                    "SELECT 1 FROM import_rows WHERE import_id=? AND source_record_number=?",
+                    (import_id, record_number),
+                ).fetchone() is None:
+                    raise OntologyError("a source_ref locator does not resolve to an accepted source record")
+        except (sqlite3.Error, TypeError, ValueError) as exc:
+            if isinstance(exc, OntologyError):
+                raise
+            raise OntologyError("source_ref verification failed") from exc
+        finally:
+            conn.close()
+
     def _write_link(
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
@@ -700,19 +778,11 @@ class OntologyObjectStore:
         kind = provenance.get("kind")
         if kind not in {"source", "manual_assertion", "derived"}:
             raise OntologyError("provenance kind must be source, manual_assertion, or derived")
+        source_refs: list[tuple[str, str, int]] = []
         if kind == "source":
-            refs = provenance.get("source_refs")
-            if not isinstance(refs, list) or not refs:
-                raise OntologyError("source-backed links require exact source_refs")
-            for ref in refs:
-                if not isinstance(ref, Mapping) or not all(
-                    isinstance(ref.get(key), str) and ref[key].strip()
-                    for key in ("import_id", "file_sha256", "locator")
-                ):
-                    raise OntologyError("each source_ref requires import_id, file_sha256, and locator")
-                digest = ref["file_sha256"]
-                if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
-                    raise OntologyError("source_ref file_sha256 must be a 64-character SHA-256")
+            source_refs = self._parse_source_refs(provenance.get("source_refs"))
+        elif "source_refs" in provenance:
+            raise OntologyError("only source provenance may carry source_refs")
         pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
         link_type = self._link_type(pack, link_type_id, link_type_version)
         types = {x.type_id: x for x in pack.object_types}
@@ -724,6 +794,7 @@ class OntologyObjectStore:
             raise OntologyError("target endpoint does not match the selected LinkType")
         src_key, dst_key = self._link_key(src), self._link_key(dst)
         resource_ids = [pack_fingerprint, link_type_id, link_type_version, *src_key, *dst_key]
+        resource_ids += sorted({import_id for import_id, _, _ in source_refs})
         self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
         metadata_conn = self._connect()
         try:
@@ -749,6 +820,9 @@ class OntologyObjectStore:
         )
         if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
             raise OntologyError("link writes require a principal-bound actor identity")
+        # After authorization, so an unauthorized caller cannot probe which imports exist.
+        if source_refs:
+            self._verify_link_source_refs(source_refs)
         link_id = "link-" + uuid.uuid4().hex
         infinity = "9999-12-31T23:59:59.999999Z"
         conn = self._connect()
