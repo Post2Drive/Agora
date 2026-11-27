@@ -3,30 +3,42 @@
 ``agora backup`` refuses to copy a project whose audit chain is not intact against its
 anchor. ``agora restore`` refuses a backup whose files differ from its manifest, whose
 chain/anchor no longer verify, or a non-empty target. Both fail closed with a stable code
-and fixed plain-language text; neither writes anything on refusal (a partly written
-destination is removed). Synthetic data only; the simulation engine is never imported.
+and fixed plain-language text; neither keeps anything it wrote to the destination on refusal
+(a partly written destination is removed). Synthetic data only; the simulation engine is never
+imported.
+
+While it copies, ``agora backup`` holds the audit-anchor lock and every append-only file's writer
+lock that exists in the project (an empty ``<name>.lock``), so no writer using one of those locks
+is part way through. A writer creates its lock file before it writes, so a lock file that appears
+during the copy shows a first-time writer, and the backup is refused. It creates no lock files in
+the source. Limits: a writer that takes no such lock is not excluded, and an operation made of
+several separately locked steps can be copied between two of them.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import os
 import shutil
 import stat
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 from .audit_anchor import verify_anchored_readonly
+from .jsonl_journal import try_writer_lock
+from .pathsafe import UnsafePathError
 
 MANIFEST = "BACKUP_MANIFEST.json"
 CHAIN_REL = "audit/chain.sqlite3"
 ANCHOR_REL = "audit_anchor/anchor.jsonl"
 DEFAULT_CHAIN_ID = "synthetic-pilot-chain"
 _SQLITE = (".sqlite3", ".db")
+_LOCK_WAIT_SECONDS = 30.0
 
 _WORDS = {
     "SOURCE_NOT_FOUND": "Nothing was backed up: the project folder or its audit files were not found.",
@@ -214,8 +226,8 @@ def backup(project: str | Path, dest: str | Path, *, chain_id: str = DEFAULT_CHA
     existed = dest.exists()
     dest.mkdir(parents=True, exist_ok=True)
     try:
-        with _source_writer_lock(project, chain_id):
-            return _backup_locked(project, dest, chain_id)
+        with _source_writer_lock(project, chain_id), _journal_writer_locks(project) as held:
+            return _backup_locked(project, dest, chain_id, held)
     except BaseException:
         _cleanup(dest, existed)
         raise
@@ -236,13 +248,68 @@ def _source_writer_lock(project: Path, chain_id: str):
         lock.__exit__(None, None, None)
 
 
-def _backup_locked(project: Path, dest: Path, chain_id: str) -> dict[str, Any]:
+def _lock_sidecars(project: Path) -> set[str]:
+    """Writer lock files present in the project: empty ``*.lock`` files (a lock is never written to).
+
+    The anchor lock is left out; ``_source_writer_lock`` handles it. A ``*.lock`` file with content
+    is ordinary data. Only lock names are examined, so another writer's temporary files cannot
+    make this fail.
+    """
+    found: set[str] = set()
+    for p in project.rglob("*.lock"):
+        if _is_entry_link(p):
+            raise BackupBlocked("UNSAFE_PATH")
+        rel = p.relative_to(project).as_posix()
+        # a bare ".lock" names no file; reading it as a writer lock would lock a path beside its folder
+        if (p.name.endswith(".lock") and p.name != ".lock" and rel != ANCHOR_REL + ".lock"
+                and p.is_file() and p.stat().st_size == 0):
+            found.add(rel)
+    return found
+
+
+@contextmanager
+def _journal_writer_locks(project: Path):
+    """Hold every existing journal writer lock at once for the whole snapshot; yields their relative names.
+
+    All or nothing: if any is busy, all are released and it tries again until the time limit.
+    It never waits while holding one, so it cannot deadlock with writers that nest these locks.
+    """
+    deadline = time.monotonic() + _LOCK_WAIT_SECONDS
+    while True:
+        wanted = _lock_sidecars(project)
+        with ExitStack() as held:
+            try:
+                # all() stops at the first busy lock; leaving the block releases those already taken
+                complete = all(held.enter_context(try_writer_lock(project / rel[:-len(".lock")]))
+                               for rel in sorted(wanted))
+            except UnsafePathError:
+                raise BackupBlocked("UNSAFE_PATH") from None
+            except OSError:
+                raise BackupBlocked("SOURCE_LOCK_FAILED") from None
+            # a lock file that appeared while we were collecting them means another writer: take it too
+            if complete and _lock_sidecars(project) <= wanted:
+                yield frozenset(wanted)
+                return
+        if time.monotonic() >= deadline:
+            raise BackupBlocked("SOURCE_LOCK_FAILED")
+        time.sleep(0.05)
+
+
+def _backup_locked(project: Path, dest: Path, chain_id: str, held: frozenset[str]) -> dict[str, Any]:
     # Re-verified UNDER the writer lock: no anchored append can land between this check and the copy.
     verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
     if not verdict.get("valid"):
         raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))
-    rels = [r for r in _files(project) if r != ANCHOR_REL + ".lock"]  # the lock file is not data
+    skip = held | {ANCHOR_REL + ".lock"}  # lock files are not data, and a held one is never read
+    rels = [r for r in _files(project) if r not in skip]
     _copy_tree(project, dest / "data", rels)
+    # A held lock file is recreated empty, not read (a Windows lock blocks reads). A restored journal
+    # must keep it: jsonl_journal.reader_lock reads a journal that has none without locking.
+    for rel in sorted(held):
+        (dest / "data" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dest / "data" / rel).touch()
+    if _lock_sidecars(project) - held:  # checked AFTER the copy: see the module docstring
+        raise BackupBlocked("SNAPSHOT_CHANGED", "new_writer")
     copied = _files(dest / "data")
     after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
     if (not after.get("valid") or after.get("status") != verdict["status"]
