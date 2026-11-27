@@ -97,7 +97,7 @@ def render_post(world: World, p: Post, me: Agent | None = None) -> str:
 def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetime,
                       conversions: list, facts: list[str] | None = None,
                       trending: dict | None = None, recalled: list[str] | None = None,
-                      private: list[str] | None = None) -> list[dict]:
+                      private: list[str] | None = None, native_menu: list[str] | None = None) -> list[dict]:
     styles = "\n".join(f"- {label(p)}: {REGISTRY[p].style}" for p in a.platforms)
     system = (
         f"You are {a.name}, a real person. {a.persona}\n"
@@ -135,7 +135,9 @@ def decision_messages(world: World, sc, a: Agent, feed: list[Post], now: datetim
     else:
         lines.append("Nothing new on your screen right now.")
     if private:
-        lines.append("Private messages to you (sent directly, not on any app):\n" + "\n".join(private))
+        lines.append("Messages to you (sent directly, not on any app):\n" + "\n".join(private))
+    if native_menu:
+        lines.append("\n".join(native_menu))
     where = where_options(world, a)
     acts = sorted({x for p in a.platforms for x in actions_for(p)})
     vocab = sorted({f"{v} = {k}" for p in a.platforms for k, v in REGISTRY[p].words.items()

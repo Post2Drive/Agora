@@ -40,7 +40,7 @@ from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
 from .memory import WorldMemory
 from .timing import Rhythm
-from ..society import SocietyStore
+from ..society import SocietyError, SocietyStore
 from .world import Agent, Post, World, dm_people, dm_space
 
 SCENARIO_FILE = "scenario.yaml"
@@ -79,6 +79,16 @@ class GovernedInputError(RuntimeError):
 class SnapshotError(RuntimeError):
     """A snapshot or fork was refused (missing, corrupt, incomplete, mismatched or not replayable). Nothing is written."""
 
+
+# Native conversation actions and the limits that keep a run from filling with groups.
+_GROUP_CREATE = {"group_create", "create_group", "new_group", "start_group"}
+_GROUP_SAY = {"group_say", "group", "say_group", "group_message"}
+_DISCUSS = {"discuss", "discussion", "open_discussion"}
+MAX_GROUPS_PER_AGENT = 3
+MAX_GROUP_INVITES = 8
+MAX_OPEN_DISCUSSIONS = 20
+_RECEIVED_REASON = {"direct": "received a private message", "group": "received a group message",
+                    "open": "read an open discussion message", "broadcast": "received a broadcast"}
 
 SNAPSHOT_DIR = "snapshots"
 SNAPSHOT_SCHEMA = 2
@@ -731,7 +741,8 @@ class Simulation:
         # 4a. LLM decisions in parallel
         voices = [a for a in active if a.is_llm]
         private = self._native_inbox(voices, r)
-        decisions = self._decide_all(voices, feeds, opens, r, now, private)
+        menus = self._native_menus(voices)
+        decisions = self._decide_all(voices, feeds, opens, r, now, private, menus)
 
         # 4b + 5. apply in id order
         for a in active:
@@ -899,13 +910,46 @@ class Simulation:
             for m in unread:
                 soc.adjust_relationship(a.id, m["sender_id"], round=r, familiarity_delta=0.05,
                                         cause_message_id=m["message_id"],
-                                        reason="received a private message")
+                                        reason=_RECEIVED_REASON[m["kind"]])
             soc.mark_read(a.id, unread[-1]["message_id"])
-            out[a.id] = [f"{w.agents[m['sender_id']].name} (@{w.agents[m['sender_id']].handle}) wrote to you "
-                         f"privately: \"{m['text'][:300]}\"" for m in unread[-4:]]
+            out[a.id] = [self._render_native(m) for m in unread[-4:]]
         return out
 
-    def _decide_all(self, voices: list[Agent], feeds, opens, r, now, private=None) -> dict[int, dict]:
+    def _render_native(self, m: dict) -> str:
+        s = self.world.agents[m["sender_id"]]
+        who, text, cid, topic = f"{s.name} (@{s.handle})", m["text"][:300], m["conversation_id"], m["topic"]
+        if m["kind"] == "group":
+            return f'[group g{cid} "{topic}"] {who} wrote: "{text}"'
+        if m["kind"] == "open":
+            return f'[discussion d{cid} "{topic}"] {who} wrote: "{text}"'
+        if m["kind"] == "broadcast":
+            return f'[channel c{cid} "{topic}"] {who} announced: "{text}"'
+        return f'{who} wrote to you privately: "{text}"'
+
+    def _native_menus(self, voices: list[Agent]) -> dict[int, list[str]]:
+        """What each voice can do natively: the actions, plus the groups and open discussions it can see."""
+        soc = self.society
+        if soc is None:
+            return {}
+        recent = soc.recent_open(3)
+        base = ('You can also talk without any app: start a group chat {"type": "group_create", "topic": "...", '
+                '"invite": ["@handle"], "text": "..."}, write in one of your groups {"type": "group_say", '
+                '"group": "g3", "text": "..."}, or join an open discussion about an event {"type": "discuss", '
+                '"topic": "<a topic, or d5>", "text": "..."}.')
+        out = {}
+        for a in voices:
+            lines = [base]
+            groups = soc.conversations_of(a.id, "group")
+            if groups:
+                lines.append("Your groups: " + "; ".join(
+                    f'g{g["conversation_id"]} "{g["topic"]}" ({g["members"]} people)' for g in groups) + ".")
+            if recent:
+                lines.append("Open discussions: " + "; ".join(
+                    f'd{o["conversation_id"]} "{o["topic"]}"' for o in recent) + ".")
+            out[a.id] = lines
+        return out
+
+    def _decide_all(self, voices: list[Agent], feeds, opens, r, now, private=None, menus=None) -> dict[int, dict]:
         if not voices:
             return {}
         sc, w = self.sc, self.world
@@ -925,7 +969,7 @@ class Simulation:
                                               " ".join(p.text for p in feeds[a.id]), r,
                                               {p.id for p in feeds[a.id]} | {p.root for p in feeds[a.id]})
             msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending,
-                                               recalled, (private or {}).get(a.id))
+                                               recalled, (private or {}).get(a.id), (menus or {}).get(a.id))
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             d = None
             for attempt in range(3):             # an unusable reply is asked again with a different seed
@@ -1083,6 +1127,12 @@ class Simulation:
             return None
         if kind in ("dm", "message", "private message", "pm"):
             return self._dm(a, x, r, t0, out)
+        if kind in _GROUP_CREATE:
+            return self._group_create(a, x, r) if self.society is not None else None
+        if kind in _GROUP_SAY:
+            return self._group_say(a, x, r) if self.society is not None else None
+        if kind in _DISCUSS:
+            return self._discuss(a, x, r) if self.society is not None else None
         if kind in ("vote", "choose"):
             if self._vote_open(r) and self._cast(a, str(x.get("option", "")).strip(), out):
                 return f"you voted for {a.choice}"
@@ -1207,6 +1257,75 @@ class Simulation:
         self._new_post(a, r, t0, plat, dm_space(a.id, dst.id), "dm", text[:REGISTRY[plat].max_len],
                        a.stance, out=out)
         return f"you messaged {dst.name} privately on {REGISTRY[plat].label}: \"{text[:100]}\""
+
+    @staticmethod
+    def _conv_ref(value, prefix: str) -> int | None:
+        raw = str(value or "").strip().lower()
+        if raw.startswith(prefix):
+            raw = raw[1:]
+        return int(raw) if raw.isdigit() else None
+
+    def _group_create(self, a: Agent, x: dict, r: int) -> str | None:
+        soc, w = self.society, self.world
+        topic = str(x.get("topic") or x.get("name") or "").strip()[:200]
+        invited = x.get("invite") or x.get("with") or []
+        if not topic or not isinstance(invited, list) or soc.count("group", owner=a.id) >= MAX_GROUPS_PER_AGENT:
+            return None
+        people: list[Agent] = []
+        for ref in invited[:MAX_GROUP_INVITES]:
+            b = w.by_handle.get(str(ref).strip().lstrip("@"))
+            if b is not None and b.id != a.id and b not in people:
+                people.append(b)
+        if not people:
+            return None
+        gid = soc.create("group", a.id, round=r, topic=topic)
+        for b in people:
+            soc.join(gid, b.id, round=r)
+        text = str(x.get("text") or "").strip()
+        if text:
+            soc.post(gid, a.id, round=r, text=text[:2000],
+                     reason=f"@{a.handle} opened the group \"{topic[:60]}\"")
+        return f'you started the group g{gid} "{topic[:60]}" with ' + ", ".join(b.name for b in people)
+
+    def _group_say(self, a: Agent, x: dict, r: int) -> str | None:
+        soc = self.society
+        gid = self._conv_ref(x.get("group") or x.get("to"), "g")
+        text = str(x.get("text") or "").strip()
+        if gid is None or not text:
+            return None
+        try:
+            info = soc.conversation(gid)
+        except SocietyError:
+            return None
+        if info["kind"] != "group" or a.id not in {m for m, _ in soc.members(gid)}:
+            return None
+        soc.post(gid, a.id, round=r, text=text[:2000],
+                 reason=f"@{a.handle} wrote in the group \"{info['topic'][:60]}\"")
+        return f'you wrote in group g{gid} "{info["topic"][:60]}": "{text[:100]}"'
+
+    def _discuss(self, a: Agent, x: dict, r: int) -> str | None:
+        soc = self.society
+        text = str(x.get("text") or "").strip()
+        topic = str(x.get("topic") or "").strip()[:200]
+        if not text or not topic:
+            return None
+        did = self._conv_ref(topic, "d")
+        if did is not None:
+            try:
+                if soc.conversation(did)["kind"] != "open":
+                    return None
+            except SocietyError:
+                return None
+        else:
+            did = soc.find_open(topic)
+            if did is None:
+                if soc.count("open") >= MAX_OPEN_DISCUSSIONS:
+                    return None
+                did = soc.create("open", a.id, round=r, topic=topic)
+        info = soc.conversation(did)
+        soc.post(did, a.id, round=r, text=text[:2000],
+                 reason=f"@{a.handle} joined the open discussion \"{info['topic'][:60]}\"")
+        return f'you said in the open discussion d{did} "{info["topic"][:60]}": "{text[:100]}"'
 
     def _native_dm(self, a: Agent, dst: Agent, text: str, r: int) -> int:
         """Deliver a private message directly, with no simulated app in between; it arrives next round."""
