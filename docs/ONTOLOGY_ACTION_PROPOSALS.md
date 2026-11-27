@@ -1,6 +1,6 @@
 # Ontology action proposals (O2, first four slices)
 
-**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`, `agora/ontology/outcomes.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, ends an approval by withdrawal or by one admission for simulation, and records the outcome the admitter reports for that admission; it does not simulate, queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
+**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`, `agora/ontology/outcomes.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, ends an approval by withdrawal or by one admission for simulation, records the outcome the admitter reports for that admission, and reads that record back after checking it; it does not simulate, queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
 
 ## What a proposal binds
 
@@ -69,6 +69,17 @@ An admission records that one simulation may start. Nothing here starts or retri
 - If the event is appended but its anchor cannot be written, the call raises and the anchored writer refuses further appends until reconciled.
 - If the admitter cannot record (lost role, lost identity, crash with no report), the admission stays without an outcome. That shows only that none was recorded, not that nothing ran.
 
+## Reading an outcome
+
+`read_simulation_outcome(store, document, digest, ..., result=None)` returns a recorded outcome, or refuses.
+
+- It needs `ontology_read` at the proposal's own classification. Under the central roles `operator`, `reviewer` and `reader` have it; `approver` does not. It is decided before the chain is searched for the proposal. The authorization itself is appended to the chain, as for other reads.
+- The chain must be cleanly anchored and hold the proposal from the identity and policy version the document names, one approval by someone else, one admission by someone other than the approver, and one outcome by that admitter. The decision, admission and outcome must have their expected ID, operation, decision and (admission and outcome) resources, and the outcome a well-formed result digest.
+- Among the events for this digest, the decision, ending and outcome events must be exactly the approval, the admission and the outcome, in that order.
+- `result`, if given, must be the exact bytes whose SHA-256 is the recorded digest. Without it, `result_checked` is `false` and no content was compared.
+- `source` is always `reported_by_admitter`. A successful read shows what the chain records, not that a simulation ran.
+- The objects, sources and approval age are not checked again, and neither is any approval signature: an outcome recorded after an unsigned admission reads the same.
+
 ## Limits
 
 - An outcome is not evidence that a simulation ran, that the digest belongs to a real result, or that nothing else was done with the admission.
@@ -86,4 +97,4 @@ An admission records that one simulation may start. Nothing here starts or retri
 
 ## Not yet built (next O2 slices)
 
-Requiring a signed statement at admission (the [format and verifier](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) exist in `agora/security/approval_receipt.py`; nothing calls them), a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+Requiring a signed statement at admission (the [format and verifier](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) exist in `agora/security/approval_receipt.py`; nothing calls them), a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
