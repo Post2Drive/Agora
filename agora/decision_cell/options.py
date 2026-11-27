@@ -183,6 +183,16 @@ def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: St
     return _sha(action)
 
 
+def statement_set_event_id(tenant_id: Any, project_id: Any, study_id: Any, item_id: Any, version: int) -> str:
+    """The audit event id of one version of an item's statement list (see ``statements``)."""
+    return "dc-item-statements-" + _sha([tenant_id, project_id, study_id, item_id, version])
+
+
+def _has_statement_list(db: Any, record: ProjectRecord, study: StudyState, item_id: Any) -> bool:
+    event_id = statement_set_event_id(record.tenant_id, record.project_id, study.study_id, item_id, 1)
+    return db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (event_id,)).fetchone() is not None
+
+
 def evaluate_option(
     principal: Principal | None,
     request: OptionRequest,
@@ -195,6 +205,7 @@ def evaluate_option(
     grants: tuple[InputGrant, ...] = (),
     now: datetime | None = None,
     evidence_hash: str | None = None,
+    labels_required: bool = False,
 ) -> GateResult:
     """Evaluate every check and return all failures. Pure apart from calling the snapshot probe."""
     if not isinstance(request, OptionRequest) or not isinstance(request.option, Option):
@@ -211,11 +222,15 @@ def evaluate_option(
         fail("study_state_invalid")
     if not _text(request.event_id):
         fail("event_missing")
+    elif request.event_id != request.event_id.strip() or not request.event_id.isprintable():
+        fail("event_id_not_exact")  # a padded id would name no item's recorded statements
     if not _text(request.reason):
         fail("reason_missing")
 
     # -- evidence view --------------------------------------------------------
     viewed = request.viewed_evidence_hash
+    if labels_required and evidence_hash is None and request.option in EVIDENCE_DECIDING_OPTIONS:
+        fail("item_labels_required")
     if evidence_hash is None:
         if viewed is not None:
             fail("evidence_not_supplied")  # the person's view cannot be checked, so it is not ignored
@@ -385,7 +400,21 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
     """
     if audit is None:
         raise DecisionCellError("an audit writer is required")
-    result = evaluate_option(principal, request, **context)
+    if "labels_required" in context:
+        raise DecisionCellError("whether labels are required is read from the audit chain, not supplied")
+    # An item with a recorded statement list may be decided only on its labels.
+    db = getattr(getattr(audit, "chain", audit), "db", None)
+    record, study = context.get("record"), context.get("study")
+    unlabelled = (db is not None and context.get("evidence_hash") is None
+                  and isinstance(request, OptionRequest) and request.option in EVIDENCE_DECIDING_OPTIONS
+                  and isinstance(record, ProjectRecord) and isinstance(study, StudyState))
+    labels_required = False
+    if unlabelled:
+        try:
+            labels_required = _has_statement_list(db, record, study, request.event_id)
+        except Exception as exc:
+            raise DecisionCellError("the item's statement list could not be checked") from exc
+    result = evaluate_option(principal, request, labels_required=labels_required, **context)
     event = {
         "event_id": f"decision-cell-{uuid.uuid4().hex}",
         "event_type": "decision_cell_option",
@@ -413,10 +442,18 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
         if _protection.ANCHOR_REQUIRED or in_transaction is not None:
             from agora.audit_anchor import require_anchored
             writer = require_anchored(audit)
-        if in_transaction is None:
+        commit_check = in_transaction
+        if unlabelled and result.executable and hasattr(writer, "anchors"):
+            def commit_check(tx: Any) -> None:
+                # A list recorded after the check above must not be passed by.
+                if _has_statement_list(tx, record, study, request.event_id):
+                    raise DecisionCellError("the item gained a statement list; submit the choice with its labels")
+                if in_transaction is not None:
+                    in_transaction(tx)
+        if commit_check is None:
             writer.append(event)
         else:
-            writer.append(event, in_transaction=in_transaction)
+            writer.append(event, in_transaction=commit_check)
     except DecisionCellError:
         raise
     except Exception as exc:
