@@ -50,7 +50,7 @@ Property values are left out of `repr`. They are not otherwise protected: attrib
 ## 4. Limits
 
 - **A shape check, not proof of origin.** `from_instance` accepts any dictionary that fits. It does not authenticate it, apply policy or consult the audit chain. Read data through the ontology library's checked calls.
-- **The pack is not checked per row.** An instance dictionary carries no pack fingerprint, so a row from another pack with the same type ID and version and a fitting shape is accepted. The caller passes `PACK_FINGERPRINT` to store calls.
+- **The pack is not checked per row.** An instance dictionary carries no pack fingerprint, so a row from another pack with the same type ID and version and a fitting shape is accepted. The caller passes `PACK_FINGERPRINT` to store calls; the [read interface](ONTOLOGY_READ_INTERFACE.md) does this.
 - **Precision and scale** of decimals are not checked.
 - **Generator input is untrusted.** Pack text reaches the output only as ASCII-escaped literals or validated names; names, descriptions and units are not written out. Tests cover a set of hostile strings, not every possible one.
 - **Compatibility.** There is no compatibility promise for the generated code yet. `GENERATOR_VERSION` marks its form; pack changes are covered by [ONTOLOGY_COMPATIBILITY.md](ONTOLOGY_COMPATIBILITY.md).
