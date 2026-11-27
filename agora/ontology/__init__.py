@@ -1,6 +1,7 @@
 """Versioned domain ontology contracts."""
 
 from ..identity import stable_record_key
+from .actions import ActionProposal, propose_action, recheck_action_proposal
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
 from .registry import (
@@ -20,6 +21,7 @@ from .store import OntologyObjectStore
 
 __all__ = [
     "SENSITIVITY_LEVELS",
+    "ActionProposal",
     "ActionType",
     "DataBinding",
     "IdentityBinding",
@@ -36,6 +38,8 @@ __all__ = [
     "load_domain_pack",
     "materialize_instances",
     "parse_domain_pack",
+    "propose_action",
+    "recheck_action_proposal",
     "stable_record_key",
     "validate_binding",
 ]
