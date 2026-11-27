@@ -53,10 +53,10 @@ class Option(str, Enum):
 MEMBER_OPTIONS = frozenset({Option.IGNORE, Option.HOLD, Option.COMPARE, Option.ESCALATE})
 RUN_OPTIONS = frozenset({Option.CONTINUE, Option.FORK_FROM_EVENT, Option.FORK_FROM_EARLIER,
                          Option.RERUN_FROM_START})
-# Branches executed per option: the spec prices a fork as two branches (with and without the event).
 # Options that decide something about the event on its evidence. HOLD defers, COMPARE looks and ESCALATE
 # asks, so a view that has since changed does not block those.
 EVIDENCE_DECIDING_OPTIONS = frozenset({Option.IGNORE, Option.CHANGE_INPUTS}) | RUN_OPTIONS
+# Branches executed per option: the spec prices a fork as two branches (with and without the event).
 _BRANCHES = {Option.CONTINUE: 1, Option.FORK_FROM_EVENT: 2, Option.FORK_FROM_EARLIER: 2,
              Option.RERUN_FROM_START: 1}
 
