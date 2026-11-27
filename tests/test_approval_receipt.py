@@ -138,9 +138,9 @@ def test_a_clock_without_a_timezone_is_refused():
                                      expected=SCOPE, allow_test_keys=True)
 
 
-def test_nothing_else_in_the_package_uses_statements_yet():
-    """The documents say nothing calls this. Whoever wires it in must update them and this test."""
+def test_only_the_gate_and_ontology_admission_use_statements():
+    """Statements are checked by the receipt gate and required by ontology admission, nowhere else."""
     package = Path(ap.__file__).resolve().parents[1]
-    users = [p.name for p in package.rglob("*.py")
-             if p.name != "approval_receipt.py" and "approval_receipt" in p.read_text(encoding="utf-8")]
-    assert users == []
+    users = sorted(p.relative_to(package).as_posix() for p in package.rglob("*.py")
+                   if p.name != "approval_receipt.py" and "approval_receipt" in p.read_text(encoding="utf-8"))
+    assert users == ["security/receipt_gate.py"]

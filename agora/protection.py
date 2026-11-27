@@ -14,6 +14,8 @@ POLICY_REQUIRED = True
 ANCHOR_REQUIRED = True
 LEGACY_APPROVE_ENABLED = False
 PRINCIPAL_BOUND_REQUIRED = True
+# Admitting an approved ontology action requires a signed approval statement verified by a receipt gate.
+SIGNED_APPROVAL_REQUIRED = True
 # Governed enforce_policy() rejects any policy callable that is not a
 # BoundPolicy produced from an adapter-issued Principal. Test-only relaxation
 # via tests/conftest.py; no env var or CLI switch.

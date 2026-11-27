@@ -84,6 +84,12 @@ An admission records that one simulation may start. Nothing here starts or retri
 - Policy decisions use the object store's existing fixed purpose and retention labels. The caller's `purpose` and `retention` apply to the source reads.
 - If appending the audit event fails, no proposal is returned.
 
+## Signed approval at admission
+
+Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`), `admit_approved_action` also needs a `SignedApproval`: a signed statement and the `ReceiptGate` that checks it. The statement is verified with keys from the gate's newest accepted, fresh key list, and must name this gate's tenant and release, the project, the proposal digest, the proposer from the proposal and the approver the chain recorded. Those values come from the caller's own chain and store, never from the statement. A statement lasts at most five minutes, is checked again at the write, and is not single-use itself: the one-use rule still comes from the chain's final event. A statement that was supplied is checked even when the flag is off.
+
+Limits: the proposal digest and the approver are read from the same local chain the admission writes to, so someone who can rewrite that chain can still forge both; the statement adds a second root of trust (the issuer's key), not protection against a signer whose key is stolen. No issuer service exists; tests sign with a public test key. Nothing yet requires the statement at decision time, only at admission.
+
 ## Not yet built (next O2 slices)
 
-Requiring a signed statement at admission (the [format and verifier](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) exist in `agora/security/approval_receipt.py`; nothing calls them), a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+A stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).

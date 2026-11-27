@@ -27,6 +27,7 @@ from typing import Any, Callable, Iterator, Mapping
 from agora.audit_anchor import AnchoredAuditChain, open_anchored_audit
 from agora.pathsafe import read_stable_bytes
 from agora.security import key_list as kl
+from agora.security import approval_receipt as ap
 from agora.security import receipt_ledger as ledger
 from agora.security import signed_receipt as sr
 
@@ -38,6 +39,7 @@ _CONFIG_FIELDS = {"type", "v", "tenant", "release_id", "key_mode", "root_public"
                   "audit_db", "audit_anchor", "chain_id"}
 WORKER_FIELDS = ("tenant", "release_id")
 REQUEST_FIELDS = tuple(name for name in sr.SCOPE_FIELDS if name not in WORKER_FIELDS)
+APPROVAL_REQUEST_FIELDS = tuple(name for name in ap.SCOPE_FIELDS if name not in WORKER_FIELDS)
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,27 @@ class ReceiptGate:
         self._key_list = accepted
         return accepted.list_version
 
+    def verify_approval(self, envelope: Mapping[str, Any], *, request: Mapping[str, str]) -> dict[str, Any]:
+        """Verify a signed approval statement for one proposal, or raise ``sr.ReceiptError``. Consumes nothing.
+
+        Keys come only from the newest accepted, fresh key list in this store; the tenant and release come
+        from this worker's configuration. The request must be derived by the caller from its own chain
+        (the proposal digest it is about to admit, the proposer and approver it found there), never from
+        the statement. Not single-use: the same statement verifies again until it expires.
+        """
+        if not isinstance(request, Mapping) or set(request) != set(APPROVAL_REQUEST_FIELDS):
+            raise sr.ReceiptError("BAD_REQUEST", "request fields must be exactly " + ",".join(APPROVAL_REQUEST_FIELDS))
+        scope = dict(request)
+        if set(scope) != set(APPROVAL_REQUEST_FIELDS) or not all(isinstance(v, str) for v in scope.values()):
+            raise sr.ReceiptError("BAD_REQUEST", "request values must be strings")
+        scope.update(tenant=self._config.tenant, release_id=self._config.release_id)
+        if self._key_list is None:
+            raise sr.ReceiptError("KEY_LIST_NOT_LOADED", "load a signed key list before verifying")
+        keys = kl.current_keys(self._key_list, tenant=self._config.tenant, audit=self._audit,
+                               clock=self._clock, monotonic=self._monotonic)
+        return ap.verify_approval_statement(
+            envelope, keys=keys, now=self._clock(), expected=scope, allow_test_keys=self._allow_test_keys)
+
     def admit(self, envelope: Mapping[str, Any], *, request: Mapping[str, str]) -> ledger.AdmittedReceipt:
         """Admit one receipt for one request, or raise ``sr.ReceiptError``. Do not act on any exception."""
         if not isinstance(request, Mapping) or set(request) != set(REQUEST_FIELDS):
@@ -192,4 +215,4 @@ def open_receipt_gate(config_path: str | Path, *, clock: Callable[[], datetime],
         manager.__exit__(None, None, None)
 
 
-__all__ = ["GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]
+__all__ = ["APPROVAL_REQUEST_FIELDS", "GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]
