@@ -119,8 +119,8 @@ def test_a_document_naming_a_different_proposer_is_inconsistent(world, monkeypat
     from agora.ontology import states
     real = states._derive
 
-    def other(digest, events, now, lifetime):
-        entry = real(digest, events, now, lifetime)
+    def other(*args):
+        entry = real(*args)
         return {**entry, "proposed_by": "someone-else"}
 
     monkeypatch.setattr(states, "_derive", other)

@@ -279,6 +279,7 @@ def propose_action(
         "subject_id": document["proposed_by"],
         "policy_version": document["policy_version"],
         "resource_ids": [*resource_ids, proposal.digest],
+        "proposal_sensitivity": document["sensitivity"],
         "reason": "proposal_recorded_not_executed",
     })
     return proposal
