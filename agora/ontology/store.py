@@ -1839,7 +1839,8 @@ class OntologyObjectStore:
             resolved_destination.relative_to(root)
             if resolved_destination == self.path.resolve():
                 raise OntologyError("backup destination cannot be the live ontology database")
-            if resolved_destination.name.lower().endswith(_SIDECAR_SUFFIXES):
+            # Windows drops trailing dots and spaces, so "x-wal." would create "x-wal".
+            if resolved_destination.name.rstrip(". ").lower().endswith(_SIDECAR_SUFFIXES):
                 raise OntologyError("backup destination cannot use a SQLite sidecar file name")
             require_safe_path(destination.parent)
             require_safe_path(destination)

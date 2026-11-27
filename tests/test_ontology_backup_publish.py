@@ -70,6 +70,8 @@ def test_a_second_backup_to_the_same_path_does_not_share_the_first_ones_temporar
 @pytest.mark.parametrize("name", [
     "ontology.sqlite3-wal", "ontology.sqlite3-shm", "ontology.sqlite3-journal",
     "tabular.sqlite3-journal", "ontology.sqlite3-WAL",
+    # Windows creates these as the plain sidecar name.
+    "ontology.sqlite3-wal.", "ontology.sqlite3-journal ", "ontology.sqlite3-SHM. .",
 ])
 def test_a_sqlite_sidecar_name_is_refused(env, name):
     destination = env["project"] / "data" / name
