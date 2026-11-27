@@ -15,6 +15,10 @@ from agora.decision_cell import (
     open_response_window, respond_to_item, sweep_response_windows, write_project_record,
 )
 from agora.decision_cell import UNREVIEWED_EVENT_PENDING, unreviewed_items
+from agora.decision_cell import (
+    Source, StatementEvidence, item_evidence, load_item_statements, register_item_statements,
+)
+from agora.decision_cell.options import EVIDENCE_DECIDING_OPTIONS
 from agora.decision_cell import response_window as rw
 from agora.principal import SyntheticFixtureAdapter
 
@@ -24,6 +28,8 @@ LIMIT = timedelta(minutes=15)
 LATE = T0 + LIMIT + timedelta(seconds=30)
 APPROVED = "a" * 64
 STUDY = StudyState("s1", 3)
+WORDS = "the port closed on 27 November"
+STATEMENTS = (StatementEvidence("st1", WORDS, (Source("a", "owner-a", "origin-a", content_hash="b" * 64),)),)
 
 
 def _fx(subject, roles=("approver",), **kw):
@@ -57,7 +63,14 @@ def ids(item="n1", study="s1", project="p1"):
     return {"tenant_id": "t1", "project_id": project, "study_id": study, "item_id": item}
 
 
+def listed(audit, **kw):
+    """Record the item's statement list once, as intake would before opening its window."""
+    if load_item_statements(audit=audit, **ids(**kw)) is None:
+        register_item_statements(statements={"st1": WORDS}, expected_version=0, audit=audit, **ids(**kw))
+
+
 def opened(audit, **kw):
+    listed(audit, **kw)
     return open_response_window(**ids(**kw), audit=audit, now=T0)
 
 
@@ -73,8 +86,13 @@ def sweep(audit, now, lookup=lambda study: APPROVED, project="p1"):
 def respond(audit, principal=OWNER, option=Option.IGNORE, now=T0 + timedelta(minutes=2),
             lookup=lambda study: APPROVED, item="n1", **kw):
     due = kw.pop("recheck_at", now + timedelta(hours=1) if option is Option.HOLD else None)
+    viewed = None
+    # A choice that decides on the evidence needs the labels; HOLD and COMPARE keep the plain path.
+    if option in EVIDENCE_DECIDING_OPTIONS and load_item_statements(audit=audit, **ids(item=item)):
+        viewed = item_evidence(statements=STATEMENTS, audit=audit, **ids(item=item)).evidence_hash
+        kw["statements"] = STATEMENTS
     request = OptionRequest(option=option, event_id=item, reason="reviewed", budget_units=0,
-                            recheck_at=due)
+                            recheck_at=due, viewed_evidence_hash=viewed)
     return respond_to_item(principal, request, tenant_id="t1", project_id="p1", study=STUDY,
                            audit=audit, approved_result_hash_for=lookup, now=now, **kw)
 
@@ -112,13 +130,37 @@ def test_a_window_cannot_be_reopened_to_restart_its_clock(audit):
 
 
 def test_a_window_needs_a_recorded_owner(audit):
-    refused("NO_PROJECT_RECORD", lambda: opened(audit, project="unrecorded"))
+    refused("NO_PROJECT_RECORD",
+            lambda: open_response_window(**ids(project="unrecorded"), audit=audit, now=T0))
     assert events(audit, "opened") == []
+
+
+def test_a_window_needs_a_recorded_statement_list(audit):
+    refused("NO_STATEMENT_LIST", lambda: open_response_window(**ids(), audit=audit, now=T0))
+    assert events(audit, "opened") == [] and load(audit) is None
+    assert sweep(audit, LATE) == ()
+    assert opened(audit).status == "OPEN"
+
+
+@pytest.mark.parametrize("other", [{"item": "n2"}, {"study": "s2"}])
+def test_another_items_list_does_not_open_this_window(audit, other):
+    listed(audit, **other)
+    refused("NO_STATEMENT_LIST", lambda: open_response_window(**ids(), audit=audit, now=T0))
+    assert events(audit, "opened") == []
+
+
+def test_a_windowed_item_cannot_be_decided_without_labels(audit):
+    opened(audit)
+    request = OptionRequest(option=Option.IGNORE, event_id="n1", reason="reviewed", budget_units=0)
+    result, window = respond_to_item(OWNER, request, tenant_id="t1", project_id="p1", study=STUDY,
+                                     audit=audit, approved_result_hash_for=lambda s: APPROVED, now=T0)
+    assert result.failures == ("item_labels_required",) and window.status == "OPEN"
+    assert events(audit, "answered") == []
 
 
 @pytest.mark.parametrize("bad", ["", " n1", "n1\n", None])
 def test_ids_must_be_exact(audit, bad):
-    refused("ID_INVALID", lambda: opened(audit, item=bad))
+    refused("ID_INVALID", lambda: open_response_window(**ids(item=bad), audit=audit, now=T0))
 
 
 def test_a_naive_clock_is_refused(audit):
@@ -293,16 +335,16 @@ def test_an_answer_landing_during_a_sweep_wins_and_no_hold_is_written(audit):
 
 def test_a_hold_landing_during_an_in_time_answer_refuses_that_answer(audit, monkeypatch):
     opened(audit)
-    real = rw.request_project_option
+    real = rw.request_labelled_option
 
     def hold_then_judge(*args, **kwargs):
         sweep(audit, LATE)  # a sweeper with a later clock gets in between
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(rw, "request_project_option", hold_then_judge)
+    monkeypatch.setattr(rw, "request_labelled_option", hold_then_judge)
     refused("WINDOW_CHANGED", lambda: respond(audit))
     assert load(audit).status == "HELD" and events(audit, "answered") == []
-    monkeypatch.setattr(rw, "request_project_option", real)
+    monkeypatch.setattr(rw, "request_labelled_option", real)
     assert respond(audit)[1].status == "ANSWERED_AFTER_HOLD"
 
 
@@ -327,7 +369,8 @@ def test_an_unanchored_tail_stops_reads_sweeps_and_answers(audit):
     audit.chain.append({"event_id": "stray"})
     for call in (lambda: load(audit), lambda: sweep(audit, LATE)):
         refused("AUDIT_UNANCHORED", call)
-    refused("AUDIT_UNANCHORED", lambda: respond(audit))
+    # A HOLD takes the plain path, so the helper does not read the statement list first.
+    refused("AUDIT_UNANCHORED", lambda: respond(audit, option=Option.HOLD))
 
 
 @pytest.mark.parametrize("change", [
@@ -546,13 +589,13 @@ def test_a_decision_landing_during_a_lapse_wins_and_no_lapse_is_written(audit, m
 def test_a_lapse_landing_during_an_in_time_decision_refuses_that_decision(audit, monkeypatch):
     opened(audit)
     hold(audit)
-    real = rw.request_project_option
+    real = rw.request_labelled_option
 
     def lapse_then_judge(*args, **kwargs):
         sweep(audit, DUE)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(rw, "request_project_option", lapse_then_judge)
+    monkeypatch.setattr(rw, "request_labelled_option", lapse_then_judge)
     refused("WINDOW_CHANGED", lambda: respond(audit, now=DUE - timedelta(seconds=1)))
     assert load(audit).status == "RECHECK_DUE" and events(audit, "redecided") == []
 
@@ -560,14 +603,14 @@ def test_a_lapse_landing_during_an_in_time_decision_refuses_that_decision(audit,
 def test_two_concurrent_later_decisions_record_one(audit, monkeypatch):
     opened(audit)
     hold(audit)
-    real = rw.request_project_option
+    real = rw.request_labelled_option
 
     def other_decides_first(*args, **kwargs):
-        monkeypatch.setattr(rw, "request_project_option", real)
+        monkeypatch.setattr(rw, "request_labelled_option", real)
         respond(audit, AD.issue("member"), now=T_HOLD + timedelta(minutes=1))
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(rw, "request_project_option", other_decides_first)
+    monkeypatch.setattr(rw, "request_labelled_option", other_decides_first)
     refused("WINDOW_CHANGED", lambda: respond(audit, now=T_HOLD + timedelta(minutes=1)))
     assert load(audit).latest_subject_id == "mia" and len(events(audit, "redecided")) == 1
 
