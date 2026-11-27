@@ -475,6 +475,25 @@ def accept_root_change(
     )
 
 
+def current_keys(
+    key_list: TrustedKeyList, *, tenant: str, audit: AnchoredAuditChain,
+    clock: Callable[[], datetime], monotonic: Callable[[], float],
+) -> dict[str, sr.KeyEntry]:
+    """The keys of the newest accepted, fresh list in this store, for a check that consumes nothing.
+
+    ``admit_receipt_with_key_list`` makes the same two checks inside its transaction; this reads them
+    once, so a statement checked here can be checked again until it expires.
+    """
+    keys = key_list.keys(clock(), monotonic())
+    writer = _writer(audit)
+    try:
+        with writer.anchors.lock():
+            _require_newest(writer.chain.db, tenant, key_list.list_hash)
+    except sqlite3.Error as exc:
+        raise _refuse("KEY_LIST_ERROR", "the accepted history cannot be read") from exc
+    return keys
+
+
 def admit_receipt_with_key_list(
     envelope: Mapping[str, Any], *, key_list: TrustedKeyList, tenant: str, audit: AnchoredAuditChain,
     clock: Callable[[], datetime], monotonic: Callable[[], float], expected: Mapping[str, str],
@@ -493,5 +512,5 @@ def admit_receipt_with_key_list(
     )
 
 
-__all__ = ["RootKey", "TrustedKeyList", "accept_key_list", "accept_root_change", "admit_receipt_with_key_list",
+__all__ = ["RootKey", "TrustedKeyList", "accept_key_list", "accept_root_change", "admit_receipt_with_key_list", "current_keys",
            "fingerprint", "make_key_list", "make_root_change", "verify_key_list", "verify_root_change"]
