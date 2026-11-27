@@ -12,6 +12,8 @@ import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ..jsonl_journal import append_line, reader_lock, writer_lock
+
 
 @dataclass
 class Event:
@@ -28,16 +30,21 @@ class KnowledgeStore:
         self.path = Path(path)
 
     def _all(self) -> list[Event]:
+        with reader_lock(self.path):
+            return self._read()
+
+    def _read(self) -> list[Event]:
+        """Parse the store. The caller holds a reader or writer lock."""
         if not self.path.exists():
             return []
         return [Event(**json.loads(l)) for l in self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     def add(self, event: Event) -> None:
-        if any(e.event_id == event.event_id for e in self._all()):
-            raise ValueError(f"{event.event_id} is already stored")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(asdict(event), sort_keys=True) + "\n")
+        line = json.dumps(asdict(event), sort_keys=True)
+        with writer_lock(self.path):
+            if any(e.event_id == event.event_id for e in self._read()):
+                raise ValueError(f"{event.event_id} is already stored")
+            append_line(self.path, line)
 
     def similar(self, domain: str, features: dict, k: int = 3, before: str | None = None) -> list[tuple[Event, float]]:
         """The k most similar past events in the same domain, with similarity in (0, 1].

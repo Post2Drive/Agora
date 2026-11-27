@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from . import cutoff as cutoff_mod
 from . import events as events_mod
+from .jsonl_journal import append_line, reader_lock, writer_lock
 
 CANDIDATES = "events_candidates.jsonl"
 ATOM = "{http://www.w3.org/2005/Atom}"
@@ -90,10 +91,16 @@ def fetch(url: str, timeout: float = 20) -> str:
 
 def read_candidates(project: str | Path) -> list[dict]:
     f = Path(project) / CANDIDATES
+    with reader_lock(f):
+        return _read_candidate_file(f)
+
+
+def _read_candidate_file(f: Path) -> list[dict]:
+    """Parse the candidates file. The caller holds a reader or writer lock."""
     if not f.exists():
         return []
     out = []
-    for line in f.read_text(encoding="utf-8").splitlines():
+    for line in f.read_text(encoding="utf-8").split("\n"):
         if line.strip():
             try:
                 out.append(json.loads(line))
@@ -108,7 +115,7 @@ def pull(project: str | Path, feeds: list[str], keywords: list[str], *, since: d
     if not [k for k in keywords if k.strip()]:
         raise ValueError("Give at least one keyword to watch for.")
     cut = cutoff_mod.get_cutoff(project)
-    known = {c["id"] for c in read_candidates(project)} | {e["id"] for e in events_mod.read(project)}
+    path = project / CANDIDATES
     added, errors = [], []
     for url in feeds:
         if urlparse(url).scheme not in ("http", "https"):
@@ -120,17 +127,23 @@ def pull(project: str | Path, feeds: list[str], keywords: list[str], *, since: d
             errors.append({"feed": url, "reason": str(e)[:200]})
             continue
         source = urlparse(url).netloc
-        for it in select(items, keywords, since=since, until=until, cutoff=cut):
-            text = it["title"] + (". " + it["summary"] if it["summary"] else "")
-            cid = events_mod._id(text, source)
-            if cid in known:
-                continue
-            known.add(cid)
-            cand = {"id": cid, "text": text[:1500], "source": source, "url": it["url"],
-                    "published": it["published"], "feed": url}
-            with (project / CANDIDATES).open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(cand, ensure_ascii=False) + "\n")
-            added.append({"id": cid, "published": it["published"], "text": text[:120]})
+        matches = select(items, keywords, since=since, until=until, cutoff=cut)
+        if not matches:
+            continue
+        # the feed was fetched outside the lock; what is already known is read inside it
+        with writer_lock(path):
+            known = ({c["id"] for c in _read_candidate_file(path)}
+                     | {e["id"] for e in events_mod.read(project)})
+            for it in matches:
+                text = it["title"] + (". " + it["summary"] if it["summary"] else "")
+                cid = events_mod._id(text, source)
+                if cid in known:
+                    continue
+                known.add(cid)
+                cand = {"id": cid, "text": text[:1500], "source": source, "url": it["url"],
+                        "published": it["published"], "feed": url}
+                append_line(path, json.dumps(cand, ensure_ascii=False))
+                added.append({"id": cid, "published": it["published"], "text": text[:120]})
     return {"added": added, "errors": errors}
 
 
