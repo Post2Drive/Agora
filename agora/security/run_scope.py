@@ -10,10 +10,15 @@ admit a run whose rows, mapping or scenario had been changed. For purpose ``gove
 The worker never takes request fields from a caller. ``admit_governed_run`` copies the inputs once, derives
 every request field from that copy, admits through the ``ReceiptGate`` and returns the same copy to be run.
 
-Engine use: ``Simulation(signed_input=...)`` can START a run through this admission; resume is refused, and the
-CLI and web app do not use it. Calling this module alone makes no run use the returned scenario. Not bound by the action: the model
-configuration override, the knowledge graph, the reply cache, earlier run state, and the engine code (release
-attestation is not built). There is no production identity adapter; only the synthetic fixture issuer exists.
+A resume is a different action (purpose ``governed_resume.v1``): it names the start action, the admission that
+started the run, the admission before this one, and the committed checkpoint it continues from.
+
+Engine use: ``Simulation(signed_input=...)`` can START a run through this admission. The engine refuses every
+resume and does not call the resume functions yet; the CLI and web app use neither. Calling this module alone
+makes no run use the returned scenario. Not bound by the start action: the model configuration override, the
+knowledge graph, the reply cache, earlier run state, and the engine code (release attestation is not built). A
+resume action also names the committed state and reply cache; it does not bind the engine code. There is no
+production identity adapter; only the synthetic fixture issuer exists.
 Not a boundary against code in the same process.
 """
 from __future__ import annotations
@@ -38,6 +43,9 @@ from agora.security import signed_receipt as sr
 
 PURPOSE = "governed_run.v1"
 ACTION_DOMAIN = "agora.governed-run-action.v1"
+RESUME_PURPOSE = "governed_resume.v1"
+RESUME_ACTION_DOMAIN = "agora.governed-resume-action.v1"
+NO_REPLY_CACHE = "none"
 _SENSITIVITY_ORDER = ("public", "internal", "personal", "sensitive")
 
 
@@ -171,6 +179,57 @@ def describe_run(*, package: Mapping[str, Any], mapping: Mapping[str, Any], base
                           derived, projection)
 
 
+@dataclass(frozen=True)
+class Checkpoint:
+    """The committed point a resume continues from. The worker MUST read every value from its own run and audit
+    stores; values copied from the requester or the receipt would make the scope check compare a claim with
+    itself. ``previous_receipt_sha256`` is the latest admission for this run: the start receipt for a first resume.
+    ``reply_cache_sha256`` is None only for a run whose scenario keeps no reply cache."""
+
+    start_receipt_sha256: str
+    previous_receipt_sha256: str
+    committed_round: int
+    state_sha256: str
+    reply_cache_sha256: str | None
+
+
+def _checkpoint_fields(checkpoint: Checkpoint, rounds: int) -> dict:
+    if type(checkpoint) is not Checkpoint:
+        raise _refuse("a resume needs a Checkpoint")
+    values = {field.name: getattr(checkpoint, field.name) for field in dataclasses.fields(Checkpoint)}  # one read
+    committed = values["committed_round"]
+    if type(committed) is not int or committed < 0:
+        raise _refuse("committed_round must be a whole number from 0: there is nothing to resume before a commit")
+    if committed >= rounds - 1:
+        raise _refuse("no round is left to run after this checkpoint")
+    hashes = ["start_receipt_sha256", "previous_receipt_sha256", "state_sha256"]
+    if values["reply_cache_sha256"] is not None:
+        hashes.append("reply_cache_sha256")
+    for name in hashes:
+        value = values[name]
+        if type(value) is not str or not sr._HASH.match(value):
+            raise _refuse(f"{name} must be sha256: followed by 64 lowercase hex digits")
+    if values["reply_cache_sha256"] is None:
+        values["reply_cache_sha256"] = NO_REPLY_CACHE
+    return values
+
+
+def describe_resume(*, package: Mapping[str, Any], mapping: Mapping[str, Any], base_scenario: Scenario,
+                    project_id: str, subject_id: str, checkpoint: Checkpoint) -> RunDescription:
+    """Derive the receipt scope of continuing one run from one checkpoint. Reads nothing else, writes nothing.
+
+    The inputs are derived again, exactly as for the start, so a changed row, mapping or scenario gives another
+    ``run_action_sha256``. This function cannot tell whether those inputs started this run, or whether the
+    checkpoint is true: the caller compares the first with the run's stored provenance and reads the second.
+    """
+    start = describe_run(package=package, mapping=mapping, base_scenario=base_scenario, project_id=project_id,
+                         subject_id=subject_id)
+    action = {"domain": RESUME_ACTION_DOMAIN, "run_action_sha256": start.request["manifest_hash"],
+              **_checkpoint_fields(checkpoint, start._scenario.rounds)}
+    request = {**start.request, "manifest_hash": _digest(action), "purpose": RESUME_PURPOSE}
+    return dataclasses.replace(start, request=MappingProxyType(request), action=MappingProxyType(action))
+
+
 def _highest_sensitivity(package: Mapping[str, Any]) -> str | None:
     """The highest level any row declares; None (which policy denies) if any level is unknown."""
     highest = 0
@@ -192,12 +251,34 @@ def admit_governed_run(gate: rg.ReceiptGate, envelope: Mapping[str, Any], *, pri
     the gate's tenant and allowed ``simulation_input`` on this project. A signed receipt does not widen what
     the principal may do. A receipt is single use: starting again needs a new one.
     """
+    _require_admission_types(gate, principal)
+    run = describe_run(package=package, mapping=mapping, base_scenario=base_scenario, project_id=project_id,
+                       subject_id=principal.subject_id)
+    return _admit(gate, envelope, principal, project_id, run)
+
+
+def admit_governed_resume(gate: rg.ReceiptGate, envelope: Mapping[str, Any], *, principal: Principal,
+                          package: Mapping[str, Any], mapping: Mapping[str, Any], base_scenario: Scenario,
+                          project_id: str, checkpoint: Checkpoint) -> AdmittedRun:
+    """Admit one signed resume receipt for exactly these inputs and this checkpoint. Refusals, the principal rule
+    and single use are as for ``admit_governed_run``. Admission does not continue anything, and it does not check
+    the checkpoint against any store: see ``Checkpoint``.
+    """
+    _require_admission_types(gate, principal)
+    run = describe_resume(package=package, mapping=mapping, base_scenario=base_scenario, project_id=project_id,
+                          subject_id=principal.subject_id, checkpoint=checkpoint)
+    return _admit(gate, envelope, principal, project_id, run)
+
+
+def _require_admission_types(gate: rg.ReceiptGate, principal: Principal) -> None:
     if type(gate) is not rg.ReceiptGate:
         raise _refuse("admission needs a ReceiptGate")
     if type(principal) is not Principal:
         raise sr.ReceiptError("PRINCIPAL_REFUSED", "principal_missing")
-    run = describe_run(package=package, mapping=mapping, base_scenario=base_scenario, project_id=project_id,
-                       subject_id=principal.subject_id)
+
+
+def _admit(gate: rg.ReceiptGate, envelope: Mapping[str, Any], principal: Principal, project_id: str,
+           run: RunDescription) -> AdmittedRun:
     level = _highest_sensitivity(run._package)
     resource = {"project_id": project_id, "tenant_id": gate.tenant, "source_role": "scenario_input",
                 "source_sensitivity": level, "target_sensitivity": level,
@@ -211,5 +292,6 @@ def admit_governed_run(gate: rg.ReceiptGate, envelope: Mapping[str, Any], *, pri
     return AdmittedRun(run, gate.admit(envelope, request=dict(run.request)))
 
 
-__all__ = ["ACTION_DOMAIN", "PURPOSE", "AdmittedRun", "RunDescription", "admit_governed_run", "describe_run",
-           "plain_copy", "scenario_digest"]
+__all__ = ["ACTION_DOMAIN", "NO_REPLY_CACHE", "PURPOSE", "RESUME_ACTION_DOMAIN", "RESUME_PURPOSE", "AdmittedRun",
+           "Checkpoint", "RunDescription", "admit_governed_resume", "admit_governed_run", "describe_resume",
+           "describe_run", "plain_copy", "scenario_digest"]
