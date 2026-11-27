@@ -3,7 +3,8 @@
 ``approvals.admit_approved_action`` uses an approval once. This module records what the caller says
 happened next: ``succeeded`` or ``failed``, with the digest of the caller's result, once per
 proposal. It runs nothing, so it does not show that a simulation ran, that the digest is of a real
-result, or that nothing else was done with the admission.
+result, or that nothing else was done with the admission. ``runner.run_admitted_simulation`` computes
+the digest itself; once it has started a run, a hand-reported outcome is refused.
 
 The admission is read again from the chain. The dictionary ``admit_approved_action`` returned is
 not an input.
@@ -31,6 +32,14 @@ _ADMITTED_TYPE = "ontology_action_admitted"
 _STATUSES = {"succeeded": "ontology_action_simulation_succeeded",
              "failed": "ontology_action_simulation_failed"}
 _ALREADY = "this admission already has an outcome"
+# Written by ``runner`` before it calls a simulator.
+_RUN_PREFIX = "ontology-action-run-"
+_RUN_OWNS = "a simulation runner owns this admission's outcome; it cannot be reported by hand"
+
+
+def _has_event(db: Any, event_id: str) -> bool:
+    """Lookup on the chain's own connection, for use inside an append transaction."""
+    return db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (event_id,)).fetchone() is not None
 
 
 def _admission(writer: Any, fields: dict[str, Any], digest: str,
@@ -77,6 +86,12 @@ def record_simulation_outcome(
     event_id = _OUTCOME_PREFIX + expected_digest.split(":", 1)[1]
     if writer.find_event(event_id) is not None:
         raise OntologyError(_ALREADY)
+    run_id = _RUN_PREFIX + expected_digest.split(":", 1)[1]
+
+    def no_run_started(db: Any) -> None:
+        if _has_event(db, run_id):
+            raise OntologyError(_RUN_OWNS)
+
     try:
         writer.append({
             "event_id": event_id,
@@ -88,7 +103,7 @@ def record_simulation_outcome(
             "resource_ids": resource_ids,
             "result_hash": result_digest,
             "reason": "policy_allow",
-        })
+        }, in_transaction=no_run_started)
     except AuditReplayError as exc:
         raise OntologyError(_ALREADY) from exc
     except AnchorWriteError as exc:

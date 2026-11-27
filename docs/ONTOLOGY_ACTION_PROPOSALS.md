@@ -1,6 +1,6 @@
-# Ontology action proposals (O2, first four slices)
+# Ontology action proposals (O2, first five slices)
 
-**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`, `agora/ontology/outcomes.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, ends an approval by withdrawal or by one admission for simulation, and records the outcome the admitter reports for that admission; it does not simulate, queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
+**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`, `agora/ontology/outcomes.py`, `agora/ontology/runner.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, ends an approval by withdrawal or by one admission for simulation, and records one outcome for that admission, either as the admitter reports it or from a caller-supplied simulator that the runner calls once; it ships no simulator and does not queue, execute actions or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
 
 ## What a proposal binds
 
@@ -59,7 +59,7 @@ An admission records that one simulation may start. Nothing here starts or retri
 
 ## Simulation outcome (O2, fourth slice)
 
-`record_simulation_outcome(store, document, digest, status, result_digest, ...)` records, once, how the simulation allowed by an admission ended. It runs nothing: this is the admitter's report.
+`record_simulation_outcome(store, document, digest, status, result_digest, ...)` records, once, how the simulation allowed by an admission ended. It runs nothing: this is the admitter's report. It is refused once a [runner](#simulation-runner-o2-fifth-slice) has started a run for that admission.
 
 - New policy operation `ontology_action_outcome`: under the central roles only `operator` has it. It is decided before the chain is read, at the proposal's own classification.
 - `status` is `succeeded` or `failed`. `result_digest` is the `sha256:` digest of the caller's result or failure report. The caller keeps the content; the chain holds only the digest.
@@ -68,6 +68,21 @@ An admission records that one simulation may start. Nothing here starts or retri
 - The objects and sources are not re-read, and the approval's age is not checked again. A later change or expiry therefore cannot hide an outcome.
 - If the event is appended but its anchor cannot be written, the call raises and the anchored writer refuses further appends until reconciled.
 - If the admitter cannot record (lost role, lost identity, crash with no report), the admission stays without an outcome. That shows only that none was recorded, not that nothing ran.
+
+## Simulation runner (O2, fifth slice)
+
+`run_admitted_simulation(store, document, digest, simulator=..., simulator_id=..., ...)` (`agora/ontology/runner.py`) calls a simulator once for an admitted action and computes the result digest itself.
+
+- Needs `ontology_action_outcome` and read authority, and the identity that admitted the action. The admission is read from the chain, with the same checks as for a reported outcome.
+- The run must start within `RUN_START_WINDOW_SECONDS` (one hour) of the admission, and the proposal's objects and sources must still match (`recheck_action_proposal`). The window is checked again inside the start event's append transaction.
+- Before the simulator is called, `ontology_action_simulation_started` is appended under the event ID `ontology-action-run-<digest>`. The chain refuses a repeated ID, so an admission gets one run, also when callers race, the process dies or the simulator fails. There is no retry; a new run needs a new proposal digest, approval and admission.
+- Once a run has started, a hand-reported outcome is refused. Once an outcome exists, no run can start. Each rule is checked inside the other event's append transaction.
+- The simulator receives its own copy of the proposal document and must return exactly JSON. The runner builds the record `agora.ontology.simulation_result/v1` (proposal digest, simulator ID, status, and the output or the failure), returns its canonical text and records that text's SHA-256 as the outcome. The caller keeps the text; hashing it again must give the chain's `result_hash`.
+- A simulator that raises, or returns something else or a record over 16 MiB, gives a recorded `failed` outcome. Only the kind of failure and the exception's class name are kept, never its message. An interrupt or exit is not caught: the run stays started with no outcome.
+- Both events carry `simulator_id_hash`, a hash of the name the caller gave.
+- A start event under that ID is what separates a digest the runner computed from one a caller reported.
+
+What the runner does not show: the simulator is caller-supplied Python in the same process, with no sandbox, time limit or network restriction. The ID is a name, not a fingerprint of its code. Nothing shows that it only simulates, that the same inputs give the same output, or that it did nothing else. No simulator ships with it, and it does not call the engine in `agora/sim`. Nothing prevents other code from acting without the runner.
 
 ## Limits
 
@@ -92,4 +107,4 @@ Limits: the proposal digest and the approver are read from the same local chain 
 
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+A stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, an isolated runner with registered simulators identified by their code, and anything that enforces that only a simulation follows an admission.

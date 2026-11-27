@@ -22,10 +22,12 @@ from .registry import (
     SourceBinding,
     parse_domain_pack,
 )
+from .runner import RUN_START_WINDOW_SECONDS, run_admitted_simulation
 from .store import OntologyObjectStore
 
 __all__ = [
     "APPROVAL_LIFETIME_SECONDS",
+    "RUN_START_WINDOW_SECONDS",
     "SENSITIVITY_LEVELS",
     "ActionProposal",
     "ActionType",
@@ -49,6 +51,7 @@ __all__ = [
     "propose_action",
     "recheck_action_proposal",
     "record_simulation_outcome",
+    "run_admitted_simulation",
     "stable_record_key",
     "validate_binding",
     "verify_approved_action",
