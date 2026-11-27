@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import types
+import warnings
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -82,6 +83,15 @@ def test_shipped_packs_generate_the_same_loadable_module_twice(path):
     module = _load(source)
     assert module.PACK_FINGERPRINT == pack.fingerprint
     assert set(module.OBJECT_TYPES) == {(item.type_id, item.version) for item in pack.object_types}
+
+
+def test_neither_the_generator_nor_its_output_raises_a_compile_warning():
+    generator = (ROOT / "agora" / "ontology" / "typed.py").read_text(encoding="utf-8")
+    output = generate_python_types(load_domain_pack(RETAIL / "pack.yaml"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        compile(generator, "typed.py", "exec")
+        compile(output, "output.py", "exec")
 
 
 def test_generated_module_imports_only_the_standard_library():

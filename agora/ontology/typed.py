@@ -72,7 +72,7 @@ from decimal import Decimal as _Decimal
 _RUNTIME = '''\
 _RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
 # The form tabular ingestion stores: no spaces, underscores or exponent.
-_PLAIN_DECIMAL = _re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
+_PLAIN_DECIMAL = _re.compile(r"-?[0-9]+(?:\\.[0-9]+)?")
 
 
 class InstanceError(ValueError):
