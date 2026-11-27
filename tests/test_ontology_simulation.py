@@ -261,3 +261,32 @@ def test_two_outcome_events_for_one_proposal_are_refused(world):
     _forged_outcome(world, proposal, result, event_id="ontology-action-outcome-second")
     with pytest.raises(OntologyError, match="no single recorded outcome"):
         _verify(world, result)
+
+
+def test_a_supplied_digest_is_refused_under_the_protected_defaults_but_the_runner_still_records(world, monkeypatch):
+    from agora import protection
+    proposal = _admitted(world)
+    monkeypatch.setattr(protection, "RUNNER_ONLY_OUTCOMES", True)
+    with pytest.raises(OntologyError, match="run_admitted_simulation"):
+        record_simulation_outcome(world.store, proposal.document, proposal.digest, "succeeded",
+                                  "sha256:" + "a" * 64, policy=RUNNER, audit=world.audit)
+    assert _outcomes(world) == []
+    out = _run(world, proposal)
+    assert out["status"] == "succeeded" and len(_outcomes(world)) == 1
+    assert _verify(world, out["result"])["result_digest"] == out["result_digest"]
+
+
+@pytest.mark.protected_defaults
+def test_the_flag_is_on_under_protected_defaults():
+    from agora import protection
+    assert protection.RUNNER_ONLY_OUTCOMES is True
+
+
+def test_the_shipped_default_is_runner_only():
+    import ast
+    from pathlib import Path
+    from agora import protection
+    tree = ast.parse(Path(protection.__file__).read_text(encoding="utf-8"))
+    values = {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign)
+              for t in n.targets if isinstance(t, ast.Name) and isinstance(n.value, ast.Constant)}
+    assert values["RUNNER_ONLY_OUTCOMES"] is True and values["SIGNED_APPROVAL_REQUIRED"] is True
