@@ -8,6 +8,7 @@ from .approvals import (
 )
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
+from .outcomes import record_simulation_outcome
 from .registry import (
     SENSITIVITY_LEVELS,
     ActionType,
@@ -47,6 +48,7 @@ __all__ = [
     "parse_domain_pack",
     "propose_action",
     "recheck_action_proposal",
+    "record_simulation_outcome",
     "stable_record_key",
     "validate_binding",
     "verify_approved_action",
