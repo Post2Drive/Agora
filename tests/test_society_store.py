@@ -263,3 +263,61 @@ def test_attached_store_shares_the_run_transaction(tmp_path):
     reopened = SocietyStore.attach(conn)
     assert reopened.thread(c)[0]["text"] == "hi"
     conn.close()
+
+
+def test_conversation_info_and_unknown(store):
+    g = store.create("group", 1, round=3, topic="street")
+    assert store.conversation(g) == {"conversation_id": g, "kind": "group", "topic": "street", "created_round": 3}
+    with pytest.raises(SocietyError):
+        store.conversation(99)
+
+
+def test_find_open_matches_topic_ignoring_case_and_space_and_only_open(store):
+    store.create("group", 1, round=0, topic="Fuel price")
+    o = store.create("open", 1, round=0, topic="Fuel Price")
+    assert store.find_open("  fuel PRICE ") == o
+    assert store.find_open("other") is None
+    assert store.find_open("") is None
+
+
+def test_conversations_of_lists_kind_members_and_roles(store):
+    g1 = store.create("group", 1, round=0, topic="a")
+    g2 = store.create("group", 2, round=0, topic="b")
+    store.join(g1, 3, round=0)
+    store.join(g2, 3, round=0)
+    store.create("open", 3, round=0, topic="o")
+    mine = store.conversations_of(3, "group")
+    assert [(c["conversation_id"], c["topic"], c["members"], c["role"]) for c in mine] == [
+        (g1, "a", 2, "member"), (g2, "b", 2, "member")]
+    assert store.conversations_of(9, "group") == []
+    assert [c["role"] for c in store.conversations_of(3, "open")] == ["owner"]
+
+
+def test_recent_open_orders_by_activity_then_newest_and_limits(store):
+    a = store.create("open", 1, round=0, topic="a")
+    b = store.create("open", 1, round=0, topic="b")
+    c = store.create("open", 1, round=0, topic="c")
+    store.create("group", 1, round=0, topic="not open")
+    store.post(a, 1, round=1, text="x", reason="r")
+    assert [o["conversation_id"] for o in store.recent_open(3)] == [a, c, b]
+    assert [o["conversation_id"] for o in store.recent_open(2)] == [a, c]
+    with pytest.raises(SocietyError):
+        store.recent_open(0)
+
+
+def test_count_by_kind_and_owner(store):
+    store.create("group", 1, round=0, topic="a")
+    g = store.create("group", 2, round=0, topic="b")
+    store.join(g, 1, round=0)
+    store.create("open", 1, round=0, topic="o")
+    assert store.count("group") == 2 and store.count("open") == 1 and store.count("broadcast") == 0
+    assert store.count("group", owner=1) == 1 and store.count("group", owner=2) == 1
+    assert store.count("group", owner=7) == 0
+
+
+def test_inbox_rows_carry_kind_and_topic(store):
+    g = store.create("group", 1, round=0, topic="street")
+    store.join(g, 2, round=0)
+    store.post(g, 1, round=1, text="hi", reason="r")
+    row = store.inbox(2)[0]
+    assert (row["kind"], row["topic"], row["conversation_id"]) == ("group", "street", g)
