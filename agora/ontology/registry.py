@@ -14,6 +14,14 @@ class OntologyError(ValueError):
     """Raised when an ontology pack violates the registry contract."""
 
 
+class ProposalMismatchError(OntologyError):
+    """The data was read, and it shows that a proposal or the rows it pins no longer hold.
+
+    Raise this only for a positive finding. Anything that could not be read or verified stays a plain
+    OntologyError, because a recorded finding about a proposal cannot be taken back.
+    """
+
+
 SENSITIVITY_LEVELS = frozenset({"public", "internal", "personal", "sensitive"})
 LOGICAL_DATA_TYPES = frozenset({"string", "integer", "decimal", "boolean", "date", "timestamp", "enum", "identifier", "structured_object"})
 _ACTION_GUARDS = {

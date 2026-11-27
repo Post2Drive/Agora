@@ -28,7 +28,9 @@ from .binding import (
     DataBinding, declared_sensitivity, iter_source_object_refs, load_binding, materialize_source_object,
     validate_binding,
 )
-from .registry import OntologyError, OntologyPack, LinkType, pack_document, parse_domain_pack
+from .registry import (
+    OntologyError, OntologyPack, LinkType, ProposalMismatchError, pack_document, parse_domain_pack,
+)
 
 _MAX_LINK_SOURCE_REFS = 100
 _MAX_REPORTED_CONFLICTS = 100
@@ -902,7 +904,7 @@ class OntologyObjectStore:
             or _canonical(instance["source_locator"]) != _canonical(stored_locator)
             or _canonical(instance["property_sensitivity"]) != _canonical(stored_sensitivity)
         ):
-            raise OntologyError("snapshot provenance no longer matches the stored object reference")
+            raise ProposalMismatchError("snapshot provenance no longer matches the stored object reference")
         return instance, pack, binding
 
 
