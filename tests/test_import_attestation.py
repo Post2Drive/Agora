@@ -17,6 +17,8 @@ from agora.ontology.binding import load_binding
 from agora.ontology.registry import pack_document
 from agora.pilot import default_identities
 from agora.principal import SyntheticFixtureAdapter, principal_policy
+from agora import scenario_inputs
+from agora.scenario_inputs import ScenarioInputError, build_scenario_input
 from agora.tabular import (
     TabularIngestError, import_attestation_event_id,
     import_content_attestation, ingest_csv,
@@ -208,7 +210,7 @@ def test_rows_swapped_in_only_while_indexing_are_refused(anchored, monkeypatch):
 
     _swap_around_indexing(monkeypatch,
                           lambda: _forge_consistent_row(project, 3, "two@", "evil@"), restore)
-    with pytest.raises(OntologyError, match="rows changed while they were being indexed"):
+    with pytest.raises(OntologyError, match="rows changed between reading and verification"):
         index(import_id)
     assert _refs(project) == []
 
@@ -321,6 +323,96 @@ def test_known_limit_a_writer_of_both_stores_can_still_forge(anchored):
     assert _indexer(project, audit)(import_id) == 2
 
 
+def _transformation_policy():
+    return {"policy_id": "attestation-transform", "purpose": "customer-support", "retention": "30d",
+            "reviewer": "governance-test", "approved_at": "2026-11-27T00:00:00Z",
+            "audit_reference": "AUD-1", "authorized_property_ids": []}
+
+
+def _scenario(project, import_id, audit, policy=_allow):
+    return build_scenario_input(
+        _binding(), _pack(), project, import_id, policy=policy, audit=audit,
+        transformation_policy=_transformation_policy())
+
+
+def test_scenario_input_is_built_from_a_recorded_import(anchored):
+    project, audit = anchored
+    import_id = _import(project, audit)["import_id"]
+    built = _scenario(project, import_id, audit)
+    assert len(built["instances"]) == 2
+    assert built["manifest"]["import_id"] == import_id
+
+
+def test_scenario_input_refuses_a_consistently_forged_row(anchored):
+    project, audit = anchored
+    import_id = _import(project, audit)["import_id"]
+    _forge_consistent_row(project, 3, "two@", "evil@")
+    with pytest.raises(ScenarioInputError, match="no matching ingest record"):
+        _scenario(project, import_id, audit)
+
+
+def test_scenario_input_refuses_an_import_made_without_a_record(anchored, monkeypatch):
+    project, audit = anchored
+    monkeypatch.setattr(protection, "ANCHOR_REQUIRED", False)
+    import_id = ingest_csv(project, project / "customers.csv", schema(),
+                           data_role="context")["import_id"]
+    monkeypatch.setattr(protection, "ANCHOR_REQUIRED", True)
+    with pytest.raises(ScenarioInputError, match="no matching ingest record"):
+        _scenario(project, import_id, audit)
+
+
+@pytest.mark.parametrize("make_audit", [lambda audit: None, lambda audit: audit.chain])
+def test_protected_scenario_input_requires_an_anchored_writer_before_reading(anchored, make_audit):
+    project, audit = anchored
+    # No snapshot database exists, so any read would report that instead.
+    with pytest.raises(ScenarioInputError, match="requires an anchored audit writer"):
+        _scenario(project, "import-never-made", make_audit(audit))
+
+
+def test_scenario_input_refuses_rows_swapped_in_only_while_reading(anchored, monkeypatch):
+    project, audit = anchored
+    import_id = _import(project, audit)["import_id"]
+    saved = _query(project, "tabular.sqlite3",
+                   "SELECT row_id,payload_json FROM import_rows" + SECOND)[0]
+    real = scenario_inputs.materialize_instances
+
+    def swapped(*args, **kwargs):
+        _forge_consistent_row(project, 3, "two@", "evil@")
+        try:
+            return real(*args, **kwargs)
+        finally:
+            conn = sqlite3.connect(project / "data" / "tabular.sqlite3")
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("UPDATE import_rows SET row_id=?, payload_json=?" + SECOND, saved)
+            conn.commit()
+            conn.close()
+
+    monkeypatch.setattr(scenario_inputs, "materialize_instances", swapped)
+    with pytest.raises(ScenarioInputError, match="rows changed between reading and verification"):
+        _scenario(project, import_id, audit)
+
+
+def test_scenario_input_refuses_a_manifest_swapped_in_for_its_first_read(anchored, monkeypatch):
+    """The package takes its data role from that read, so it must be the recorded one."""
+    project, audit = anchored
+    import_id = _import(project, audit)["import_id"]
+    [(original,)] = _query(project, "tabular.sqlite3", "SELECT manifest_json FROM imports")
+    changed = json.loads(original)
+    changed["data_role"] = "scenario_input"
+    real = scenario_inputs._read_snapshot_metadata
+
+    def swapped(*args):
+        _sql(project, "UPDATE imports SET manifest_json=?", (json.dumps(changed),))
+        try:
+            return real(*args)
+        finally:
+            _sql(project, "UPDATE imports SET manifest_json=?", (original,))
+
+    monkeypatch.setattr(scenario_inputs, "_read_snapshot_metadata", swapped)
+    with pytest.raises(ScenarioInputError, match="manifest changed between reading"):
+        _scenario(project, import_id, audit)
+
+
 @pytest.mark.protected_defaults
 def test_with_production_protections_an_operator_can_import_and_index(tmp_path):
     now = datetime.now(timezone.utc)
@@ -348,3 +440,5 @@ def test_with_production_protections_an_operator_can_import_and_index(tmp_path):
         assert store.materialize_binding(
             pack_fp, binding_fp, import_id, policy=operator, audit=audit,
             purpose="customer-support", retention="30d") == 2
+        built = _scenario(project, import_id, audit, policy=operator)
+        assert len(built["instances"]) == 2

@@ -19,6 +19,7 @@ from typing import Any, Mapping
 from .ontology.binding import DataBinding, declared_sensitivity, materialize_instances
 from .ontology.registry import OntologyError, OntologyPack
 from .ontology.binding import load_binding
+from .ontology.store import require_attested_import, row_ids_digest
 from .policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
 
 
@@ -135,6 +136,11 @@ def build_scenario_input(
 
     When supplied, policy is called as policy("simulation_input", resource)
     before the snapshot database is opened. A policy is mandatory: None is denied (and audited).
+
+    Under the protected defaults ``audit`` must be the anchored writer that holds
+    the import's ingest record: the rows packaged here, and the manifest they are
+    described by, must be the ones recorded at ingest. An import made without a
+    record is refused.
     """
     if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
         raise ScenarioInputError("an explicit import_id is required; latest is not allowed")
@@ -162,6 +168,14 @@ def build_scenario_input(
             raise ScenarioInputError("Policy denied scenario-input construction.") from exc
         except (OntologyError, ValueError) as exc:
             raise ScenarioInputError(str(exc)) from exc
+    if _protection.ANCHOR_REQUIRED:
+        # Lazy import, as in policy_enforcement.
+        from .audit_anchor import require_anchored
+        try:
+            require_anchored(audit)
+        except PermissionError as exc:
+            raise ScenarioInputError(
+                "scenario-input construction requires an anchored audit writer") from exc
     snapshot = _read_snapshot_metadata(project, import_id)
     role = snapshot.get("data_role")
     if role == "sealed_holdout":
@@ -174,6 +188,16 @@ def build_scenario_input(
             purpose=transformation_policy.get("purpose") if isinstance(transformation_policy, Mapping) else None,
             retention=transformation_policy.get("retention") if isinstance(transformation_policy, Mapping) else None,
         )
+        if _protection.ANCHOR_REQUIRED:
+            recorded = require_attested_import(
+                project, import_id, audit,
+                row_ids_digest(instance["row_id"] for instance in instances))
+            # The package takes its role, hashes and source from the first manifest read.
+            if _canonical(recorded) != _canonical(snapshot):
+                raise ScenarioInputError(
+                    "snapshot manifest changed between reading and verification")
+    except ScenarioInputError:
+        raise
     except (OntologyError, ValueError) as exc:
         raise ScenarioInputError(str(exc)) from exc
     instances, redactions = _check_policy(instances, transformation_policy)
