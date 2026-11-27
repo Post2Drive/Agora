@@ -1,6 +1,6 @@
-# Ontology action proposals (O2, first three slices)
+# Ontology action proposals (O2, first four slices)
 
-**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, and ends an approval by withdrawal or by one admission for simulation; it does not queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
+**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`, `agora/ontology/outcomes.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, ends an approval by withdrawal or by one admission for simulation, and records the outcome the admitter reports for that admission; it does not simulate, queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
 
 ## What a proposal binds
 
@@ -55,10 +55,23 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 - **One ending.** Withdrawal (`ontology_action_withdrawn`) and admission (`ontology_action_admitted`) share the event ID `ontology-action-final-<digest>`, so the chain's unique event ID allows one of them, once, including when two writers race.
 - If the ending is appended but its anchor cannot be written, the call raises, the approval is spent, and the anchored writer refuses further appends until reconciled.
 
-An admission records that one simulation may start. Nothing here starts one, records its result, or retries it: a failure after admission leaves the approval spent.
+An admission records that one simulation may start. Nothing here starts or retries one (its reported outcome can be recorded, below): a failure after admission leaves the approval spent.
+
+## Simulation outcome (O2, fourth slice)
+
+`record_simulation_outcome(store, document, digest, status, result_digest, ...)` records, once, how the simulation allowed by an admission ended. It runs nothing: this is the admitter's report.
+
+- New policy operation `ontology_action_outcome`: under the central roles only `operator` has it. It is decided before the chain is read, at the proposal's own classification.
+- `status` is `succeeded` or `failed`. `result_digest` is the `sha256:` digest of the caller's result or failure report. The caller keeps the content; the chain holds only the digest.
+- The admission is read from the chain, not taken from the dictionary `admit_approved_action` returned. There must be a recorded proposal, one approval from someone else, and exactly one ending, which is a well-formed admission by someone other than the approver. The recording identity must be that admitter.
+- The event is `ontology_action_simulation_succeeded` or `ontology_action_simulation_failed` under the event ID `ontology-action-outcome-<digest>`, so an admission has one outcome and it cannot be corrected.
+- The objects and sources are not re-read, and the approval's age is not checked again. A later change or expiry therefore cannot hide an outcome.
+- If the event is appended but its anchor cannot be written, the call raises and the anchored writer refuses further appends until reconciled.
+- If the admitter cannot record (lost role, lost identity, crash with no report), the admission stays without an outcome. That shows only that none was recorded, not that nothing ran.
 
 ## Limits
 
+- An outcome is not evidence that a simulation ran, that the digest belongs to a real result, or that nothing else was done with the admission.
 - `recheck_action_proposal` alone does not authenticate `proposed_by` and `policy_version`; `decide_action_proposal` and `verify_approved_action` check them against the anchored chain. No signature: the chain is a local file, so someone who can rewrite it and its anchor, or run code in the service, can forge a proposal or an approval. A valid digest alone is not an approval.
 - **Row checks on read are unkeyed.** Object reads recompute the stored row ID, so a source row edited under its pinned row ID is refused both before and after a proposal. This is not a signature and does not authenticate the snapshot against the original file; see [the snapshot content checks and their limits](ONTOLOGY_DATA_BINDING.md#snapshot-content-checks-on-read).
 - Cited evidence is checked for existence, import status, row count and the recorded file hash. Row content is not hashed, and the evidence is not judged relevant to the reason.
@@ -73,4 +86,4 @@ An admission records that one simulation may start. Nothing here starts one, rec
 
 ## Not yet built (next O2 slices)
 
-A signed receipt over the digest, a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, and simulation-only application that records an outcome.
+A signed receipt over the digest, a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).

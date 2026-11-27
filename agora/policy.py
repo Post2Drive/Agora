@@ -13,7 +13,7 @@ OPERATIONS = frozenset({
     "import", "binding", "simulation_input", "report_export",
     "decision_approval", "decision_outcome", "reconciliation_repair",
     "ontology_read", "ontology_write", "ontology_action_propose", "ontology_action_decide",
-    "ontology_action_admit", "decision_cell_member",
+    "ontology_action_admit", "ontology_action_outcome", "decision_cell_member",
 })
 SENSITIVITY_RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
 
