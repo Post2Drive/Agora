@@ -103,6 +103,13 @@ The first API is internal to the modular monolith and read-only for source-backe
 
 Queries are parameterized, scoped, paginated, and bounded. Filters name known property IDs and use typed operators validated against PropertyType. Ordering has a stable key tie-break. Returned pages include provenance and effective sensitivity. Unknown fields, unsupported operators, stale fingerprints, missing imports, ambiguous versions, and `latest` are refused.
 
+**Filter values (corrected 28 Nov 2026).** Before this correction, `query_objects` compared decimals, dates and timestamps as their stored text. On a decimal property read from a tabular snapshot, `eq` and `in` with a number matched nothing, and ordering raised an untyped error. Do not rely on a decimal filter result produced before this change. Now:
+
+- `decimal`: the operand is an integer or a plain decimal string (`"12.50"`), compared as an exact number. A float is refused, because it may already have lost digits.
+- `date`: the operand is `YYYY-MM-DD`, compared as a date.
+- `timestamp`: the operand is ISO 8601 with a UTC offset or `Z`, compared as an instant. A time without an offset is refused.
+- Ordering against null is refused. A stored value that cannot be read as its declared type stops the query; it is not treated as a non-match. This check runs while filtering, before the page's ingest-record check, and its message names only the property.
+
 No public REST endpoint or generated SDK is exposed in O1; those belong to O3 after the data and policy contract stabilizes.
 
 ## Governance and failure behavior
