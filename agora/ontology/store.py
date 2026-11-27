@@ -935,6 +935,7 @@ class OntologyObjectStore:
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
         valid_to: str | datetime | None, reason: str, provenance: Mapping[str, Any],
         *, policy: PolicyCallable | None, audit: Any | None, supersedes_link_id: str | None = None,
+        superseded_keys: tuple[tuple, ...] = (),
     ) -> str:
         src = self._canonical_endpoint(source, self.project_id, pack_fingerprint)
         dst = self._canonical_endpoint(target, self.project_id, pack_fingerprint)
@@ -955,11 +956,14 @@ class OntologyObjectStore:
         src_key, dst_key = self._link_key(src), self._link_key(dst)
         resource_ids = [pack_fingerprint, link_type_id, link_type_version, *src_key, *dst_key]
         resource_ids += sorted({import_id for import_id, _, _ in source_refs})
+        if supersedes_link_id:
+            # Replacing a link withdraws it, so the decision also covers that link and its endpoints.
+            resource_ids += [supersedes_link_id, *(part for key in superseded_keys for part in key)]
         self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
         metadata_conn = self._connect()
         try:
             sensitivity = self._endpoint_sensitivity(
-                metadata_conn, self.project_id, pack_fingerprint, [src_key, dst_key])
+                metadata_conn, self.project_id, pack_fingerprint, [src_key, dst_key, *superseded_keys])
         finally:
             metadata_conn.close()
         decision = self._authorize(
@@ -1051,21 +1055,45 @@ class OntologyObjectStore:
         target: Mapping[str, Any], valid_from: str | datetime, valid_to: str | datetime | None,
         reason: str, provenance: Mapping[str, Any], *, policy: PolicyCallable | None, audit: Any | None,
     ) -> str:
-        """Append a correction and retain the original link unchanged."""
+        """Append a correction and retain the original link unchanged.
+
+        The caller needs write authority over the replaced link's endpoints as
+        well as the new ones, because the replaced link stops being active.
+        """
+        _, source_refs = self._parse_assertion(reason, provenance)
+        self._check_link_id(link_id)
+        resource_ids = [pack_fingerprint, link_id]
+        resource_ids += sorted({import_id for import_id, _, _ in source_refs})
+        # Before the lookup, so an unauthorized caller cannot probe which links exist.
+        self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT link_type_id, link_type_version FROM ontology_links WHERE project_id=? AND pack_fingerprint=? AND link_id=?",
+                "SELECT * FROM ontology_links WHERE project_id=? AND pack_fingerprint=? AND link_id=?",
                 (self.project_id, pack_fingerprint, link_id),
             ).fetchone()
             if row is None:
                 raise OntologyError("link to supersede was not found")
             link_type_id, version = row["link_type_id"], row["link_type_version"]
+            keys = self._stored_endpoint_keys(row)
         finally:
             conn.close()
         return self._write_link(
             pack_fingerprint, link_type_id, version, source, target, valid_from, valid_to,
             reason, provenance, policy=policy, audit=audit, supersedes_link_id=link_id,
+            superseded_keys=keys,
+        )
+
+    @staticmethod
+    def _check_link_id(link_id: Any) -> None:
+        if not isinstance(link_id, str) or not link_id.strip() or link_id != link_id.strip():
+            raise OntologyError("link_id must be a non-empty canonical string")
+
+    @staticmethod
+    def _stored_endpoint_keys(row: sqlite3.Row) -> tuple[tuple, ...]:
+        return tuple(
+            tuple(row[side + field] for field in ("_type_id", "_type_version", "_import_id", "_record_key"))
+            for side in ("source", "target")
         )
 
     def retract_link(
@@ -1080,8 +1108,7 @@ class OntologyObjectStore:
         successor does not bring back the link it superseded.
         """
         provenance_json, source_refs = self._parse_assertion(reason, provenance)
-        if not isinstance(link_id, str) or not link_id.strip() or link_id != link_id.strip():
-            raise OntologyError("link_id must be a non-empty canonical string")
+        self._check_link_id(link_id)
         resource_ids = [pack_fingerprint, link_id]
         resource_ids += sorted({import_id for import_id, _, _ in source_refs})
         # Before the lookup, so an unauthorized caller cannot probe which links exist.
@@ -1094,10 +1121,7 @@ class OntologyObjectStore:
             ).fetchone()
             if row is None:
                 raise OntologyError("link to retract was not found")
-            keys = [
-                tuple(row[side + field] for field in ("_type_id", "_type_version", "_import_id", "_record_key"))
-                for side in ("source", "target")
-            ]
+            keys = self._stored_endpoint_keys(row)
             resource_ids += [row["link_type_id"], row["link_type_version"], *keys[0], *keys[1]]
             sensitivity = self._endpoint_sensitivity(
                 metadata_conn, self.project_id, pack_fingerprint, keys)
@@ -1170,6 +1194,8 @@ class OntologyObjectStore:
                 params.extend(self._link_key(endpoint))
         if not include_superseded:
             clauses.append(_ACTIVE_LINK)
+        # Before the query, so the size of a link set is not disclosed without this grant.
+        self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
         conn = self._connect()
         try:
             rows = conn.execute(
@@ -1178,7 +1204,6 @@ class OntologyObjectStore:
             ).fetchall()
             if len(rows) > 100:
                 raise OntologyError("use traverse_links pagination for link sets larger than 100")
-            self._authorize("ontology_read", [pack_fingerprint, link_type_id, link_type_version], policy=policy, audit=audit)
             sensitivities = []
             for row in rows:
                 for side in ("source", "target"):
