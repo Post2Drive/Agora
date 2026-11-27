@@ -315,6 +315,9 @@ def request_project_option(
     """
     if "record" in context or "record_hash" in context:
         raise ProjectRecordError("RECORD_INVALID", "the project record cannot be supplied by the caller")
+    if {"evidence_hash", "audit_flags", "in_transaction"} & set(context):
+        # Only request_labelled_option, which reads the labels itself, binds evidence to an attempt.
+        raise ProjectRecordError("RECORD_INVALID", "evidence cannot be supplied by the caller")
     stored = load_project_record(tenant_id=tenant_id, project_id=project_id, audit=audit)
     record = stored.record if stored else ProjectRecord(project_id, tenant_id, "")
     return request_option(principal, request, record=record, audit=audit,

@@ -36,6 +36,7 @@ from typing import Any
 
 from agora.audit_anchor import AnchoredAuditChain, AnchorWriteError, verify_anchored
 from agora.audit_chain import AuditReplayError
+from agora.decision_cell.evidence import StatementEvidence, require_unchanged, request_labelled_option
 from agora.decision_cell.options import DecisionCellError, GateResult, Option, OptionRequest, StudyState
 from agora.decision_cell.project_store import (
     _canonical, _hash, _identifier, _writer, load_project_record, request_project_option,
@@ -248,7 +249,7 @@ def _append(writer: AnchoredAuditChain, event: dict[str, Any],
             in_transaction: Callable[[sqlite3.Connection], None] | None = None) -> None:
     try:
         writer.append(event, in_transaction=in_transaction)
-    except (ResponseWindowError, AuditReplayError):
+    except (DecisionCellError, AuditReplayError):  # includes ResponseWindowError and changed evidence
         raise
     except AnchorWriteError as exc:
         raise ResponseWindowError("AUDIT_ANCHOR_WRITE_FAILED", "committed but unanchored; reconcile first") from exc
@@ -394,7 +395,8 @@ def sweep_response_windows(
 def respond_to_item(
     principal: Principal | None, request: OptionRequest, *, tenant_id: str, project_id: str,
     study: StudyState, audit: AnchoredAuditChain,
-    approved_result_hash_for: Callable[[str], str | None], now: datetime | None = None, **context: Any,
+    approved_result_hash_for: Callable[[str], str | None], now: datetime | None = None,
+    statements: tuple[StatementEvidence, ...] | None = None, **context: Any,
 ) -> tuple[GateResult, ResponseWindow]:
     """Judge a person's choice through the gate and, if allowed, record it as a decision on the item.
 
@@ -402,6 +404,9 @@ def respond_to_item(
     decision cannot erase either alert. A choice is recorded when it is the first answer or replaces a HOLD;
     after any other decision nothing more is recorded. Raising means nothing may proceed. The result is still
     not an authorization token.
+
+    ``statements`` is the item's evidence from the trusted service. When given, the choice is judged against
+    the labels in force (``request_labelled_option``) and is not recorded if they change before it is.
     """
     writer = _writer(audit)
     moment = _utc(now)
@@ -415,8 +420,15 @@ def respond_to_item(
         raise ResponseWindowError("CLOCK_INVALID", "now is before the window opened")
     window = _hold_if_due(writer, window, moment, approved_result_hash_for)
     window = _lapse_if_due(writer, window, moment)
-    result = request_project_option(principal, request, tenant_id=tenant_id, project_id=project_id,
-                                    audit=writer, study=study, now=moment, **context)
+    view = None
+    if statements is None:
+        result = request_project_option(principal, request, tenant_id=tenant_id, project_id=project_id,
+                                        audit=writer, study=study, now=moment, **context)
+    else:
+        labelled = request_labelled_option(
+            principal, request, statements=statements, tenant_id=tenant_id, project_id=project_id,
+            audit=writer, study=study, now=moment, **context)
+        result, view = labelled.gate, labelled.evidence
     if (not result.executable or request.option not in ANSWERING_OPTIONS
             or window.latest_option not in (None, Option.HOLD.value)):
         return result, window
@@ -438,6 +450,8 @@ def respond_to_item(
         reason = _AFTER_RECHECK if late else _BEFORE_RECHECK
 
     def alert_state_unchanged(db: sqlite3.Connection) -> None:
+        if view is not None and request.option is not Option.HOLD:
+            require_unchanged(db, view)
         if _exists(db, alert_id) is not late:
             raise ResponseWindowError("WINDOW_CHANGED", "the hold state changed; submit the choice again")
 
