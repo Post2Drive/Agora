@@ -245,7 +245,7 @@ def test_an_approval_goes_stale_when_a_source_row_changes(world):
         conn.commit()
     finally:
         conn.close()
-    with pytest.raises(OntologyError, match="no longer matches"):
+    with pytest.raises(OntologyError, match="no longer matches|does not match its row ID"):
         _verify(world, proposal)
 
 

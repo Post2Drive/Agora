@@ -129,6 +129,16 @@ Required scratch mutations, never committed:
 - bypass the type compatibility check; the mismatch test must fail;
 - compute `record_key` from `row_id`; the cross-snapshot identity test must fail.
 
+## Snapshot content checks on read
+
+Every ontology read of a snapshot (in-memory materialization, object-reference indexing, and single-object reads) checks what it reads and refuses on a mismatch:
+
+- The requested `import_id` is recomputed from the stored manifest's dataset ID, file SHA-256, schema fingerprint, parser version and data role, and the source registry ID is recomputed from three of them. Relabelling an import's data role, for example `sealed_holdout` to `context`, is refused.
+- Each row's `row_id` is recomputed from its stored values and record number together with those manifest facts, and its source locator must match exactly.
+- Reads of a whole import also require the stored row count to equal `accepted_records`.
+
+Limits. These are unkeyed hashes, not signatures. A single-object read compares against the row ID pinned in the ontology store, so a changed row is refused even if its row ID was recomputed, as long as the ontology store itself was not rewritten. Before a row ID is pinned, someone who can write `tabular.sqlite3` can forge values together with a matching row ID, or delete rows and adjust `accepted_records`, and this check will not notice. The stored values are not re-derived from the original file bytes. Column types, column sensitivity and column policies in the manifest are covered by neither identifier.
+
 ## 9. Governance and non-goals
 
 Bindings preserve the existing source-role and privacy controls. They do not grant permission to calibrate, validate, export, or write back. Rungs 2–4 remain simulation-only, and `VALIDATED_PREDICTION_ENABLED` remains `False`. Real personal data, credentials, network access, external drivers, simulations, calibration, backtests, and study changes are outside this contract.
