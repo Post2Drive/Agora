@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 import uuid
 
 from .. import protection as _protection
@@ -378,6 +378,31 @@ def row_ids_digest(row_ids: Any) -> str:
     return digest.hexdigest()
 
 
+def _open_snapshot_for_read(project: Path) -> sqlite3.Connection:
+    path = require_safe_path(project / "data" / "tabular.sqlite3")
+    return sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True,
+                           timeout=30.0, isolation_level=None)
+
+
+def _require_ingest_record(writer: Any, current: Mapping[str, Any]) -> None:
+    """Require the anchored chain to hold the ingest record for this content digest."""
+    event = writer.find_event(
+        import_attestation_event_id(current["import_id"], current["content_sha256"]))
+    if (
+        event is None
+        or event.get("event_type") != IMPORT_ATTESTED_EVENT
+        or event.get("content_hash") != current["content_sha256"]
+    ):
+        raise OntologyError(
+            "snapshot content has no matching ingest record in the audit chain")
+
+
+def _manifest_of(conn: sqlite3.Connection, import_id: str) -> str:
+    return conn.execute(
+        "SELECT manifest_json FROM imports WHERE import_id=?", (import_id,)
+    ).fetchone()[0]
+
+
 def require_attested_import(
     project: Path, import_id: str, audit: Any, row_ids_sha256: str,
 ) -> dict[str, Any]:
@@ -390,9 +415,7 @@ def require_attested_import(
     """
     try:
         writer = require_anchored(audit)
-        path = require_safe_path(project / "data" / "tabular.sqlite3")
-        conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True,
-                               timeout=30.0, isolation_level=None)
+        conn = _open_snapshot_for_read(project)
         try:
             conn.execute("BEGIN")
             current = _import_content_attestation(conn, import_id)
@@ -400,21 +423,44 @@ def require_attested_import(
                 "SELECT row_id FROM import_rows WHERE import_id=? "
                 "ORDER BY source_record_number, row_id", (import_id,)
             ))
-            manifest_json = conn.execute(
-                "SELECT manifest_json FROM imports WHERE import_id=?", (import_id,)
-            ).fetchone()[0]
+            manifest_json = _manifest_of(conn, import_id)
         finally:
             conn.close()
-        event = writer.find_event(
-            import_attestation_event_id(import_id, current["content_sha256"]))
-        if (
-            event is None
-            or event.get("event_type") != IMPORT_ATTESTED_EVENT
-            or event.get("content_hash") != current["content_sha256"]
-        ):
-            raise OntologyError(
-                "snapshot content has no matching ingest record in the audit chain")
+        _require_ingest_record(writer, current)
         if seen != row_ids_sha256:
+            raise OntologyError("snapshot rows changed between reading and verification")
+        return json.loads(manifest_json)
+    except OntologyError:
+        raise
+    except (OSError, sqlite3.Error, PermissionError, ValueError, TypeError, KeyError) as exc:
+        raise OntologyError("the import's ingest record could not be verified") from exc
+
+
+def require_attested_rows(
+    project: Path, import_id: str, audit: Any, row_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Require each row ID just read to be part of the content recorded at ingest.
+
+    For reads of some rows rather than a whole import. The caller must already
+    have recomputed each row ID from the values it read, which is what ties those
+    values to the recorded content. One read transaction gives the content digest,
+    the membership of every row ID and the manifest. Returns the recorded
+    manifest. Each call hashes the whole import.
+    """
+    wanted = set(row_ids)
+    try:
+        writer = require_anchored(audit)
+        conn = _open_snapshot_for_read(project)
+        try:
+            conn.execute("BEGIN")
+            current = _import_content_attestation(conn, import_id)
+            present = {row_id for (row_id,) in conn.execute(
+                "SELECT row_id FROM import_rows WHERE import_id=?", (import_id,))}
+            manifest_json = _manifest_of(conn, import_id)
+        finally:
+            conn.close()
+        _require_ingest_record(writer, current)
+        if not wanted <= present:
             raise OntologyError("snapshot rows changed between reading and verification")
         return json.loads(manifest_json)
     except OntologyError:
@@ -778,7 +824,39 @@ class OntologyObjectStore:
         record_key: str, import_id: str, *, policy: PolicyCallable | None,
         audit: Any | None, purpose: str | None = None, retention: str | None = None,
     ) -> dict[str, Any]:
-        """Resolve one stable object from its exact immutable snapshot row."""
+        """Resolve one stable object from its exact immutable snapshot row.
+
+        Under the protected defaults the import's current content must have the
+        record ``ingest_csv`` wrote to this anchored chain.
+        """
+        instance, pack, binding = self._read_object(
+            pack_fingerprint, type_id, type_version, record_key, import_id,
+            policy=policy, audit=audit, purpose=purpose, retention=retention,
+        )
+        if _protection.ANCHOR_REQUIRED:
+            self._require_attested_objects(
+                import_id, audit, [instance["row_id"]], pack, [binding])
+        return instance
+
+    def _require_attested_objects(
+        self, import_id: str, audit: Any, row_ids: list[str],
+        pack: OntologyPack, bindings: Iterable[DataBinding],
+    ) -> None:
+        """Check rows already read, and their bindings, against the ingest record."""
+        recorded = require_attested_rows(self.project, import_id, audit, row_ids)
+        for binding in bindings:
+            validate_binding(pack, recorded, binding)
+
+    def _read_object(
+        self, pack_fingerprint: str, type_id: str, type_version: str,
+        record_key: str, import_id: str, *, policy: PolicyCallable | None,
+        audit: Any | None, purpose: str | None, retention: str | None,
+    ) -> tuple[dict[str, Any], OntologyPack, DataBinding]:
+        """Authorize and read one object without the ingest-record check.
+
+        Callers must pass what they read to ``_require_attested_objects`` before
+        returning it or anything derived from its values.
+        """
         if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
             raise OntologyError("an explicit import_id is required")
         self._authorize(
@@ -825,7 +903,7 @@ class OntologyObjectStore:
             or _canonical(instance["property_sensitivity"]) != _canonical(stored_sensitivity)
         ):
             raise OntologyError("snapshot provenance no longer matches the stored object reference")
-        return instance
+        return instance, pack, binding
 
 
     @staticmethod
@@ -883,10 +961,15 @@ class OntologyObjectStore:
             parsed.append((ref["import_id"], digest.lower(), int(locator.group(1))))
         return parsed
 
-    def _verify_link_source_refs(self, refs: list[tuple[str, str, int]]) -> None:
+    def _verify_link_source_refs(
+        self, refs: list[tuple[str, str, int]], audit: Any | None,
+    ) -> None:
         """Require every cited import and record to exist in this project's snapshot DB.
 
-        Reads import metadata and row numbers only; no source row payloads are selected.
+        Under the protected defaults each cited import's current content must also
+        have its ingest record in the anchored chain. That digest and the checks
+        below come from one read transaction. Source row payloads are hashed for
+        the digest and are never parsed or returned.
         """
         snapshot_path = self.project / "data" / "tabular.sqlite3"
         try:
@@ -899,7 +982,9 @@ class OntologyObjectStore:
                 raise
             raise OntologyError("the project tabular snapshot database is unavailable") from exc
         conn.row_factory = sqlite3.Row
+        attested: list[dict[str, Any]] = []
         try:
+            conn.execute("BEGIN")
             for import_id, digest, record_number in refs:
                 row = conn.execute(
                     "SELECT file_sha256, status, manifest_json FROM imports WHERE import_id=?",
@@ -924,12 +1009,25 @@ class OntologyObjectStore:
                     (import_id, record_number),
                 ).fetchone() is None:
                     raise OntologyError("a source_ref locator does not resolve to an accepted source record")
+            if _protection.ANCHOR_REQUIRED:
+                # Same transaction as the checks above; one digest per cited import.
+                for import_id in sorted({ref[0] for ref in refs}):
+                    attested.append(_import_content_attestation(conn, import_id))
         except (sqlite3.Error, TypeError, ValueError) as exc:
             if isinstance(exc, OntologyError):
                 raise
             raise OntologyError("source_ref verification failed") from exc
         finally:
             conn.close()
+        if _protection.ANCHOR_REQUIRED:
+            try:
+                writer = require_anchored(audit)
+                for current in attested:
+                    _require_ingest_record(writer, current)
+            except OntologyError:
+                raise
+            except (OSError, sqlite3.Error, PermissionError, ValueError, TypeError, KeyError) as exc:
+                raise OntologyError("the import's ingest record could not be verified") from exc
 
     def _parse_assertion(
         self, reason: Any, provenance: Any,
@@ -1012,7 +1110,7 @@ class OntologyObjectStore:
             raise OntologyError("link writes require a principal-bound actor identity")
         # After authorization, so an unauthorized caller cannot probe which imports exist.
         if source_refs:
-            self._verify_link_source_refs(source_refs)
+            self._verify_link_source_refs(source_refs, audit)
         link_id = "link-" + uuid.uuid4().hex
         infinity = "9999-12-31T23:59:59.999999Z"
         conn = self._connect()
@@ -1172,7 +1270,7 @@ class OntologyObjectStore:
         if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
             raise OntologyError("link writes require a principal-bound actor identity")
         if source_refs:
-            self._verify_link_source_refs(source_refs)
+            self._verify_link_source_refs(source_refs, audit)
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -1414,16 +1512,25 @@ class OntologyObjectStore:
             conn.close()
         results = []
         scanned_key = last_key
+        # Every row read counts, matching or not: filtering decides on its values.
+        read_row_ids: list[str] = []
+        read_bindings: dict[str, DataBinding] = {}
         for row in rows:
             scanned_key = row["record_key"]
-            instance = self.get_object(
+            instance, _, binding = self._read_object(
                 pack_fingerprint, type_id, type_version, scanned_key, import_id,
                 policy=policy, audit=audit, purpose=purpose, retention=retention,
             )
+            read_row_ids.append(instance["row_id"])
+            read_bindings[binding.fingerprint] = binding
             if self._matches_filters(instance["property_values"], checked_filters):
                 results.append(instance)
                 if len(results) >= page_size:
                     break
+        if _protection.ANCHOR_REQUIRED and read_row_ids:
+            # Once per page, because each check hashes the whole import.
+            self._require_attested_objects(
+                import_id, audit, read_row_ids, pack, read_bindings.values())
         more = False
         if scanned_key is not None:
             conn = self._connect()

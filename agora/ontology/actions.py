@@ -214,7 +214,7 @@ def _compose(
             "values_sha256": proposal_digest(instance["property_values"]),
         }
     # After authorization, so an unauthorized caller cannot probe which imports exist.
-    store._verify_link_source_refs(cited)
+    store._verify_link_source_refs(cited, audit)
 
     document = {
         "format": PROPOSAL_FORMAT,
