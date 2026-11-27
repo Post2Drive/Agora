@@ -40,7 +40,7 @@ from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
 from .memory import WorldMemory
 from .timing import Rhythm
-from ..society import SocietyError, SocietyStore
+from ..society import SocietyError, SocietyStore, contact
 from .world import Agent, Post, World, dm_people, dm_space
 
 SCENARIO_FILE = "scenario.yaml"
@@ -788,6 +788,8 @@ class Simulation:
                     if rng.random() < opinion.sig(logit):
                         self._convert(a, c.name, out)
             a.last_seen = t0
+        if self.society is not None and sc.contact_budget:
+            self._contacts(active, r)
         if sc.choice:
             self._vote(r, active, rng, out)
             out.intentions = self._intentions()
@@ -1249,9 +1251,12 @@ class Simulation:
         shared = [q for q in a.platforms if q in dst.platforms and REGISTRY[q].dms]
         plat = want if want in shared else (shared[0] if shared else None)
         if self.society is not None:
-            self._native_dm(a, dst, text, r)
-            if self.sc.communication == "native" or plat is None:
-                return f"you messaged {dst.name} privately: \"{text[:100]}\""
+            if contact.may_contact(self.sc.contact, w, self.society, a, dst):
+                self._native_dm(a, dst, text, r)
+                if self.sc.communication == "native" or plat is None:
+                    return f"you messaged {dst.name} privately: \"{text[:100]}\""
+            elif self.sc.communication == "native":
+                return None                      # the scenario does not allow this contact
         if plat is None:
             return None
         self._new_post(a, r, t0, plat, dm_space(a.id, dst.id), "dm", text[:REGISTRY[plat].max_len],
@@ -1336,6 +1341,50 @@ class Simulation:
         soc.adjust_relationship(a.id, dst.id, round=r, familiarity_delta=0.05, cause_message_id=mid,
                                 reason="sent a private message")
         return mid
+
+    def _contacts(self, active: list[Agent], r: int) -> None:
+        """Word of mouth: each awake crowd person talks to up to `contact_budget` permitted people.
+
+        Choices come from a score (see society.contact) and a generator derived from (seed, round,
+        person), taken after the round's other updates and before the vote."""
+        sc, w, soc = self.sc, self.world, self.society
+        top = max((x.influence for x in w.agents), default=0.0)
+        for a in sorted((x for x in active if not x.is_llm and x.kind != "account"), key=lambda x: x.id):
+            rng = np.random.default_rng([sc.seed, r, 2, a.id])
+            taken: set[int] = set()
+            for _ in range(sc.contact_budget):
+                pick = contact.choose(w, soc, a, sc.contact, sc.contact_pool, sc.contact_weights, rng, top, taken)
+                if pick is None:
+                    break
+                b, parts, total = pick
+                taken.add(b.id)
+                self._contact(a, b, parts, total, r)
+
+    def _contact(self, a: Agent, b: Agent, parts: dict, total: float, r: int) -> None:
+        """One crowd conversation: a states a view, b may move toward it, the relationship records why."""
+        sc, soc = self.sc, self.society
+        heard = not b.is_llm and b.kind != "account" and not sc.choice
+        before = b.stance
+        shift = 0.0
+        if heard:
+            back = soc.relationship(b.id, a.id)
+            weight = (back["trust"] if back else 0.5) * min(1.0, math.sqrt(max(0.05, a.influence)))
+            shift = sc.persuasion * (1 - b.stubbornness) * weight * (a.stance - b.stance)
+            b.stance = float(np.clip(b.stance + shift, -1, 1))
+        view = ("I lean towards supporting" if a.stance > 0.3 else
+                "I lean against" if a.stance < -0.3 else "I am undecided about")
+        reason = (f"crowd contact, score {total:.3f} (" + ", ".join(f"{k} {v:.2f}" for k, v in parts.items())
+                  + f"); stance change {shift:+.3f}" + ("" if heard else " (not applied)"))
+        cid = soc.direct(a.id, b.id, round=r)
+        mid = soc.post(cid, a.id, round=r, text=f"{view} {sc.topic}.", reason=reason)
+        soc.adjust_relationship(a.id, b.id, round=r, familiarity_delta=0.05, cause_message_id=mid,
+                                reason="sent a private message")
+        if heard:
+            agreed = abs(a.stance - before) <= 0.5
+            soc.adjust_relationship(b.id, a.id, round=r, familiarity_delta=0.05,
+                                    trust_delta=0.03 if agreed else -0.03, cause_message_id=mid,
+                                    reason="heard a view that agreed" if agreed else "heard a view that differed")
+            soc.mark_read(b.id, mid)
 
     def _search(self, a: Agent, query: str) -> str | None:
         """Look something up: the best matching recent posts go straight into memory."""

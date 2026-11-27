@@ -161,6 +161,10 @@ class Scenario:
     reflection: bool = True           # LLM voices periodically summarise their older memories
     world_memory: bool = True         # LLM voices recall related things that happened elsewhere
     communication: str = "platform"   # private messages: "platform" (simulated apps only), "native" (direct, no app) or "both"
+    contact: str = "open"             # who may contact whom directly: "open", "relationship" or "group_only"
+    contact_budget: int = 0           # word-of-mouth contacts each active crowd person makes per round (0 = none)
+    contact_pool: int = 40            # how many permitted people a crowd person weighs when choosing whom to talk to
+    contact_weights: dict[str, float] = field(default_factory=dict)  # trust, familiarity, similarity, influence
     # daily rhythm: {peak_hours: [19,20,21,22], peak: 1.0, off_peak_hours: [0..5], off_peak: 0.08,
     #                morning_hours: [6,7,8], morning: 0.7, other: 0.5}  (multipliers on activity)
     time: dict[str, Any] = field(default_factory=dict)
@@ -271,6 +275,18 @@ def load(path: str | Path) -> Scenario:
 def validate(sc: Scenario) -> None:
     if sc.communication not in ("platform", "native", "both"):
         raise ScenarioError("communication must be platform, native or both")
+    if sc.contact not in ("open", "relationship", "group_only"):
+        raise ScenarioError("contact must be open, relationship or group_only")
+    if isinstance(sc.contact_budget, bool) or not isinstance(sc.contact_budget, int) or not 0 <= sc.contact_budget <= 5:
+        raise ScenarioError("contact_budget must be a whole number from 0 to 5")
+    if isinstance(sc.contact_pool, bool) or not isinstance(sc.contact_pool, int) or not 1 <= sc.contact_pool <= 500:
+        raise ScenarioError("contact_pool must be a whole number from 1 to 500")
+    if not isinstance(sc.contact_weights, dict) or set(sc.contact_weights) - {"trust", "familiarity", "similarity", "influence"}:
+        raise ScenarioError("contact_weights may only name trust, familiarity, similarity and influence")
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 10 for v in sc.contact_weights.values()):
+        raise ScenarioError("contact_weights must be numbers from 0 to 10")
+    if sc.contact_budget and sc.communication == "platform":
+        raise ScenarioError("contact_budget needs communication native or both")
     if not sc.segments:
         raise ScenarioError("A scenario needs at least one segment.")
     total = sum(s.share for s in sc.segments)
