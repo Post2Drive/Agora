@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import pytest
@@ -185,6 +186,36 @@ def test_a_writer_first_seen_during_the_copy_refuses_the_backup(project, tmp_pat
     with pytest.raises(BackupBlocked) as e:
         backup(project, tmp_path / "bk")
     assert e.value.code == "SNAPSHOT_CHANGED" and not (tmp_path / "bk").exists()
+
+
+def test_a_writer_that_appears_before_the_listing_is_refused_before_anything_is_copied(
+        project, tmp_path, monkeypatch):
+    # the new lock file lands in the copy list; it must never be read (a held Windows lock blocks reads)
+    real_files, copied = backup_mod._files, []
+
+    def files(root):
+        if root == project and collected and not (project / "late").exists():
+            with writer_lock(project / "late" / "predictions.jsonl"):
+                pass
+        return real_files(root)
+
+    collected = []
+    real_locks = backup_mod._journal_writer_locks
+
+    @contextmanager
+    def locks(root):
+        with real_locks(root) as held:
+            collected.append(True)
+            yield held
+
+    monkeypatch.setattr(backup_mod, "_journal_writer_locks", locks)
+    monkeypatch.setattr(backup_mod, "_files", files)
+    monkeypatch.setattr(backup_mod, "_copy_tree", lambda src, dst, rels: copied.append(rels))
+    with pytest.raises(BackupBlocked) as e:
+        backup(project, tmp_path / "bk")
+    assert (e.value.code, e.value.status) == ("SNAPSHOT_CHANGED", "new_writer")
+    assert copied == [] and (project / "late" / "predictions.jsonl.lock").is_file()
+    assert not (tmp_path / "bk").exists()
 
 
 def test_a_symlinked_lock_path_is_refused(project, tmp_path):

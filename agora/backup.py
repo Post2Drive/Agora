@@ -295,6 +295,12 @@ def _journal_writer_locks(project: Path):
         time.sleep(0.05)
 
 
+def _refuse_new_writer(project: Path, held: frozenset[str]) -> None:
+    """Refuse the backup if a writer lock exists that is not among those held."""
+    if _lock_sidecars(project) - held:
+        raise BackupBlocked("SNAPSHOT_CHANGED", "new_writer")
+
+
 def _backup_locked(project: Path, dest: Path, chain_id: str, held: frozenset[str]) -> dict[str, Any]:
     # Re-verified UNDER the writer lock: no anchored append can land between this check and the copy.
     verdict = verify_anchored_readonly(project / CHAIN_REL, project / ANCHOR_REL, chain_id)
@@ -302,14 +308,16 @@ def _backup_locked(project: Path, dest: Path, chain_id: str, held: frozenset[str
         raise BackupBlocked("SOURCE_NOT_INTACT", verdict.get("status"))
     skip = held | {ANCHOR_REL + ".lock"}  # lock files are not data, and a held one is never read
     rels = [r for r in _files(project) if r not in skip]
+    # Checked after listing and BEFORE copying: a lock that appeared since collection may be in the
+    # list and held by its new writer, and reading a held lock fails on Windows with a raw error.
+    _refuse_new_writer(project, held)
     _copy_tree(project, dest / "data", rels)
     # A held lock file is recreated empty, not read (a Windows lock blocks reads). A restored journal
     # must keep it: jsonl_journal.reader_lock reads a journal that has none without locking.
     for rel in sorted(held):
         (dest / "data" / rel).parent.mkdir(parents=True, exist_ok=True)
         (dest / "data" / rel).touch()
-    if _lock_sidecars(project) - held:  # checked AFTER the copy: see the module docstring
-        raise BackupBlocked("SNAPSHOT_CHANGED", "new_writer")
+    _refuse_new_writer(project, held)  # checked again AFTER the copy: see the module docstring
     copied = _files(dest / "data")
     after = verify_anchored_readonly(dest / "data" / CHAIN_REL, dest / "data" / ANCHOR_REL, chain_id)
     if (not after.get("valid") or after.get("status") != verdict["status"]
