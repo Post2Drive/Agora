@@ -18,7 +18,10 @@ import yaml
 from ..identity import stable_record_key
 from ..audit_anchor import require_anchored
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
-from ..tabular import iter_snapshot_rows, read_snapshot, read_snapshot_row
+from ..tabular import (
+    SnapshotIntegrityError, iter_snapshot_rows, read_snapshot_row,
+    verify_snapshot_manifest, verify_snapshot_row,
+)
 from .loader import _UniqueKeyLoader, _load_unique_json
 from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
 
@@ -322,7 +325,29 @@ def _snapshot_manifest(project: Path, import_id: str) -> dict[str, Any]:
             pass
     if row is None:
         raise OntologyError("explicit committed snapshot was not found")
-    return json.loads(row[0])
+    try:
+        manifest = json.loads(row[0])
+        verify_snapshot_manifest(manifest, import_id)
+    except (TypeError, ValueError) as exc:
+        raise OntologyError(f"snapshot integrity check failed: {exc}") from exc
+    return manifest
+
+
+def _verified_rows(
+    project: Path, manifest: Mapping[str, Any], batch_size: int = 512,
+) -> Iterator[dict[str, Any]]:
+    """Yield an import's rows, each checked against its row ID, then check the count."""
+    count = 0
+    try:
+        for row in iter_snapshot_rows(project, manifest["import_id"], batch_size=batch_size):
+            verify_snapshot_row(row, manifest)
+            count += 1
+            yield row
+    except (SnapshotIntegrityError, json.JSONDecodeError) as exc:
+        raise OntologyError(f"snapshot integrity check failed: {exc}") from exc
+    accepted = manifest.get("accepted_records")
+    if type(accepted) is not int or count != accepted:
+        raise OntologyError("snapshot integrity check failed: row count differs from the manifest")
 
 
 def materialize_instances(
@@ -371,7 +396,7 @@ def materialize_instances(
             raise OntologyError("Policy denied ontology materialization.") from exc
     manifest = _snapshot_manifest(project, import_id)
     validate_binding(pack, manifest, binding)
-    rows = read_snapshot(project, import_id)
+    rows = list(_verified_rows(project, manifest))
     if not rows:
         raise OntologyError("snapshot contains no materializable rows")
     values_by_column = set(manifest.get("column_sensitivity", {}))
@@ -501,7 +526,7 @@ def iter_source_object_refs(
     effective_sensitivity = _effective_property_sensitivity(pack, binding, manifest)
     properties = {item.property_id: item for item in pack.property_types}
     unique_keys = _UniqueKeyCheck(_properties(pack, binding)[0], binding, properties)
-    for row in iter_snapshot_rows(project, import_id, batch_size=batch_size):
+    for row in _verified_rows(project, manifest, batch_size):
         primary_value = row["values"].get(binding.identity.primary_key_column)
         if primary_value is None:
             raise OntologyError("primary key value is missing")
@@ -545,7 +570,12 @@ def materialize_source_object(
         pack, project, import_id, policy=policy, audit=audit,
         purpose=purpose, retention=retention,
     )
-    row = read_snapshot_row(project, import_id, row_id)
+    try:
+        row = read_snapshot_row(project, import_id, row_id)
+        if row is not None:
+            verify_snapshot_row(row, manifest)
+    except (SnapshotIntegrityError, json.JSONDecodeError) as exc:
+        raise OntologyError(f"snapshot integrity check failed: {exc}") from exc
     if row is None:
         raise OntologyError("referenced snapshot row was not found")
     primary_value = row["values"].get(binding.identity.primary_key_column)
