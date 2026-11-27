@@ -23,7 +23,7 @@ from ..tabular import (
     verify_snapshot_manifest, verify_snapshot_row,
 )
 from .loader import _UniqueKeyLoader, _load_unique_json
-from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType
+from .registry import LOGICAL_DATA_TYPES, OntologyError, OntologyPack, PropertyType, ProposalMismatchError
 
 
 _ALLOWED_KEYS = {
@@ -574,13 +574,15 @@ def materialize_source_object(
         row = read_snapshot_row(project, import_id, row_id)
         if row is not None:
             verify_snapshot_row(row, manifest)
-    except (SnapshotIntegrityError, json.JSONDecodeError) as exc:
+    except SnapshotIntegrityError as exc:
+        raise ProposalMismatchError(f"snapshot integrity check failed: {exc}") from exc
+    except json.JSONDecodeError as exc:
         raise OntologyError(f"snapshot integrity check failed: {exc}") from exc
     if row is None:
-        raise OntologyError("referenced snapshot row was not found")
+        raise ProposalMismatchError("referenced snapshot row was not found")
     primary_value = row["values"].get(binding.identity.primary_key_column)
     if primary_value is None or stable_record_key(binding.dataset_id, primary_value) != expected_record_key:
-        raise OntologyError("referenced snapshot row does not match the stable object identity")
+        raise ProposalMismatchError("referenced snapshot row does not match the stable object identity")
     _check_row_values(row["values"], binding, {item.property_id: item for item in pack.property_types})
     reverse = {column: property_id for column, property_id in binding.column_map.items()}
     return {

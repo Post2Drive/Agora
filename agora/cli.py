@@ -46,6 +46,29 @@ def cmd_hardware(args) -> int:
     return 0
 
 
+def _print_contact_warnings(sc) -> None:
+    for w in scenario_mod.contact_warnings(sc):
+        print(f"Warning: {w}", file=sys.stderr)
+
+
+_NATIVE_DEFAULTS = (("communication", "native"), ("contact", "relationship"), ("contact_budget", 1))
+
+
+def _add_native_defaults(path: Path) -> None:
+    """New projects talk natively and gate contact by relationship, unless the scenario already says otherwise.
+    Appended as text so the scenario's own comments and layout stay as they were."""
+    import yaml
+    present = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    missing = [(k, v) for k, v in _NATIVE_DEFAULTS if k not in present]
+    if not missing:
+        return
+    text = path.read_text(encoding="utf-8").rstrip("\n")
+    text += "\n\n# Defaults for new projects (use `agora new --platform` for platform-only messaging)\n"
+    text += "".join(f"{k}: {v}\n" for k, v in missing)
+    path.write_text(text, encoding="utf-8")
+    _print_contact_warnings(scenario_mod.load(path))   # the result must still be a valid scenario
+
+
 def cmd_new(args) -> int:
     dst = Path(args.project)
     src = Path(args.template)
@@ -62,6 +85,8 @@ def cmd_new(args) -> int:
     scenario_mod.load(src)                     # validate before copying
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copy(src, dst / SCENARIO_FILE)
+    if not getattr(args, "platform", False):
+        _add_native_defaults(dst / SCENARIO_FILE)
     print(f"Created project {dst}. Next: agora check {dst}   then   agora run {dst}")
     return 0
 
@@ -69,6 +94,7 @@ def cmd_new(args) -> int:
 def cmd_check(args) -> int:
     proj = Path(args.project)
     sc = scenario_mod.load(proj / SCENARIO_FILE)
+    _print_contact_warnings(sc)
     print(f"Scenario OK: {sc.name} - {len(sc.segments)} segments, {len(sc.accounts)} accounts, "
           f"{len(sc.spaces)} groups/communities, {len(sc.events)} events, "
           f"{len(sc.conversions)} conversions")
@@ -677,6 +703,8 @@ def main(argv=None) -> int:
     p.add_argument("project")
     p.add_argument("--from", dest="template", required=True,
                    help="scenario.yaml, a folder with one, or 'demo'")
+    p.add_argument("--platform", action="store_true",
+                   help="keep the scenario as it is (platform-only messaging) instead of adding the native defaults")
     p.set_defaults(f=cmd_new)
 
     def llm_flags(p):

@@ -118,7 +118,7 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
         if results:
             return _bad(digest, "an outcome has no admission", **entry)
         return {**entry, "state": "withdrawn", "ended_by": actor}
-    if actor == decider or ending.get("operation") != _a._ADMIT:
+    if actor in (decider, entry.get("co_approved_by")) or ending.get("operation") != _a._ADMIT:
         return _bad(digest, "the admission is not well formed", **entry)
     entry["admitted_by"] = actor
     if not results:
