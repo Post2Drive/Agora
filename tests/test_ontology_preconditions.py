@@ -136,6 +136,76 @@ def test_numbers_compare_exactly():
     assert pc.evaluate(f"expr: param.{AMT} > 0.29", PROPS, scope) is True
 
 
+# ---- unknown values never satisfy a comparison
+
+def _with(role, name, value="__absent__"):
+    scope = values()
+    if value == "__absent__":
+        del scope[role][name]
+    else:
+        scope[role][name] = value
+    return scope
+
+
+@pytest.mark.parametrize("value", [None, "__absent__"])
+@pytest.mark.parametrize("name,literal", [(CH, '"frozen"'), (CNT, "5"), (AMT, "1.5"), (DUE, '"2026-12-25"'),
+                                          (URG, "true")])
+def test_an_unknown_value_is_not_unequal_to_a_literal(value, name, literal):
+    scope = _with("param", name, value)
+    for text in (f"expr: param.{name} != {literal}", f"expr: {literal} != param.{name}",
+                 f"expr: param.{name} == {literal}"):
+        assert pc.evaluate(text, PROPS, scope) is False
+
+
+@pytest.mark.parametrize("left", [None, "__absent__", "C-1"])
+@pytest.mark.parametrize("right", [None, "__absent__", "C-2"])
+def test_references_with_an_unknown_side_are_neither_equal_nor_unequal(left, right):
+    if left == "C-1" and right == "C-2":
+        return
+    scope = {"actor": {} if left == "__absent__" else {CID: left},
+             "target": {} if right == "__absent__" else {CID: right}, "param": {}}
+    for op in ("==", "!="):
+        assert pc.evaluate(f"expr: actor.{CID} {op} target.{CID}", PROPS, scope) is False
+
+
+def test_a_property_that_was_never_read_does_not_count_as_null():
+    for scope in (_with("target", CID), {"actor": {}, "param": {}}):
+        for text in (f"expr: target.{CID} == null", f"expr: null == target.{CID}", f"expr: target.{CID} != null"):
+            assert pc.evaluate(text, PROPS, scope) is False
+
+
+def test_the_literal_null_still_tests_a_stored_null_from_either_side():
+    scope = values(target=None)
+    assert pc.evaluate(f"expr: null == target.{CID}", PROPS, scope) is True
+    assert pc.evaluate(f"expr: null != target.{CID}", PROPS, scope) is False
+    assert pc.evaluate(f"expr: null != target.{CID}", PROPS, values()) is True
+
+
+@pytest.mark.parametrize("raw", ["NaN", "sNaN", "Infinity", "-Infinity"])
+def test_a_non_finite_number_is_false_not_an_error(raw):
+    for op in ("==", "!=", "<", ">", "<=", ">="):
+        assert pc.evaluate(f"expr: param.{AMT} {op} 1", PROPS, values(**{AMT: raw})) is False
+    assert pc.evaluate(f"expr: param.{AMT} != null", PROPS, values(**{AMT: raw})) is False
+
+
+@pytest.mark.parametrize("text", [
+    f" expr: param.{CNT} >= 1", f"Expr: param.{CNT} >= 1", f"EXPR:param.{CNT} >= 1", f"expr : param.{CNT} >= 1",
+    f"\texpr: param.{CNT} >= 1",
+])
+def test_text_that_only_looks_like_an_expression_is_refused(text):
+    with pytest.raises(pc.PreconditionError, match="exactly expr:"):
+        pc.validate(_action(text), OBJECTS, PROPS)
+
+
+@pytest.mark.parametrize("text", [
+    f"expr: param.{DUE} < \"2026-99-99\"", f"expr: \"2026-02-30\" > param.{DUE}",
+    f"expr: param.{DUE} != \"2025-02-29\"",
+])
+def test_an_impossible_date_literal_is_refused(text):
+    with pytest.raises(pc.PreconditionError, match="not a real date"):
+        pc.validate(_action(text), OBJECTS, PROPS)
+
+
 # ---- through a real pack, proposal, approval and admission
 
 def _with_preconditions(monkeypatch, *texts):
@@ -172,6 +242,18 @@ def unmet(monkeypatch):
 @pytest.fixture
 def mixed(monkeypatch):
     _with_preconditions(monkeypatch, f"expr: param.{CNT} >= 1", "target_exists")
+
+
+@pytest.fixture
+def due_is_not_christmas(monkeypatch):
+    _with_preconditions(monkeypatch, f'expr: param.{DUE} != "2026-12-25"')
+
+
+def test_a_null_input_refuses_a_not_equal_proposal_and_records_nothing(due_is_not_christmas, world):
+    with pytest.raises(OntologyError, match="precondition is not met"):
+        _propose(world, parameters=_values(due=None))
+    assert proposals._proposed_events(world) == 0
+    assert _propose(world).document["preconditions_evaluated"] is True
 
 
 def test_a_met_precondition_is_recorded_in_the_proposal(met, world):

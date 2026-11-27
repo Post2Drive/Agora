@@ -111,6 +111,8 @@ agora new my-run --from demo
 agora run my-run --mock               # 2-second smoke test, no model needed
 ```
 
+`agora new` adds `communication: native`, `contact: relationship` and `contact_budget: 1` to the new project's scenario unless it already sets them, so people talk to each other directly and only where a tie, group or shared space connects them. Use `agora new --platform` to keep the scenario exactly as written. Native messaging is not supported for governed runs.
+
 With a real model, using [Ollama](https://ollama.com):
 
 ```bash
