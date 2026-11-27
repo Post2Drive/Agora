@@ -245,3 +245,30 @@ def test_reads_are_authorised_at_the_proposals_classification_and_listing_at_the
     assert [(o, s) for o, s, _ in seen] == [("ontology_read", proposal.document["sensitivity"]),
                                             ("ontology_read", "sensitive")]
     assert seen[0][2][-1] == proposal.digest and seen[1][2] == ["action_proposal_states"]
+
+
+def _co(subject="c", **extra):
+    return {**_ev("ontology_action_co_approved", subject, event_id="ontology-action-coapproval-" + HEX,
+                  operation="ontology_action_decide"), **extra}
+
+
+def test_a_second_approval_is_named_in_the_state():
+    entry = _derive([_proposed(), _decided(), _co(), _ending()])
+    assert entry["state"] == "admitted" and entry["co_approved_by"] == "c"
+    assert _derive([_proposed(), _decided(), _co()])["co_approved_by"] == "c"
+
+
+@pytest.mark.parametrize("events,fragment", [
+    ([_proposed(), _co()], "without exactly one approval"),
+    ([_proposed(), _decided("rejected"), _co()], "without exactly one approval"),
+    ([_proposed(), _decided(), _co(), _co()], "without exactly one approval"),
+    ([_proposed(), _decided(), _co(event_id="x")], "second approval is not well formed"),
+    ([_proposed(), _decided(), _co(operation="x")], "second approval is not well formed"),
+    ([_proposed(), _decided(), {**_co(), "decision": "deny"}], "second approval is not well formed"),
+    ([_proposed(), _decided(), _co(subject=" ")], "second approval is not well formed"),
+    ([_proposed(), _decided(), _co(subject="p")], "second approval is not well formed"),
+    ([_proposed(), _decided(), _co(subject="a")], "second approval is not well formed"),
+])
+def test_a_bad_second_approval_is_inconsistent(events, fragment):
+    entry = _derive(events)
+    assert entry["state"] == "inconsistent" and fragment in entry["reason"], entry
