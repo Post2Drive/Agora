@@ -2,6 +2,7 @@
 
 from ..identity import stable_record_key
 from .actions import ActionProposal, propose_action, recheck_action_proposal
+from .approvals import decide_action_proposal, verify_approved_action
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
 from .registry import (
@@ -35,6 +36,7 @@ __all__ = [
     "RegistryChange",
     "SourceBinding",
     "load_binding",
+    "decide_action_proposal",
     "load_domain_pack",
     "materialize_instances",
     "parse_domain_pack",
@@ -42,4 +44,5 @@ __all__ = [
     "recheck_action_proposal",
     "stable_record_key",
     "validate_binding",
+    "verify_approved_action",
 ]

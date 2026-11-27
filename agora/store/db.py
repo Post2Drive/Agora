@@ -210,7 +210,7 @@ class Store:
             self.db.executemany(
                 "INSERT OR REPLACE INTO agent_state VALUES (?,?,?,?,?,?,?,?)",
                 [(a.id, a.stance, json.dumps(a.memory), json.dumps(sorted(a.converted)),
-                  a.last_seen, r, json.dumps({k: round(v, 4) for k, v in a.prefs.items()}), a.choice)
+                  a.last_seen, r, json.dumps(a.prefs), a.choice)
                  for a in agents])
             self.db.executemany("INSERT OR REPLACE INTO opinions VALUES (?,?,?)",
                                 [(r, a.id, round(a.stance, 4)) for a in agents])
