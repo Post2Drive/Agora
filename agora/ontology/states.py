@@ -88,7 +88,9 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
         co = seconds[0].get("subject_id")
         if (seconds[0].get("event_id") != _a._CO_PREFIX + suffix or seconds[0].get("operation") != _a._DECIDE
                 or seconds[0].get("decision") != "allow" or not isinstance(co, str) or not co.strip()
-                or co in (proposer, decider)):
+                or co in (proposer, decider) or seconds[0].get("resource_ids") != resources
+                or place[id(seconds[0])] < place[id(decision)]
+                or any(place[id(seconds[0])] > place[id(e)] for e in endings)):
             return _bad(digest, "the second approval is not well formed", **entry)
         entry["co_approved_by"] = co
     if decision["event_type"] == _a._OUTCOMES["reject"]:

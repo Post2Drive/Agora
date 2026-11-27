@@ -193,6 +193,11 @@ def _ending(kind="admitted", subject="r", **extra):
                   operation="ontology_action_admit" if kind == "admitted" else "ontology_action_withdraw"), **extra}
 
 
+def _second(subject="b", **extra):
+    return {**_ev("ontology_action_co_approved", subject, event_id="ontology-action-coapproval-" + HEX,
+                  operation="ontology_action_decide"), **extra}
+
+
 def _result(subject="r", kind="succeeded", **extra):
     return {**_ev("ontology_action_simulation_" + kind, subject, event_id="ontology-action-outcome-" + HEX,
                   operation="ontology_action_outcome", result_hash=RESULT), **extra}
@@ -205,6 +210,9 @@ def _result(subject="r", kind="succeeded", **extra):
     ([_proposed(), _proposed(resource_ids=["other", "action", "1", DIGEST])], "records disagree"),
     ([_decided(), _proposed()], "decision is not well formed"),
     ([_proposed(), _decided(resource_ids=["x", DIGEST])], "decision is not well formed"),
+    ([_proposed(), _decided(), _second(resource_ids=["x", DIGEST])], "second approval is not well formed"),
+    ([_proposed(), _second(), _decided()], "second approval is not well formed"),
+    ([_proposed(), _decided(), _ending(), _second()], "second approval is not well formed"),
     ([_proposed(), _ending(), _decided()], "ending is not well formed"),
     ([_proposed(), _decided(), _ending(resource_ids=["x", DIGEST])], "ending is not well formed"),
     ([_proposed(), _decided(), _result(), _ending()], "outcome is not well formed"),
