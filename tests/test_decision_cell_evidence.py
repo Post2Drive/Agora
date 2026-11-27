@@ -239,6 +239,7 @@ def window(audit):
 
 
 def test_an_old_view_does_not_answer_the_window_and_the_current_one_does(audit):
+    listed(audit)
     open_response_window(audit=audit, now=NOW, **KW)
     seen = view(audit).evidence_hash
     confirm(audit)
@@ -249,6 +250,7 @@ def test_an_old_view_does_not_answer_the_window_and_the_current_one_does(audit):
 
 
 def test_a_label_change_before_the_answer_is_stored_leaves_the_window_open(audit, monkeypatch):
+    listed(audit)
     open_response_window(audit=audit, now=NOW, **KW)
     seen = view(audit).evidence_hash
     _after_view(monkeypatch, rw, "request_labelled_option", lambda: confirm(audit))
@@ -327,8 +329,15 @@ def test_a_list_recorded_before_the_commit_stops_an_unlabelled_choice(audit, mon
     assert options(audit) == []
 
 
+def legacy_window(audit):
+    """A window with no statement list, as one opened before lists were required. None can be opened now."""
+    key = rw._key_hash(*KW.values())
+    audit.append(rw._event("opened", key, rw._scope(*KW.values()), NOW, subject_id="system:decision-cell",
+                           operation="open_response_window", record_hash="d" * 64))
+
+
 def test_a_list_recorded_before_the_answer_is_stored_leaves_the_window_open(audit, monkeypatch):
-    open_response_window(audit=audit, now=NOW, **KW)
+    legacy_window(audit)
     _after_view(monkeypatch, rw, "request_project_option", lambda: listed(audit))
     with pytest.raises(PermissionError) as caught:
         respond(audit, choice(), None)
@@ -337,8 +346,8 @@ def test_a_list_recorded_before_the_answer_is_stored_leaves_the_window_open(audi
 
 
 def test_the_window_is_not_answered_without_labels(audit):
-    open_response_window(audit=audit, now=NOW, **KW)
     listed(audit)
+    open_response_window(audit=audit, now=NOW, **KW)
     result, state = respond(audit, choice(), None)
     assert result.failures == ("item_labels_required",) and state.status == "OPEN"
 
@@ -371,6 +380,7 @@ def test_a_statement_added_before_the_commit_records_nothing(audit, monkeypatch)
 
 
 def test_a_statement_added_before_the_answer_is_stored_leaves_the_window_open(audit, monkeypatch):
+    listed(audit)
     open_response_window(audit=audit, now=NOW, **KW)
     seen = view(audit).evidence_hash
     _after_view(monkeypatch, rw, "request_labelled_option", lambda: listed(audit, (PAIR, SOLE)))

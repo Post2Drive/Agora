@@ -11,6 +11,8 @@ Once an item has a list:
   (``request_labelled_option``, or ``respond_to_item`` with ``statements``);
 * the labelled path accepts only exactly the listed statements.
 
+``open_response_window`` refuses an item without a list, so every item windowed from then on is covered.
+
 Trust boundary. Registration takes no principal: it is the service's record of what it ingested, like
 opening a response window. Nothing here checks the list against any source, so a statement missing from the
 first version stays unseen until it is added, and an item that was never registered can still be decided

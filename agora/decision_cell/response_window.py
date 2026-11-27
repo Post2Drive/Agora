@@ -1,8 +1,8 @@
 """The 15-minute response window for a new event item (DECISION_CELL_SPEC section 3, timeout rule).
 
-When an item arrives, the trusted service opens a window. If no permitted person has answered it within
-15 minutes, a HOLD is recorded: the last human-approved result (if any) stays, the elapsed time is
-recorded, and an alert becomes due to the recorded project owner and to the backup contact only if the owner
+When an item arrives, the trusted service records its statement list and opens a window. If no permitted
+person has answered it within 15 minutes, a HOLD is recorded: the last human-approved result (if any) stays,
+the elapsed time is recorded, and an alert becomes due to the recorded project owner and to the backup contact only if the owner
 named one. This module publishes nothing, changes no forecast, runs nothing and **delivers no alert**: it
 records who is owed one. Sending it, and calling ``sweep_response_windows`` on a timer, are the service's job.
 
@@ -44,6 +44,7 @@ from agora.decision_cell.options import (
 from agora.decision_cell.project_store import (
     _canonical, _hash, _identifier, _writer, load_project_record, request_project_option,
 )
+from agora.decision_cell.statements import load_item_statements
 from agora.policy import POLICY_VERSION
 from agora.principal import Principal
 
@@ -273,13 +274,22 @@ def _event(kind: str, key: str, scope: list[str], now: datetime, **fields: Any) 
 
 def open_response_window(*, tenant_id: str, project_id: str, study_id: str, item_id: str,
                          audit: AnchoredAuditChain, now: datetime | None = None) -> ResponseWindow:
-    """Start the clock for a newly received item. Needs a stored project record (someone to alert)."""
+    """Start the clock for a newly received item.
+
+    Needs a stored project record (someone to alert) and the item's recorded statement list, so that a
+    windowed item cannot be decided without its labels. Lists are never removed, so one found here is still
+    there at the commit. A refusal means no clock is running and nobody is owed an alert: the service must
+    treat it as a failed intake and show it to a person, not drop the item.
+    """
     writer = _writer(audit)
     _check_ids(tenant_id, project_id, study_id, item_id)
     moment = _utc(now)
     stored = load_project_record(tenant_id=tenant_id, project_id=project_id, audit=writer)
     if stored is None:
         raise ResponseWindowError("NO_PROJECT_RECORD", "no designated owner is recorded for this project")
+    if load_item_statements(tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id,
+                            audit=writer) is None:
+        raise ResponseWindowError("NO_STATEMENT_LIST", "record the item's statement list before its window")
     key = _key_hash(tenant_id, project_id, study_id, item_id)
     try:
         _append(writer, _event(_OPENED, key, _scope(tenant_id, project_id, study_id, item_id), moment,
