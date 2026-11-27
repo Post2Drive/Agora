@@ -86,4 +86,4 @@ An admission records that one simulation may start. Nothing here starts or retri
 
 ## Not yet built (next O2 slices)
 
-A signed receipt over the digest, a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+Requiring a signed statement at admission (the [format and verifier](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) exist in `agora/security/approval_receipt.py`; nothing calls them), a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
