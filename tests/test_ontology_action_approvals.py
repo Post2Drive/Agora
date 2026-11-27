@@ -84,7 +84,9 @@ def test_an_approver_decides_once_and_the_decision_is_in_the_chain(world):
 def test_an_approved_proposal_verifies_for_a_reader(world):
     proposal = _propose(world)
     _decide(world, proposal)
-    assert _verify(world, proposal) == {
+    result = _verify(world, proposal)
+    assert result.pop("expires_at")
+    assert result == {
         "digest": proposal.digest, "approved_by": "approver-1", "proposed_by": "ontology-test-operator"}
 
 
