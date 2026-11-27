@@ -125,6 +125,14 @@ class ReceiptGate:
         self._key_list: kl.TrustedKeyList | None = None
 
     @property
+    def tenant(self) -> str:
+        return self._config.tenant
+
+    def now(self) -> datetime:
+        """The worker's clock, for checks made beside admission. Not a trusted time source."""
+        return self._clock()
+
+    @property
     def key_list_version(self) -> int | None:
         return None if self._key_list is None else self._key_list.list_version
 
