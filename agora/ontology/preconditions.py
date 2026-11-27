@@ -14,8 +14,13 @@ the same kind: number (integer and decimal), text (string, identifier, enum), da
 (``<``, ``<=``, ``>``, ``>=``) is for numbers and dates only. Properties of other data types cannot be
 used. A pack with a malformed ``expr:`` precondition is refused when it is parsed.
 
-Evaluation fails closed: a missing value, a null compared with anything but ``==``/``!=`` against null, or
-a value that does not have the declared kind makes the clause false. Messages never carry values.
+Evaluation fails closed. A property that is absent from the values read (for example one the source binding
+does not map) or a value that does not have the declared kind makes the clause false. A stored null is
+unknown: it satisfies only ``== null`` written with the literal ``null``, and any other comparison with it is
+false, ``!=`` included, so two nulls are not equal to each other. Messages never carry values.
+
+A string that merely looks like an expression (``" expr:"``, ``"Expr :"``) is refused with the pack, because
+it would otherwise be treated as free text and silently not enforced. So is an impossible date literal.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ _MAX_CLAUSES = 8
 _MAX_LENGTH = 512
 _OPS = ("==", "!=", "<=", ">=", "<", ">")
 _REF = re.compile(r"(actor|target|param)\.([A-Za-z0-9_.:\-]{1,200})")
+_LOOKALIKE = re.compile(r"\s*expr\s*:", re.IGNORECASE)
 _STRING = re.compile(r'"([^"\\\x00-\x1f]{0,200})"')
 _INTEGER = re.compile(r"-?(0|[1-9][0-9]{0,17})")
 _DECIMAL = re.compile(r"-?(0|[1-9][0-9]{0,17})\.[0-9]{1,18}")
@@ -143,6 +149,8 @@ def validate(action: Any, object_properties: Mapping[str, tuple[str, ...]],
              "param": frozenset(action.inputs)}
     for text in action.preconditions:
         if not is_expression(text):
+            if _LOOKALIKE.match(text):
+                raise PreconditionError("an expression must start with exactly expr:")
             continue
         for clause in parse(text):
             left, right = (_kind_of(x, properties, names) for x in (clause.left, clause.right))
@@ -155,29 +163,42 @@ def validate(action: Any, object_properties: Mapping[str, tuple[str, ...]],
                     and not (right == "date" and left == "text" and isinstance(clause.left, Lit)
                              and _DATE.fullmatch(clause.left.value)):
                 raise PreconditionError("the two sides of a comparison are not of the same kind")
+            if "date" in (left, right):
+                for operand in (clause.left, clause.right):
+                    if isinstance(operand, Lit) and not _is_date(operand.value):
+                        raise PreconditionError("a date literal is not a real date")
             if clause.op not in ("==", "!=") and "date" not in (left, right) and left != "number":
                 raise PreconditionError("ordering applies to numbers and dates only")
+
+
+def _is_date(text: str) -> bool:
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return False
+    return _DATE.fullmatch(text) is not None
 
 
 def _value(operand: Ref | Lit, properties: Mapping[str, Any], values: Mapping[str, Mapping[str, Any]]) -> Any:
     if isinstance(operand, Lit):
         return operand.value
-    raw = values[operand.role].get(operand.property_id)
+    scope = values.get(operand.role, {})
+    if operand.property_id not in scope:
+        return _Bad  # never read, which is not the same as a stored null
+    raw = scope[operand.property_id]
     if raw is None:
         return None
     kind = _KINDS[properties[operand.property_id].data_type]
     try:
         if kind == "number":
-            if type(raw) is int:
-                return Decimal(raw)
-            return Decimal(raw) if isinstance(raw, str) else _Bad
+            if type(raw) is not int and not isinstance(raw, str):
+                return _Bad
+            number = Decimal(raw)
+            return number if number.is_finite() else _Bad
         if kind == "bool":
             return raw if type(raw) is bool else _Bad
         if kind == "date":
-            if not isinstance(raw, str) or not _DATE.fullmatch(raw):
-                return _Bad
-            date.fromisoformat(raw)
-            return raw
+            return raw if isinstance(raw, str) and _is_date(raw) else _Bad
         return raw if isinstance(raw, str) else _Bad
     except (InvalidOperation, ValueError):
         return _Bad
@@ -195,6 +216,9 @@ def _holds(clause: Clause, properties: Mapping[str, Any], values: Mapping[str, M
     if left is _Bad or right is _Bad:
         return False
     if left is None or right is None:
+        # Unknown is neither equal nor unequal to anything: only a literal null may test for it.
+        if not any(isinstance(x, Lit) and x.kind == "null" for x in (clause.left, clause.right)):
+            return False
         if clause.op == "==":
             return left is None and right is None
         if clause.op == "!=":
