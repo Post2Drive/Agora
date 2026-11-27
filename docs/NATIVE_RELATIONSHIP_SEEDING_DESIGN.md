@@ -46,7 +46,7 @@ A link that is retracted or superseded at read time is skipped. A link whose rec
 
 ## 7. Phases and tests
 
-1. Parse and validate `relationship_seed.yaml` (closed field set, 64-hex pack fingerprint, direction, trust and familiarity from 0 to 1, no duplicate link types, record keys or agents, agents must exist when the run's agent IDs are given, size limits) and fingerprint it with a SHA-256 over the canonical declaration. **Built**, tests in `tests/test_native_seed.py`. Whether a link type exists in the pack is checked in phase 2, because that needs the ontology store.
+1. Parse and validate `relationship_seed.yaml` (closed field set, 64-hex pack fingerprint, direction, trust and familiarity from 0 to 1, no repeated file keys, no duplicate link types, record keys or agents, agents must exist when the run's agent IDs are given, size limits) and fingerprint it with a SHA-256 over the canonical declaration. **Built**, tests in `tests/test_native_seed.py`. Whether a link type exists in the pack is checked in phase 2, because that needs the ontology store.
 2. Read links from the ontology store, skipping retracted and superseded ones, into a deterministic list.
 3. Option 1: apply to named agents, record changes, store the seed provenance.
 4. Option 2: segment tie density, seeded draws from the run seed, labelled synthetic.

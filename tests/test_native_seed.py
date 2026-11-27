@@ -144,6 +144,56 @@ def test_load_seed_reads_a_file_and_reports_bad_files(tmp_path):
         load_seed(p)
 
 
+@pytest.mark.parametrize("old,new", [
+    ("import_id: crm-2026-11\n", "import_id: crm-2026-11\nimport_id: other\n"),
+    ("  trust: 0.6\n", "  trust: 0.6\n  trust: 0.9\n"),
+    ("- agent: 3\n", "- agent: 3\n  agent: 4\n"),
+])
+def test_load_seed_refuses_a_repeated_key(tmp_path, old, new):
+    text = yaml.safe_dump(_doc())
+    assert old in text
+    p = tmp_path / "relationship_seed.yaml"
+    p.write_text(text.replace(old, new, 1), encoding="utf-8")
+    with pytest.raises(SeedError, match="duplicate key"):
+        load_seed(p)
+
+
+@pytest.mark.parametrize("text", ["[" * 100_000, "a: 2026-13-45\n"])
+def test_load_seed_reports_parser_crashes_as_seed_errors(tmp_path, text):
+    p = tmp_path / "relationship_seed.yaml"
+    p.write_text(text, encoding="utf-8")
+    with pytest.raises(SeedError, match="cannot read"):
+        load_seed(p)
+
+
+def test_load_seed_does_not_construct_python_objects(tmp_path):
+    p = tmp_path / "relationship_seed.yaml"
+    p.write_text("a: !!python/object/apply:os.getcwd []\n", encoding="utf-8")
+    with pytest.raises(SeedError, match="cannot read"):
+        load_seed(p)
+
+
+@pytest.mark.parametrize("bad", ["a\ud800", "a\x7fb", "a\x85b"])
+def test_surrogates_and_other_controls_are_refused(bad):
+    _bad(lambda d: d.update(import_id=bad), "import_id")
+    _bad(lambda d: d["records"][0].update(record_key=bad), "record_key")
+    _bad(lambda d: d["link_types"][0].update(link_type_id=bad), "link_type_id")
+
+
+def test_agent_id_upper_bound():
+    d = _doc()
+    d["records"][0]["agent"] = 2**63 - 1
+    parse_seed(d)
+    for bad in (2**63, 10**5000):
+        _bad(lambda d, b=bad: d["records"][0].update(agent=b), "agent")
+
+
+def test_negative_zero_hashes_like_zero():
+    a, b = _doc(), _doc()
+    a["link_types"][0]["trust"], b["link_types"][0]["trust"] = 0, -0.0
+    assert parse_seed(a).seed_hash == parse_seed(b).seed_hash
+
+
 def test_parsing_changes_nothing():
     soc = SocietyStore(":memory:")
     before = soc.digest()

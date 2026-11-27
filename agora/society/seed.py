@@ -18,12 +18,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from ..ontology.loader import _UniqueKeyLoader
 
 SEED_FORMAT = "agora.society.seed/v1"
 DIRECTIONS = ("both", "source_to_target")
@@ -34,6 +37,7 @@ _LINK = {"link_type_id", "direction", "trust", "familiarity"}
 _RECORD = {"record_key", "agent"}
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_TEXT = 200
+_MAX_AGENT_ID = 2**63 - 1                      # SQLite's largest integer
 
 
 class SeedError(ValueError):
@@ -65,7 +69,7 @@ class RelationshipSeed:
 
 def _text(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip() or value != value.strip() or len(value) > _MAX_TEXT \
-            or any(ord(c) < 32 for c in value):
+            or any(unicodedata.category(c) in ("Cc", "Cs") for c in value):  # controls and lone surrogates
         raise SeedError(f"{name} must be non-empty text without surrounding spaces or control characters, "
                         f"at most {_MAX_TEXT} characters")
     return value
@@ -74,7 +78,7 @@ def _text(value: Any, name: str) -> str:
 def _unit(value: Any, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.0 <= value <= 1.0:  # NaN fails this too
         raise SeedError(f"{name} must be a number from 0 to 1")
-    return float(value)
+    return float(value) + 0.0                  # -0.0 becomes 0.0, so equal weights hash alike
 
 
 def _only(item: Any, allowed: set[str], where: str) -> Mapping:
@@ -127,8 +131,8 @@ def parse_seed(doc: Any, *, agents: set[int] | None = None) -> RelationshipSeed:
         item = _only(item, _RECORD, f"records[{i}]")
         key = _text(item["record_key"], f"records[{i}].record_key")
         agent = item["agent"]
-        if type(agent) is not int or agent < 0:
-            raise SeedError(f"records[{i}].agent must be a whole number of 0 or more")
+        if type(agent) is not int or not 0 <= agent <= _MAX_AGENT_ID:
+            raise SeedError(f"records[{i}].agent must be a whole number from 0 to {_MAX_AGENT_ID}")
         if key in keys:
             raise SeedError(f"record {key!r} is mapped twice")
         if agent in used:
@@ -148,10 +152,10 @@ def parse_seed(doc: Any, *, agents: set[int] | None = None) -> RelationshipSeed:
 
 
 def load_seed(path: str | Path, *, agents: set[int] | None = None) -> RelationshipSeed:
-    """Read and validate a seed file."""
+    """Read and validate a seed file. A repeated key is refused, not resolved by keeping the last value."""
     try:
-        doc = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        doc = yaml.load(Path(path).read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)  # a SafeLoader
+    except (OSError, ValueError, RecursionError, yaml.YAMLError) as exc:  # ValueError covers bad text and dates
         raise SeedError(f"cannot read seed file: {exc}") from exc
     return parse_seed(doc, agents=agents)
 
