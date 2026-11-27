@@ -9,7 +9,9 @@
   another;
 * the attempt records each statement's label, and flags every CONFIRMED one that rests on the
   primary-source exception (``exception:primary_source:<statement id>``), so reviews can count them;
-* nothing is recorded if a label or the project record changes before the attempt is committed.
+* nothing is recorded if a label or the project record changes before the attempt is committed;
+* a recorded retraction or correction of the item (``retractions``) is part of the view in the same way: it
+  changes the hash, is recorded with the attempt, and blocks the commit if it arrives after the read.
 
 A label never allows or forbids an option by itself: the spec lets a human act on unconfirmed items.
 
@@ -32,6 +34,9 @@ from agora.audit_anchor import AnchoredAuditChain
 from agora.decision_cell.options import GateResult, OptionRequest, ProjectRecord, request_option
 from agora.decision_cell.project_store import (
     ProjectRecordError, _canonical, _event_id as _record_event_id, _hash, _identifier, load_project_record,
+)
+from agora.decision_cell.retractions import (
+    BASED_ON_RETRACTED_ITEM, CorrectionKind, ItemCorrection, load_item_corrections, require_no_newer_correction,
 )
 from agora.decision_cell.statements import (
     MAX_STATEMENTS, ItemStatements, load_item_statements, require_no_newer_list, wording_hash,
@@ -62,6 +67,14 @@ class ItemEvidence:
     evidence_hash: str
     # The item's recorded statement list these labels were read against.
     listed: ItemStatements
+    # Retractions and corrections of this item, in the order recorded.
+    corrections: tuple[ItemCorrection, ...] = ()
+
+    @property
+    def stamps(self) -> tuple[str, ...]:
+        """What a result relying on this item must show because it was retracted."""
+        retracted = any(c.kind is CorrectionKind.RETRACTION for c in self.corrections)
+        return (BASED_ON_RETRACTED_ITEM,) if retracted else ()
 
     @property
     def primary_source_exception_ids(self) -> tuple[str, ...]:
@@ -106,12 +119,20 @@ def item_evidence(
         [statement_id, s.label.value, s.basis.value if s.basis else None, s.primary_source_id,
          s.confirmed_by_subject_id, s.stale_confirmation, s.revision, s.assessment.evidence_fingerprint]
         for statement_id, s in labels]]
-    return ItemEvidence(tenant_id, project_id, study_id, item_id, labels, _hash(_canonical(body)), listed)
+    corrections = load_item_corrections(
+        tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id, audit=audit)
+    if corrections:  # added only when present, so other views keep their hash
+        body.append([[c.kind.value, c.correcting_item_id] for c in corrections])
+    return ItemEvidence(tenant_id, project_id, study_id, item_id, labels, _hash(_canonical(body)), listed,
+                        corrections)
 
 
 def require_unchanged(db: sqlite3.Connection, evidence: ItemEvidence) -> None:
-    """Inside an append transaction: refuse if a statement was added, promoted or demoted since the read."""
+    """Inside an append transaction: refuse if, since the read, a statement was added, promoted or demoted,
+    or the item was retracted or corrected."""
     require_no_newer_list(db, evidence.listed)
+    require_no_newer_correction(db, evidence.tenant_id, evidence.project_id, evidence.study_id,
+                                evidence.item_id, len(evidence.corrections))
     for statement_id, label in evidence.statements:
         key = _key(evidence.tenant_id, evidence.project_id, evidence.study_id, evidence.item_id, statement_id)
         if db.execute("SELECT 1 FROM audit_events WHERE event_id=?",
@@ -125,6 +146,7 @@ def _flags(evidence: ItemEvidence) -> tuple[str, ...]:
     flags += [f"label:{s.label.value}:{i}" for i, s in evidence.statements]
     flags += [f"stale_confirmation:{i}" for i, s in evidence.statements if s.stale_confirmation]
     flags += [f"exception:primary_source:{i}" for i in evidence.primary_source_exception_ids]
+    flags += [f"{c.kind.value}:{c.correcting_item_id}" for c in evidence.corrections]
     return tuple(flags)
 
 
