@@ -12,18 +12,19 @@ POLICY_VERSION = "stage2-v2"
 OPERATIONS = frozenset({
     "import", "binding", "simulation_input", "report_export",
     "decision_approval", "decision_outcome", "reconciliation_repair",
-    "ontology_read", "ontology_write", "ontology_action_propose", "decision_cell_member",
+    "ontology_read", "ontology_write", "ontology_action_propose", "ontology_action_decide",
+    "decision_cell_member",
 })
 SENSITIVITY_RANK = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
 
 # Keep this deliberately small until an identity adapter defines the complete
 # enterprise role model. Unknown roles are denied rather than inferred.
 ROLE_OPERATIONS = {
-    "operator": OPERATIONS - {"decision_approval", "reconciliation_repair"},
+    "operator": OPERATIONS - {"decision_approval", "reconciliation_repair", "ontology_action_decide"},
     "reviewer": frozenset({"binding", "report_export", "decision_outcome", "ontology_read",
                            "decision_cell_member"}),
     "approver": frozenset({"report_export", "decision_approval", "reconciliation_repair",
-                           "decision_cell_member"}),
+                           "ontology_action_decide", "decision_cell_member"}),
     "reader": frozenset({"report_export", "ontology_read", "decision_cell_member"}),
 }
 
