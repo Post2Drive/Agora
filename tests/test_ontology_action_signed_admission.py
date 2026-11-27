@@ -1,4 +1,5 @@
 """Admission of an approved action requires a signed approval statement checked by a receipt gate (test keys only)."""
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -262,3 +263,95 @@ def test_the_approver_in_the_scope_is_the_one_the_chain_recorded(world, clock):
     with pytest.raises(OntologyError, match="refused"):
         _admit(world, proposal, signed_approval=_signed(world, proposal, clock))  # names approver-1
     _admit(world, proposal, signed_approval=_signed(world, proposal, clock, approved_by="approver-2"))
+
+
+# The checks made where the admission is written, and what the admission records.
+
+def _unadmitted(w, signed, match, **options):
+    with pytest.raises(OntologyError, match=match):
+        _admit(w, options.pop("proposal"), signed_approval=signed, **options)
+    assert _endings(w) == []
+    assert w.audit.verify()["valid"]
+
+
+def _after_the_signature_check(monkeypatch, step):
+    """Run ``step`` after the statement verified and before the admission is appended."""
+    real = rg.ReceiptGate.check_approval
+
+    def checked_then_step(self, envelope, *, request):
+        checked = real(self, envelope, request=request)
+        step(self)
+        return checked
+
+    monkeypatch.setattr(rg.ReceiptGate, "check_approval", checked_then_step)
+
+
+@pytest.mark.parametrize("refreshes_this_gate", [False, True])
+def test_a_key_revoked_after_the_signature_check_stops_the_admission(
+        world, clock, monkeypatch, refreshes_this_gate):
+    proposal = _approved(world)
+    signed = _signed(world, proposal, clock)
+
+    def revoke(gate):
+        if refreshes_this_gate:  # the same gate loading the newer list must not satisfy the recheck
+            gate.refresh_key_list(_list(clock, version=2, status="revoked"))
+        else:
+            _gate(world, clock, version=2, status="revoked")
+
+    _after_the_signature_check(monkeypatch, revoke)
+    _unadmitted(world, signed, "KEY_LIST_SUPERSEDED", proposal=proposal)
+
+
+@pytest.mark.parametrize("readings,code", [((0, 121), "EXPIRED"), ((10, 5), "BAD_CLOCK")])
+def test_the_gate_clock_is_checked_again_at_the_write(world, clock, readings, code):
+    """``approvals`` keeps its own clock here, so only the gate's recheck can see these readings."""
+    proposal = _approved(world)
+    start = clock.now
+    envelope = _statement(world, proposal, clock)
+    pending = []
+
+    def gate_clock():
+        return pending.pop(0) if pending else start
+
+    gate = rg.ReceiptGate(_config(world), world.audit, clock=gate_clock, monotonic=lambda: 100.0)
+    gate.refresh_key_list(_list(clock))
+    # current_keys reads once, then the signature check, then the recheck inside the append.
+    pending[:] = [start, *(start + timedelta(seconds=s) for s in readings)]
+    _unadmitted(world, SignedApproval(gate, envelope), code, proposal=proposal)
+    assert pending == []
+
+
+def test_a_list_gone_stale_by_the_write_stops_the_admission(world, clock, monkeypatch):
+    proposal = _approved(world)
+    ticks = [100.0]
+    gate = rg.ReceiptGate(_config(world), world.audit, clock=clock, monotonic=lambda: ticks[0])
+    gate.refresh_key_list(_list(clock))
+    signed = SignedApproval(gate, _statement(world, proposal, clock))
+    _after_the_signature_check(monkeypatch, lambda _: ticks.__setitem__(0, 100.0 + kl.MAX_LIST_AGE_SECONDS + 1))
+    _unadmitted(world, signed, "KEY_LIST_STALE", proposal=proposal)
+
+
+def test_a_statement_may_not_outlive_the_approval(world, clock):
+    proposal = _approved(world)
+    signed = _signed(world, proposal, clock)  # expires 120 s from now
+    _unadmitted(world, signed, "outlives the approval", proposal=proposal, max_age_seconds=60)
+    assert _admit(world, proposal, signed_approval=signed, max_age_seconds=600)["admitted_by"] == "runner-1"
+
+
+def test_the_admission_records_the_statement_hash(world, clock):
+    proposal = _approved(world)
+    signed = _signed(world, proposal, clock)
+    result = _admit(world, proposal, signed_approval=signed)
+    expected = "sha256:" + hashlib.sha256(ap.DOMAIN + signed.envelope["statement"].encode("ascii")).hexdigest()
+    (event,) = _endings(world)
+    assert result["approval_statement_hash"] == event["approval_statement_hash"] == expected
+
+
+def test_a_gate_look_alike_is_refused(world, clock):
+    proposal = _approved(world)
+
+    class Agreeable:
+        def check_approval(self, envelope, *, request):
+            return rg.CheckedApproval({}, clock.now, "sha256:" + "0" * 64, lambda db: None)
+
+    _unadmitted(world, SignedApproval(Agreeable(), {}), "needs a ReceiptGate", proposal=proposal)
