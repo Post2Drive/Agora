@@ -21,7 +21,7 @@ from ..audit_anchor import AnchorWriteError
 from ..audit_chain import AuditReplayError
 from ..policy_enforcement import PolicyCallable
 from .approvals import (
-    _ADMIT, _DIGEST, _ENDINGS, _anchored, _approval, _events, _fields, _final_id, _principal,
+    _ADMIT, _CO_TYPE, _DIGEST, _ENDINGS, _anchored, _approval, _events, _fields, _final_id, _principal,
 )
 from .registry import OntologyError
 from .store import OntologyObjectStore
@@ -48,6 +48,9 @@ def _admission(writer: Any, fields: dict[str, Any], digest: str,
     admitter = event.get("subject_id")
     if not isinstance(admitter, str) or not admitter.strip() or admitter == approver:
         raise OntologyError("the admission is not from someone other than the approver")
+    # Checked whatever TWO_PERSON_SENSITIVE says now: a recorded second approver never admits.
+    if any(e.get("subject_id") == admitter for e in _events(writer, digest, _CO_TYPE)):
+        raise OntologyError("the admission is not from someone other than the second approver")
     return admitter
 
 

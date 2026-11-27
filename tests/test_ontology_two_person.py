@@ -2,7 +2,9 @@
 import pytest
 
 from agora import protection
-from agora.ontology import OntologyError, co_approve_action_proposal, verify_approved_action, withdraw_approval
+from agora.ontology import (
+    OntologyError, co_approve_action_proposal, run_admitted_simulation, verify_approved_action, withdraw_approval,
+)
 from agora.ontology import approvals
 from agora.ontology.approvals import SignedApproval
 
@@ -257,3 +259,43 @@ def test_the_state_view_names_the_second_approver(world):
     assert entry["state"] == "approved" and entry["co_approved_by"] == "approver-2"
     (listed,) = list_action_proposals(world.store, policy=_as("reader-1"), audit=world.audit)
     assert listed["co_approved_by"] == "approver-2"
+
+
+def test_no_outcome_for_an_admission_recorded_under_the_second_approver(two, world):
+    """admit_approved_action refuses this; an event that reached the chain another way is refused too."""
+    proposal = _approved(world)
+    _co(world, proposal)
+    action = proposal.document["action_type"]
+    world.audit.append({
+        "event_id": "ontology-action-final-" + proposal.digest.split(":")[1],
+        "event_type": "ontology_action_admitted", "operation": "ontology_action_admit", "decision": "allow",
+        "subject_id": "approver-2", "policy_version": "v", "reason": "policy_allow",
+        "resource_ids": [proposal.document["pack_fingerprint"], action["action_type_id"], action["version"],
+                         proposal.digest]})
+    with pytest.raises(OntologyError, match="other than the second approver"):
+        run_admitted_simulation(world.store, proposal.document, proposal.digest, policy=SECOND,
+                                audit=world.audit, purpose="account support", retention="90 days")
+    for kind in ("ontology_action_simulation_succeeded", "ontology_action_simulation_failed"):
+        assert _events(world, kind) == []
+
+
+def test_the_second_statement_may_not_outlive_the_approval(two, world, clock, monkeypatch):
+    from datetime import datetime, timedelta
+    proposal = _approved(world)
+    _co(world, proposal)
+    gate = _gate(world, clock)
+    statements = [SignedApproval(gate, _statement(world, proposal, clock)),
+                  SignedApproval(gate, _statement(world, proposal, clock, approved_by="approver-2"))]
+    real = approvals._check_signed_approval
+
+    def second_outlives(signed, fields, digest, approver, store):
+        checked = real(signed, fields, digest, approver, store)
+        if approver != "approver-2":
+            return checked
+        from dataclasses import replace
+        return replace(checked, expires_at=checked.expires_at + timedelta(days=2))
+
+    monkeypatch.setattr(approvals, "_check_signed_approval", second_outlives)
+    with pytest.raises(OntologyError, match="outlives the approval"):
+        _admit(world, proposal, signed_approval=statements)
+    assert _endings(world) == []
