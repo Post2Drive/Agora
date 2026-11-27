@@ -3,7 +3,7 @@
 A proposal binds one declared ActionType to an exact actor object, target object,
 parameter set and cited source records, and gives that content one digest. A
 later approval step can name the digest; this module does not approve, queue,
-apply or write back anything, and it evaluates no declared precondition.
+apply or write back anything. It evaluates only preconditions written as ``expr:`` (see preconditions.py).
 
 Rules and limits: docs/ONTOLOGY_ACTION_PROPOSALS.md.
 """
@@ -24,6 +24,7 @@ from .. import protection as _protection
 from ..audit_anchor import require_anchored
 from ..policy_enforcement import PolicyCallable
 from .binding import _is_allowed_value
+from . import preconditions
 from .registry import ActionType, OntologyError, OntologyPack, PropertyType
 from .store import OntologyObjectStore, _canonical, _canonical_timestamp
 
@@ -200,11 +201,13 @@ def _compose(
         raise OntologyError("action proposals require a principal-bound identity")
 
     objects = {}
+    stored_values = {}
     for role, end in ends.items():
         # Re-reads the exact source row under the binding policy and checks stored provenance.
         instance = store.get_object(
             pack_fingerprint, end["type_id"], end["type_version"], end["record_key"],
             end["import_id"], policy=policy, audit=audit, purpose=purpose, retention=retention)
+        stored_values[role] = instance["property_values"]
         objects[role] = {
             **end,
             "binding_fingerprint": instance["binding_fingerprint"],
@@ -213,6 +216,14 @@ def _compose(
             "source_row_id": instance["row_id"],
             "values_sha256": proposal_digest(instance["property_values"]),
         }
+    # Evaluated on every build, so a recheck at approval and admission evaluates them again.
+    expressions = [text for text in action.preconditions if preconditions.is_expression(text)]
+    if expressions:
+        properties = {x.property_id: x for x in pack.property_types}
+        scope = {**stored_values, "param": values}
+        for text in expressions:
+            if not preconditions.evaluate(text, properties, scope):
+                raise OntologyError(f"a declared precondition is not met: {text}")
     # After authorization, so an unauthorized caller cannot probe which imports exist.
     store._verify_link_source_refs(cited, audit)
 
@@ -234,11 +245,14 @@ def _compose(
         "declared_preconditions": list(action.preconditions),
         "declared_effects": list(action.effects),
         "declared_permissions": list(action.permissions),
-        "preconditions_evaluated": False,
+        "preconditions_evaluated": bool(action.preconditions) and len(expressions) == len(action.preconditions),
         "executed": False,
         "execution_mode": action.execution_mode,
         "external_writeback": action.external_writeback,
     }
+    if expressions:
+        # Only present when something was evaluated, so documents for packs without expressions are unchanged.
+        document["preconditions_met"] = expressions
     return document, resource_ids
 
 
