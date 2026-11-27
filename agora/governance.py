@@ -6,12 +6,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 import uuid
 
+from .jsonl_journal import append_line, reader_lock, writer_lock
+
 
 _OPERATION_STATES = {"pending", "committed", "failed"}
 
 
+def _journal_path(project):
+    return Path(project) / "governance" / "operations.jsonl"
+
+
 def _operation_rows(project):
-    path = Path(project) / "governance" / "operations.jsonl"
+    """Parse the journal. The caller holds a reader or writer lock."""
+    path = _journal_path(project)
     if not path.exists():
         return []
     rows = []
@@ -42,15 +49,17 @@ def _operation_rows(project):
 
 def list_operations(project):
     """Return the append-only operation journal in recorded order."""
-    return _operation_rows(project)
+    with reader_lock(_journal_path(project)):
+        return _operation_rows(project)
+
+
+def _latest_by_id(rows):
+    return {row["operation_id"]: row for row in rows}
 
 
 def operation_states(project):
     """Return the latest known state for each operation ID."""
-    latest = {}
-    for row in _operation_rows(project):
-        latest[row["operation_id"]] = row
-    return latest
+    return _latest_by_id(list_operations(project))
 
 
 def pending_operations(project):
@@ -59,10 +68,8 @@ def pending_operations(project):
 
 
 def _append_operation(project, row):
-    path = Path(project) / "governance" / "operations.jsonl"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    """Append one journal row. The caller holds the journal's writer lock."""
+    append_line(_journal_path(project), json.dumps(row, sort_keys=True, default=str))
 
 
 def begin_operation(project, operation_type, *, source_ids=(), details=None):
@@ -72,7 +79,8 @@ def begin_operation(project, operation_type, *, source_ids=(), details=None):
     row = {"operation_id": operation_id, "operation_type": str(operation_type),
            "status": "pending", "created_at": now, "updated_at": now,
            "source_ids": list(source_ids), "details": details or {}}
-    _append_operation(project, row)
+    with writer_lock(_journal_path(project)):
+        _append_operation(project, row)
     return row
 
 
@@ -80,18 +88,19 @@ def finish_operation(project, operation_id, status, *, error=None, details=None)
     """Append a terminal state for a pending operation; terminal states cannot be rewritten."""
     if status not in {"committed", "failed"}:
         raise ValueError("Final operation status must be committed or failed")
-    current = operation_states(project).get(str(operation_id))
-    if current is None:
-        raise KeyError(f"Unknown operation_id: {operation_id}")
-    if current["status"] != "pending":
-        raise ValueError(f"Operation is already {current['status']}")
-    row = dict(current)
-    row.update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
-    if error is not None:
-        row["error"] = str(error)
-    if details:
-        row["completion_details"] = details
-    _append_operation(project, row)
+    with writer_lock(_journal_path(project)):
+        current = _latest_by_id(_operation_rows(project)).get(str(operation_id))
+        if current is None:
+            raise KeyError(f"Unknown operation_id: {operation_id}")
+        if current["status"] != "pending":
+            raise ValueError(f"Operation is already {current['status']}")
+        row = dict(current)
+        row.update({"status": status, "updated_at": datetime.now(timezone.utc).isoformat()})
+        if error is not None:
+            row["error"] = str(error)
+        if details:
+            row["completion_details"] = details
+        _append_operation(project, row)
     return row
 
 def record_source(project, *, source_id, content, data_role, source_url="", publisher="", author="",

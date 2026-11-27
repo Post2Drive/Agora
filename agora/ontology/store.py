@@ -145,6 +145,47 @@ _LINKS_SCHEMA = (
 _LINKS_CHECKSUM = hashlib.sha256("\n".join(_LINKS_SCHEMA).encode("utf-8")).hexdigest()
 
 
+# A retraction withdraws an assertion without replacing it. It is a separate
+# append-only row, so the link it withdraws is never rewritten.
+_RETRACTIONS_SCHEMA = (
+    """CREATE TABLE ontology_link_retractions (
+        link_id TEXT PRIMARY KEY,
+        retracted_at TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        provenance_json TEXT NOT NULL,
+        FOREIGN KEY (link_id) REFERENCES ontology_links(link_id)
+    )""",
+    """CREATE TRIGGER ontology_link_retractions_no_update BEFORE UPDATE ON ontology_link_retractions
+       BEGIN SELECT RAISE(ABORT, 'ontology link retractions are immutable'); END""",
+    """CREATE TRIGGER ontology_link_retractions_no_delete BEFORE DELETE ON ontology_link_retractions
+       BEGIN SELECT RAISE(ABORT, 'ontology link retractions are immutable'); END""",
+    """CREATE TRIGGER ontology_link_retractions_active_only BEFORE INSERT ON ontology_link_retractions
+       WHEN EXISTS (SELECT 1 FROM ontology_links WHERE supersedes_link_id=NEW.link_id)
+       BEGIN SELECT RAISE(ABORT, 'a superseded ontology link cannot be retracted'); END""",
+    """CREATE TRIGGER ontology_links_no_successor_of_retracted BEFORE INSERT ON ontology_links
+       WHEN EXISTS (SELECT 1 FROM ontology_link_retractions WHERE link_id=NEW.supersedes_link_id)
+       BEGIN SELECT RAISE(ABORT, 'a retracted ontology link cannot be superseded'); END""",
+)
+_RETRACTIONS_CHECKSUM = hashlib.sha256("\n".join(_RETRACTIONS_SCHEMA).encode("utf-8")).hexdigest()
+
+# Forward-only. A backup written at an earlier version stays verifiable and is
+# migrated when the restored store is next opened.
+_MIGRATIONS = (
+    (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
+    (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
+    (3, _LINKS_CHECKSUM, _LINKS_SCHEMA),
+    (4, _RETRACTIONS_CHECKSUM, _RETRACTIONS_SCHEMA),
+)
+_RETRACTIONS_VERSION = 4
+_OLDEST_VERIFIABLE_VERSION = 3
+
+# A link is active when nothing supersedes it and nothing retracts it.
+_NOT_SUPERSEDED = "NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)"
+_NOT_RETRACTED = "NOT EXISTS (SELECT 1 FROM ontology_link_retractions r WHERE r.link_id=l.link_id)"
+_ACTIVE_LINK = _NOT_SUPERSEDED + " AND " + _NOT_RETRACTED
+
+
 def _schema_objects(conn: sqlite3.Connection) -> set[tuple[str, str, str, str]]:
     """Every schema object with whitespace-normalised DDL, minus SQLite bookkeeping tables."""
     bookkeeping = {"sqlite_sequence", "sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
@@ -155,12 +196,15 @@ def _schema_objects(conn: sqlite3.Connection) -> set[tuple[str, str, str, str]]:
     }
 
 
-def _expected_schema_objects() -> set[tuple[str, str, str, str]]:
+def _expected_schema_objects(version: int) -> set[tuple[str, str, str, str]]:
     """Build the schema this code creates, in memory, as the verification reference."""
     reference = sqlite3.connect(":memory:")
     try:
-        for statement in (_MIGRATIONS_TABLE_SCHEMA, *_STORE_SCHEMA, *_OBJECT_REFS_SCHEMA, *_LINKS_SCHEMA):
-            reference.execute(statement)
+        reference.execute(_MIGRATIONS_TABLE_SCHEMA)
+        for migration_version, _, statements in _MIGRATIONS:
+            if migration_version <= version:
+                for statement in statements:
+                    reference.execute(statement)
         return _schema_objects(reference)
     finally:
         reference.close()
@@ -207,6 +251,44 @@ def _cardinality_key(type_id: str, record_key: str) -> tuple[str, ...]:
     return (type_id, record_key)
 
 
+def _has_retractions(conn: sqlite3.Connection) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ontology_link_retractions'"
+    ).fetchone() is not None
+
+
+def _check_provenance(provenance: Mapping[str, Any]) -> None:
+    """Refuse a stored link or retraction provenance with an invalid shape."""
+    if not isinstance(provenance, dict):
+        raise OntologyError("ontology link provenance has an invalid shape")
+    kind = provenance.get("kind")
+    if kind not in {"source", "manual_assertion", "derived"}:
+        raise OntologyError("ontology link provenance kind is invalid")
+    if kind == "source":
+        source_refs = provenance.get("source_refs")
+        if not isinstance(source_refs, list) or not source_refs:
+            raise OntologyError("source-backed link provenance has no source references")
+        for ref in source_refs:
+            if not isinstance(ref, Mapping) or not all(
+                isinstance(ref.get(key), str) and ref[key].strip()
+                for key in ("import_id", "file_sha256", "locator")
+            ):
+                raise OntologyError("source-backed link provenance reference is incomplete")
+            digest = ref["file_sha256"]
+            if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+                raise OntologyError("source-backed link provenance has an invalid SHA-256")
+
+
+def _stored_provenance(conn: sqlite3.Connection) -> list[str]:
+    """Provenance JSON of every link and retraction; both can cite source imports."""
+    rows = [row[0] for row in conn.execute(
+        "SELECT provenance_json FROM ontology_links ORDER BY link_id")]
+    if _has_retractions(conn):
+        rows += [row[0] for row in conn.execute(
+            "SELECT provenance_json FROM ontology_link_retractions ORDER BY link_id")]
+    return rows
+
+
 def _cardinality_conflicts(conn: sqlite3.Connection, packs: Mapping[str, OntologyPack]) -> list[str]:
     """IDs of active stored links that break their declared cardinality over overlapping time."""
     declared = {
@@ -214,12 +296,12 @@ def _cardinality_conflicts(conn: sqlite3.Connection, packs: Mapping[str, Ontolog
         for fingerprint, pack in packs.items() for item in pack.link_types
     }
     groups: dict[tuple, list[tuple[str, str, str]]] = {}
+    active = _ACTIVE_LINK if _has_retractions(conn) else _NOT_SUPERSEDED
     rows = conn.execute(
         """SELECT l.link_id, l.project_id, l.pack_fingerprint, l.link_type_id, l.link_type_version,
                   l.source_type_id, l.source_record_key,
                   l.target_type_id, l.target_record_key, l.valid_from, l.valid_to
-           FROM ontology_links l
-           WHERE NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)"""
+           FROM ontology_links l WHERE """ + active
     )
     for row in rows:
         selector = (row["pack_fingerprint"], row["link_type_id"], row["link_type_version"])
@@ -376,11 +458,7 @@ class OntologyObjectStore:
 
     def _initialize(self, conn: sqlite3.Connection) -> None:
         conn.execute(_MIGRATIONS_TABLE_SCHEMA)
-        migrations = (
-            (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
-            (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
-            (3, _LINKS_CHECKSUM, _LINKS_SCHEMA),
-        )
+        migrations = _MIGRATIONS
         try:
             conn.execute("BEGIN IMMEDIATE")
             rows = conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version").fetchall()
@@ -406,7 +484,8 @@ class OntologyObjectStore:
         if [(int(row["version"]), row["checksum"]) for row in rows] != expected:
             raise OntologyError("ontology store schema is unknown or a migration checksum changed")
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        if not {"ontology_packs", "bindings", "ontology_object_refs", "ontology_links"}.issubset(tables):
+        if not {"ontology_packs", "bindings", "ontology_object_refs", "ontology_links",
+                "ontology_link_retractions"}.issubset(tables):
             raise OntologyError("ontology store schema is incomplete")
 
     def _authorize(
@@ -813,6 +892,44 @@ class OntologyObjectStore:
         finally:
             conn.close()
 
+    def _parse_assertion(
+        self, reason: Any, provenance: Any,
+    ) -> tuple[str, list[tuple[str, str, int]]]:
+        """Validate the reason and provenance shared by link writes and retractions."""
+        if not isinstance(reason, str) or not reason.strip() or not isinstance(provenance, Mapping) or not provenance:
+            raise OntologyError("link writes require a reason and provenance")
+        provenance_json = _canonical(dict(provenance))
+        kind = provenance.get("kind")
+        if kind not in {"source", "manual_assertion", "derived"}:
+            raise OntologyError("provenance kind must be source, manual_assertion, or derived")
+        source_refs: list[tuple[str, str, int]] = []
+        if kind == "source":
+            source_refs = self._parse_source_refs(provenance.get("source_refs"))
+        elif "source_refs" in provenance:
+            raise OntologyError("only source provenance may carry source_refs")
+        return provenance_json, source_refs
+
+    @staticmethod
+    def _endpoint_sensitivity(
+        conn: sqlite3.Connection, project_id: str, pack_fingerprint: str, keys: list[tuple],
+    ) -> str:
+        """Highest stored classification across the objects at these endpoints."""
+        sensitivities = []
+        for key in keys:
+            row = conn.execute(
+                """SELECT property_sensitivity_json FROM ontology_object_refs
+                   WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
+                     AND import_id=? AND record_key=?""",
+                (project_id, pack_fingerprint, *key),
+            ).fetchone()
+            if row is None:
+                raise OntologyError("link endpoint is not materialized")
+            stored = json.loads(row["property_sensitivity_json"])
+            if isinstance(stored, dict):
+                sensitivities.extend(v for v in stored.values() if isinstance(v, str))
+        rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+        return max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
+
     def _write_link(
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
@@ -825,17 +942,7 @@ class OntologyObjectStore:
         end = _canonical_timestamp(valid_to, "valid_to") if valid_to is not None else None
         if end is not None and end <= start:
             raise OntologyError("valid_to must be later than valid_from")
-        if not isinstance(reason, str) or not reason.strip() or not isinstance(provenance, Mapping) or not provenance:
-            raise OntologyError("link writes require a reason and provenance")
-        provenance_json = _canonical(dict(provenance))
-        kind = provenance.get("kind")
-        if kind not in {"source", "manual_assertion", "derived"}:
-            raise OntologyError("provenance kind must be source, manual_assertion, or derived")
-        source_refs: list[tuple[str, str, int]] = []
-        if kind == "source":
-            source_refs = self._parse_source_refs(provenance.get("source_refs"))
-        elif "source_refs" in provenance:
-            raise OntologyError("only source provenance may carry source_refs")
+        provenance_json, source_refs = self._parse_assertion(reason, provenance)
         pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
         link_type = self._link_type(pack, link_type_id, link_type_version)
         types = {x.type_id: x for x in pack.object_types}
@@ -851,23 +958,10 @@ class OntologyObjectStore:
         self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
         metadata_conn = self._connect()
         try:
-            sensitivities = []
-            for key in (src_key, dst_key):
-                row = metadata_conn.execute(
-                    """SELECT property_sensitivity_json FROM ontology_object_refs
-                       WHERE project_id=? AND pack_fingerprint=? AND type_id=? AND type_version=?
-                         AND import_id=? AND record_key=?""",
-                    (self.project_id, pack_fingerprint, *key),
-                ).fetchone()
-                if row is None:
-                    raise OntologyError("link endpoint is not materialized")
-                stored = json.loads(row["property_sensitivity_json"])
-                if isinstance(stored, dict):
-                    sensitivities.extend(v for v in stored.values() if isinstance(v, str))
+            sensitivity = self._endpoint_sensitivity(
+                metadata_conn, self.project_id, pack_fingerprint, [src_key, dst_key])
         finally:
             metadata_conn.close()
-        rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
-        sensitivity = max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
         decision = self._authorize(
             "ontology_write", resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
         )
@@ -897,12 +991,14 @@ class OntologyObjectStore:
                     raise OntologyError("superseded link does not match this project, pack, and type")
                 if conn.execute("SELECT 1 FROM ontology_links WHERE supersedes_link_id=?", (supersedes_link_id,)).fetchone():
                     raise OntologyError("link already has a successor")
+                if conn.execute("SELECT 1 FROM ontology_link_retractions WHERE link_id=?", (supersedes_link_id,)).fetchone():
+                    raise OntologyError("a retracted link cannot be superseded")
             rows = conn.execute(
                 """SELECT l.link_id, l.source_type_id, l.source_type_version, l.source_import_id, l.source_record_key,
                           l.target_type_id, l.target_type_version, l.target_import_id, l.target_record_key, l.valid_from, l.valid_to
                    FROM ontology_links l
                    WHERE l.project_id=? AND l.pack_fingerprint=? AND l.link_type_id=? AND l.link_type_version=?
-                     AND NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)""",
+                     AND """ + _ACTIVE_LINK,
                 (self.project_id, pack_fingerprint, link_type_id, link_type_version),
             ).fetchall()
             for row in rows:
@@ -972,12 +1068,96 @@ class OntologyObjectStore:
             reason, provenance, policy=policy, audit=audit, supersedes_link_id=link_id,
         )
 
+    def retract_link(
+        self, pack_fingerprint: str, link_id: str, reason: str, provenance: Mapping[str, Any],
+        *, policy: PolicyCallable | None, audit: Any | None,
+    ) -> None:
+        """Withdraw an active link without asserting anything in its place.
+
+        Use ``supersede_link`` when there is a truthful replacement, including
+        the same relationship over a shorter valid time. A retraction cannot be
+        undone: asserting the relationship again is a new link. Retracting a
+        successor does not bring back the link it superseded.
+        """
+        provenance_json, source_refs = self._parse_assertion(reason, provenance)
+        if not isinstance(link_id, str) or not link_id.strip() or link_id != link_id.strip():
+            raise OntologyError("link_id must be a non-empty canonical string")
+        resource_ids = [pack_fingerprint, link_id]
+        resource_ids += sorted({import_id for import_id, _, _ in source_refs})
+        # Before the lookup, so an unauthorized caller cannot probe which links exist.
+        self._authorize("ontology_write", resource_ids, policy=policy, audit=audit)
+        metadata_conn = self._connect()
+        try:
+            row = metadata_conn.execute(
+                "SELECT * FROM ontology_links WHERE project_id=? AND pack_fingerprint=? AND link_id=?",
+                (self.project_id, pack_fingerprint, link_id),
+            ).fetchone()
+            if row is None:
+                raise OntologyError("link to retract was not found")
+            keys = [
+                tuple(row[side + field] for field in ("_type_id", "_type_version", "_import_id", "_record_key"))
+                for side in ("source", "target")
+            ]
+            resource_ids += [row["link_type_id"], row["link_type_version"], *keys[0], *keys[1]]
+            sensitivity = self._endpoint_sensitivity(
+                metadata_conn, self.project_id, pack_fingerprint, keys)
+        finally:
+            metadata_conn.close()
+        decision = self._authorize(
+            "ontology_write", resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
+        )
+        if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
+            raise OntologyError("link writes require a principal-bound actor identity")
+        if source_refs:
+            self._verify_link_source_refs(source_refs)
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT 1 FROM ontology_links WHERE supersedes_link_id=?", (link_id,)).fetchone():
+                raise OntologyError("a superseded link cannot be retracted; retract its active successor")
+            if conn.execute("SELECT 1 FROM ontology_link_retractions WHERE link_id=?", (link_id,)).fetchone():
+                raise OntologyError("link is already retracted")
+            conn.execute(
+                """INSERT INTO ontology_link_retractions(link_id, retracted_at, actor_id, reason, provenance_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (link_id, _link_created_now(), decision["subject_id"], reason.strip(), provenance_json),
+            )
+            conn.commit()
+        except (sqlite3.Error, OntologyError):
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _link_state(conn: sqlite3.Connection, link_id: str, as_of: str | None = None) -> dict[str, Any]:
+        """Whether a stored link is active, superseded or retracted, optionally at a past time."""
+        cutoff = as_of or "9999-12-31T23:59:59.999999Z"
+        retraction = conn.execute(
+            """SELECT retracted_at, actor_id, reason, provenance_json FROM ontology_link_retractions
+               WHERE link_id=? AND retracted_at<=?""",
+            (link_id, cutoff),
+        ).fetchone()
+        if retraction is not None:
+            return {"status": "retracted", "retraction": {
+                "retracted_at": retraction["retracted_at"], "actor_id": retraction["actor_id"],
+                "reason": retraction["reason"], "provenance": json.loads(retraction["provenance_json"]),
+            }}
+        superseded = conn.execute(
+            "SELECT 1 FROM ontology_links WHERE supersedes_link_id=? AND created_at<=?", (link_id, cutoff),
+        ).fetchone() is not None
+        return {"status": "superseded" if superseded else "active", "retraction": None}
+
     def get_links(
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str, *,
         source: Mapping[str, Any] | None = None, target: Mapping[str, Any] | None = None,
         include_superseded: bool = False, policy: PolicyCallable | None, audit: Any | None,
     ) -> list[dict[str, Any]]:
-        """List link records for one exact pack and link-type version."""
+        """List link records for one exact pack and link-type version.
+
+        Only active links are returned unless ``include_superseded`` is set, which
+        also returns retracted ones. Each record says which it is in ``status``.
+        """
         pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
         self._link_type(pack, link_type_id, link_type_version)
         src = self._canonical_endpoint(source, self.project_id, pack_fingerprint) if source is not None else None
@@ -989,7 +1169,7 @@ class OntologyObjectStore:
                 clauses.extend([f"l.{side}_type_id=?", f"l.{side}_type_version=?", f"l.{side}_import_id=?", f"l.{side}_record_key=?"])
                 params.extend(self._link_key(endpoint))
         if not include_superseded:
-            clauses.append("NOT EXISTS (SELECT 1 FROM ontology_links n WHERE n.supersedes_link_id=l.link_id)")
+            clauses.append(_ACTIVE_LINK)
         conn = self._connect()
         try:
             rows = conn.execute(
@@ -1032,6 +1212,7 @@ class OntologyObjectStore:
                 "valid_from": row["valid_from"], "valid_to": row["valid_to"], "created_at": row["created_at"],
                 "actor_id": row["actor_id"], "reason": row["reason"],
                 "provenance": json.loads(row["provenance_json"]), "supersedes_link_id": row["supersedes_link_id"],
+                **self._link_state(conn, row["link_id"]),
             } for row in rows]
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise OntologyError("ontology link records could not be read") from exc
@@ -1221,7 +1402,11 @@ class OntologyObjectStore:
         endpoint: Mapping[str, Any], import_id: str, page_size: int, cursor: str | None, *,
         direction: str = "both", policy: PolicyCallable | None, audit: Any | None,
     ) -> dict[str, Any]:
-        """Return a bounded adjacent-link page for one exact endpoint import."""
+        """Return a bounded adjacent-link page for one exact endpoint import.
+
+        The page includes superseded and retracted links. Callers must read
+        ``status``, which is given as of the time the first page was requested.
+        """
         self._check_page_size(page_size)
         if direction not in {"out", "in", "both"}:
             raise OntologyError("direction must be out, in, or both")
@@ -1300,7 +1485,8 @@ class OntologyObjectStore:
             next_cursor = None
             if len(rows) > page_size and page:
                 next_cursor = _encode_cursor({**cursor_identity, "last_id": page[-1]["link_id"]})
-            return {"links": [self._link_result(row, self.project_id, pack_fingerprint) for row in page],
+            return {"links": [{**self._link_result(row, self.project_id, pack_fingerprint),
+                               **self._link_state(conn, row["link_id"], as_of)} for row in page],
                     "next_cursor": next_cursor}
         except (sqlite3.Error, json.JSONDecodeError) as exc:
             raise OntologyError("ontology link traversal failed") from exc
@@ -1318,21 +1504,17 @@ class OntologyObjectStore:
         if foreign_key_errors:
             raise OntologyError("ontology store contains broken foreign-key references")
 
-        migrations = (
-            (1, _SCHEMA_CHECKSUM, _STORE_SCHEMA),
-            (2, _OBJECT_REFS_CHECKSUM, _OBJECT_REFS_SCHEMA),
-            (3, _LINKS_CHECKSUM, _LINKS_SCHEMA),
-        )
         actual = [
             (int(row["version"]), row["checksum"])
             for row in conn.execute("SELECT version, checksum FROM schema_migrations ORDER BY version")
         ]
-        expected = [(version, checksum) for version, checksum, _ in migrations]
-        if actual != expected:
+        expected = [(version, checksum) for version, checksum, _ in _MIGRATIONS[:len(actual)]]
+        if len(actual) < _OLDEST_VERIFIABLE_VERSION or actual != expected:
             raise OntologyError("ontology store migration history is unknown or incomplete")
         # Migration rows are only claims. Compare the real tables, indexes and
         # immutability triggers, and refuse anything missing, changed or added.
-        if _schema_objects(conn) != _expected_schema_objects():
+        version = actual[-1][0]
+        if _schema_objects(conn) != _expected_schema_objects(version):
             raise OntologyError("ontology store schema objects do not match the expected schema")
 
         packs = conn.execute("SELECT fingerprint, pack_id, schema_version, content_json FROM ontology_packs")
@@ -1400,24 +1582,27 @@ class OntologyObjectStore:
                 provenance = json.loads(row["provenance_json"])
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 raise OntologyError("ontology link provenance is not valid JSON") from exc
-            if not isinstance(provenance, dict):
-                raise OntologyError("ontology link provenance has an invalid shape")
-            kind = provenance.get("kind")
-            if kind not in {"source", "manual_assertion", "derived"}:
-                raise OntologyError("ontology link provenance kind is invalid")
-            if kind == "source":
-                source_refs = provenance.get("source_refs")
-                if not isinstance(source_refs, list) or not source_refs:
-                    raise OntologyError("source-backed link provenance has no source references")
-                for ref in source_refs:
-                    if not isinstance(ref, Mapping) or not all(
-                        isinstance(ref.get(key), str) and ref[key].strip()
-                        for key in ("import_id", "file_sha256", "locator")
-                    ):
-                        raise OntologyError("source-backed link provenance reference is incomplete")
-                    digest = ref["file_sha256"]
-                    if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
-                        raise OntologyError("source-backed link provenance has an invalid SHA-256")
+            _check_provenance(provenance)
+
+        if version >= _RETRACTIONS_VERSION:
+            retractions = conn.execute(
+                "SELECT link_id, retracted_at, actor_id, reason, provenance_json FROM ontology_link_retractions"
+            )
+            for row in retractions:
+                _canonical_timestamp(row["retracted_at"], "retracted_at")
+                if not isinstance(row["actor_id"], str) or not row["actor_id"].strip():
+                    raise OntologyError("ontology link retraction has no actor identity")
+                if not isinstance(row["reason"], str) or not row["reason"].strip():
+                    raise OntologyError("ontology link retraction has no reason")
+                try:
+                    provenance = json.loads(row["provenance_json"])
+                except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                    raise OntologyError("ontology link retraction provenance is not valid JSON") from exc
+                _check_provenance(provenance)
+                if conn.execute(
+                    "SELECT 1 FROM ontology_links WHERE supersedes_link_id=?", (row["link_id"],)
+                ).fetchone() is not None:
+                    raise OntologyError("ontology link is both retracted and superseded")
 
         # Reported rather than refused: links are immutable, so refusing here would
         # also stop backup and restore of a store written before this rule.
@@ -1533,8 +1718,8 @@ class OntologyObjectStore:
             )
         ]
         link_refs: dict[str, str] = {}
-        for row in ontology_conn.execute("SELECT provenance_json FROM ontology_links"):
-            provenance = json.loads(row["provenance_json"])
+        for provenance_json in _stored_provenance(ontology_conn):
+            provenance = json.loads(provenance_json)
             if provenance.get("kind") != "source":
                 continue
             for ref in provenance.get("source_refs", []):
@@ -1873,7 +2058,7 @@ class OntologyObjectStore:
             backup_bytes, backup_digest = _stage_private_copy(backup_file, temporary)
             conn = sqlite3.connect(temporary.resolve().as_uri() + "?mode=rw", uri=True, timeout=30.0)
             conn.row_factory = sqlite3.Row
-            self._verify_connection_integrity(conn)
+            schema_version = self._verify_connection_integrity(conn)["schema_version"]
             attestations = self._verify_source_snapshot_dependencies(
                 conn, lambda: self._authorize_source_content_read(policy=policy, audit=audit),
             )
@@ -1918,8 +2103,8 @@ class OntologyObjectStore:
                 )
             ]
             link_source_references_by_key = {}
-            for row in conn.execute("SELECT provenance_json FROM ontology_links ORDER BY link_id"):
-                provenance = json.loads(row["provenance_json"])
+            for provenance_json in _stored_provenance(conn):
+                provenance = json.loads(provenance_json)
                 if provenance.get("kind") != "source":
                     continue
                 for ref in provenance["source_refs"]:
@@ -1937,7 +2122,7 @@ class OntologyObjectStore:
                 "format": _MANIFEST_FORMAT,
                 "project_id": self.project_id,
                 "created_at": _utc_now(),
-                "ontology_schema_version": 3,
+                "ontology_schema_version": schema_version,
                 "packs": packs,
                 "bindings": bindings,
                 "ontology_backup": {
