@@ -22,6 +22,7 @@ For the one authoritative statement of what is implemented, read [Rung status](R
 - [Ontology capability target](ONTOLOGY_CAPABILITY_TARGET.md) and [object store design](ONTOLOGY_OBJECT_STORE_DESIGN.md). Design, partly implemented; each states its own status.
 - [Ontology pack compatibility policy](ONTOLOGY_COMPATIBILITY.md). Current; a check you run, not enforced by the store.
 - [Typed Python types from a domain pack](ONTOLOGY_TYPED_CLIENT.md). Library and command only; a shape check, not an API or SDK.
+- [Ontology read interface, version 1](ONTOLOGY_READ_INTERFACE.md). In-process library pinned to one pack fingerprint; not a network service or SDK.
 - [Ontology action proposals](ONTOLOGY_ACTION_PROPOSALS.md). Current; library only, executes nothing.
 - [Portable ontology schemas and conformance vectors](ONTOLOGY_PORTABLE_SCHEMAS.md). Current; structure only.
 - [Ingestion specification](INGESTION_SPEC.md), [run provenance](RUN_PROVENANCE_SPEC.md). Current.

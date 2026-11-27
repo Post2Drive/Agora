@@ -107,7 +107,7 @@ The exit test is met at library level by the `civic_in` and `retail_in` pack tes
 - Generate typed clients from ontology schemas; publish compatibility and deprecation rules.
 - Provide local developer tooling and machine-readable API specifications.
 - Prove least-privilege access, schema compatibility, and non-leaking errors.
-- First slice: [typed Python types generated from a pack](ONTOLOGY_TYPED_CLIENT.md) check the shape of instances the library returns (library and command only). No versioned API, service client or compatibility promise yet.
+- First slice: [typed Python types generated from a pack](ONTOLOGY_TYPED_CLIENT.md) check the shape of instances the library returns (library and command only). Second slice: a [versioned in-process read interface](ONTOLOGY_READ_INTERFACE.md) pinned to one pack fingerprint, with written compatibility and deprecation rules (library only; the rules are not yet exercised). No network API, service client or machine-readable API specification yet.
 
 ### O4 — Authoring, governance, and operations
 
