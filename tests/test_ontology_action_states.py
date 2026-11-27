@@ -252,6 +252,11 @@ def _co(subject="c", **extra):
                   operation="ontology_action_decide"), **extra}
 
 
+def test_an_admission_by_the_second_approver_is_inconsistent():
+    entry = _derive([_proposed(), _decided(), _co(), _ending(subject="c")])
+    assert entry["state"] == "inconsistent" and "admission is not well formed" in entry["reason"], entry
+
+
 def test_a_second_approval_is_named_in_the_state():
     entry = _derive([_proposed(), _decided(), _co(), _ending()])
     assert entry["state"] == "admitted" and entry["co_approved_by"] == "c"
