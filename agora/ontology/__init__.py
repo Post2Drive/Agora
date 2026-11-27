@@ -2,7 +2,10 @@
 
 from ..identity import stable_record_key
 from .actions import ActionProposal, propose_action, recheck_action_proposal
-from .approvals import decide_action_proposal, verify_approved_action
+from .approvals import (
+    APPROVAL_LIFETIME_SECONDS, admit_approved_action, decide_action_proposal,
+    verify_approved_action, withdraw_approval,
+)
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
 from .registry import (
@@ -21,6 +24,7 @@ from .registry import (
 from .store import OntologyObjectStore
 
 __all__ = [
+    "APPROVAL_LIFETIME_SECONDS",
     "SENSITIVITY_LEVELS",
     "ActionProposal",
     "ActionType",
@@ -35,6 +39,7 @@ __all__ = [
     "PropertyType",
     "RegistryChange",
     "SourceBinding",
+    "admit_approved_action",
     "load_binding",
     "decide_action_proposal",
     "load_domain_pack",
@@ -45,4 +50,5 @@ __all__ = [
     "stable_record_key",
     "validate_binding",
     "verify_approved_action",
+    "withdraw_approval",
 ]

@@ -1,6 +1,6 @@
-# Ontology action proposals (O2, first slice)
+# Ontology action proposals (O2, first three slices)
 
-**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`). No CLI, web or service uses it. It proposes and records an approval or rejection; it does not queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
+**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`). No CLI, web or service uses it. It proposes, records an approval or rejection, and ends an approval by withdrawal or by one admission for simulation; it does not queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
 
 ## What a proposal binds
 
@@ -44,14 +44,27 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 - The chain must hold an `ontology_action_proposed` event for the digest from the identity and policy version the document names. This authenticates `proposed_by` against the anchored chain, so the digest no longer has to be retained separately.
 - The deciding identity must be principal-bound and different from the proposer.
 - The decision is appended as `ontology_action_approved` or `ontology_action_rejected` under the event ID `ontology-action-decision-<digest>`. The chain refuses a duplicate ID, so a digest gets one decision; a rejection cannot be followed by an approval. The chain keeps no free text, so the reason is recorded only as `reason_hash`.
-- `verify_approved_action(store, document, digest, ...)` is the check to run before a later step acts. It needs read authority and re-reads the objects and sources (`recheck_action_proposal`), then requires the proposal event, exactly one decision event that is an approval, and an approver who is not the proposer. A changed pack, object or source row makes it fail, which is how a stale approval is caught.
+- `verify_approved_action(store, document, digest, ...)` is the check to run before a later step acts. It needs read authority and re-reads the objects and sources (`recheck_action_proposal`), then requires the proposal event, exactly one decision event that is an approval, an approver who is not the proposer, and an approval that has not been withdrawn, used or expired (below). A changed pack, object or source row makes it fail, which is how a stale approval is caught.
 - The decision step does not re-read the objects: the approver decides on the document they were shown, and staleness is caught at verification.
+
+## Expiry, withdrawal and admission (O2, third slice)
+
+- **Expiry.** An approval lasts `APPROVAL_LIFETIME_SECONDS` (24 hours) from the time the chain writer recorded the decision. `max_age_seconds` on `verify_approved_action` and `admit_approved_action` can shorten it for that call, never lengthen it. A decision without a readable time with a zone, or dated more than 30 seconds ahead of the checking clock, is refused. This also applies to approvals recorded before this change. An expired digest cannot be approved again: the same request gives the same digest, so a new approval needs a changed proposal (for example a new reason).
+- **Withdrawal.** `withdraw_approval(store, document, digest, reason, ...)` needs `ontology_action_decide` and an identity other than the proposer; it need not be the original approver. It does not re-read the objects, works on an expired approval, and is permanent. It cannot undo an admission.
+- **Admission.** `admit_approved_action(store, document, digest, ...)` uses a live approval once. New policy operation `ontology_action_admit`: under the central roles only `operator` has it. It is decided before anything is read. It also needs read authority, runs `verify_approved_action`, and refuses the approver's own identity (the proposer may admit). The expiry is checked again while the chain's write lock is held. A caller must not start a simulation unless it returns.
+- **One ending.** Withdrawal (`ontology_action_withdrawn`) and admission (`ontology_action_admitted`) share the event ID `ontology-action-final-<digest>`, so the chain's unique event ID allows one of them, once, including when two writers race.
+- If the ending is appended but its anchor cannot be written, the call raises, the approval is spent, and the anchored writer refuses further appends until reconciled.
+
+An admission records that one simulation may start. Nothing here starts one, records its result, or retries it: a failure after admission leaves the approval spent.
 
 ## Limits
 
 - `recheck_action_proposal` alone does not authenticate `proposed_by` and `policy_version`; `decide_action_proposal` and `verify_approved_action` check them against the anchored chain. No signature: the chain is a local file, so someone who can rewrite it and its anchor, or run code in the service, can forge a proposal or an approval. A valid digest alone is not an approval.
 - **Row checks on read are unkeyed.** Object reads recompute the stored row ID, so a source row edited under its pinned row ID is refused both before and after a proposal. This is not a signature and does not authenticate the snapshot against the original file; see [the snapshot content checks and their limits](ONTOLOGY_DATA_BINDING.md#snapshot-content-checks-on-read).
 - Cited evidence is checked for existence, import status, row count and the recorded file hash. Row content is not hashed, and the evidence is not judged relevant to the reason.
+- The lifetime rests on the clock of the machine that records and checks the events. There is no trusted time source.
+- Objects and sources are re-read before the admission is appended, not in the same transaction, so a change in between is not detected.
+- Removing a person's role does not end approvals they gave; withdraw them or let them expire.
 - Preconditions are free text and are not evaluated. Declared `permissions` are recorded, not enforced.
 - Recheck does not look for newer imports, retracted links or other later facts; it is not a staleness check against current state.
 - The proposal holds parameter values in clear text. The values digests are unsalted, so low-entropy values could be guessed. Handle a proposal at its recorded classification.
@@ -60,4 +73,4 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 
 ## Not yet built (next O2 slices)
 
-A signed receipt over the digest, a persisted proposal ledger with states and expiry (an approval does not expire and is not a lease), precondition evaluation, approval by more than one person, and simulation-only application.
+A signed receipt over the digest, a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, and simulation-only application that records an outcome.
