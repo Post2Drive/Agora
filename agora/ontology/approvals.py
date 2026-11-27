@@ -4,7 +4,12 @@ A proposal (``actions.propose_action``) has a digest that the chain already hold
 decides that digest once, as someone other than the proposer, and the decision is appended to the
 chain under a fixed event ID, so a second decision for the same digest is refused. ``verify_approved_action``
 is the check to run before any later step acts: it re-reads the objects and sources, and finds the
-proposal and one approving decision in the chain. Nothing here executes an action.
+proposal and one approving decision in the chain.
+
+An approval lasts at most ``APPROVAL_LIFETIME_SECONDS``. It ends in at most one of two ways: an
+approver withdraws it, or ``admit_approved_action`` uses it once for a simulation. Both are appended
+under the same fixed event ID, so the chain cannot hold both, or either twice. Nothing here executes
+an action.
 
 The chain keeps no free text, so the decider's reason is recorded as a hash only.
 
@@ -14,12 +19,13 @@ Rules and limits: docs/ONTOLOGY_ACTION_PROPOSALS.md.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import re
 from typing import Any
 
-from ..audit_anchor import require_anchored, verify_anchored
+from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from ..audit_chain import AuditReplayError
 from ..policy_enforcement import PolicyCallable
 from .actions import (
@@ -36,7 +42,31 @@ _DECISION_PREFIX = "ontology-action-decision-"
 _OUTCOMES = {"approve": "ontology_action_approved", "reject": "ontology_action_rejected"}
 _APPROVED_TYPE = _OUTCOMES["approve"]
 _WORDS = {"approve": "approved", "reject": "rejected"}
+_ADMIT = "ontology_action_admit"
+# One event ID for both endings: the chain refuses a repeated ID, so they exclude each other.
+_FINAL_PREFIX = "ontology-action-final-"
+_ENDINGS = {
+    "ontology_action_withdrawn": "this approval was withdrawn",
+    "ontology_action_admitted": "this approval was already used",
+}
+_ENDED = "this approval has already ended"
+# Fixed here. A caller may ask for a shorter lifetime, never a longer one.
+APPROVAL_LIFETIME_SECONDS = 24 * 60 * 60
+_CLOCK_SKEW = timedelta(seconds=30)
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _lifetime(max_age_seconds: Any) -> timedelta:
+    if max_age_seconds is None:
+        return timedelta(seconds=APPROVAL_LIFETIME_SECONDS)
+    if type(max_age_seconds) is not int or not 1 <= max_age_seconds <= APPROVAL_LIFETIME_SECONDS:
+        raise OntologyError(
+            f"max_age_seconds must be a whole number from 1 to {APPROVAL_LIFETIME_SECONDS}")
+    return timedelta(seconds=max_age_seconds)
 
 
 def _fields(store: OntologyObjectStore, document: Any, expected_digest: Any) -> dict[str, Any]:
@@ -110,6 +140,92 @@ def _proposed_by_this_chain(writer: Any, fields: dict[str, Any], digest: str) ->
         raise OntologyError("this proposal was not recorded in the audit chain by the person it names")
 
 
+def _principal(decision: Any) -> str:
+    subject = decision.get("subject_id") if isinstance(decision, Mapping) else None
+    if not isinstance(subject, str) or not subject.strip() or subject == "unknown":
+        raise OntologyError("approval requires a principal-bound identity")
+    return subject
+
+
+def _approval(writer: Any, fields: dict[str, Any], digest: str) -> tuple[str, dict[str, Any]]:
+    """The one well-formed approving decision for this digest, and who made it."""
+    _proposed_by_this_chain(writer, fields, digest)
+    decided = _events(writer, digest, _OUTCOMES.values())
+    if not decided:
+        raise OntologyError("this proposal has not been decided")
+    if len(decided) != 1:
+        raise OntologyError("this proposal has more than one decision")
+    event = decided[0]
+    if (event.get("event_id") != _DECISION_PREFIX + digest.split(":", 1)[1]
+            or event.get("operation") != _DECIDE or event.get("decision") != "allow"):
+        raise OntologyError("the decision event is not well formed")
+    if event.get("event_type") != _APPROVED_TYPE:
+        raise OntologyError("this proposal was not approved")
+    approver = event.get("subject_id")
+    if not isinstance(approver, str) or not approver.strip() or approver == fields["proposed_by"]:
+        raise OntologyError("the approval is not from someone other than the proposer")
+    return approver, event
+
+
+def _final_id(digest: str) -> str:
+    return _FINAL_PREFIX + digest.split(":", 1)[1]
+
+
+def _not_ended(writer: Any, digest: str) -> None:
+    """Refuse a withdrawn or used approval. Anything under the final event ID ends it."""
+    ended = _events(writer, digest, _ENDINGS)
+    if ended:
+        raise OntologyError(_ENDINGS[ended[0]["event_type"]])
+    if writer.find_event(_final_id(digest)) is not None:
+        raise OntologyError(_ENDED)
+
+
+def _approved_at(event: Mapping[str, Any]) -> datetime:
+    """When the chain writer recorded the decision."""
+    try:
+        recorded = datetime.fromisoformat(event["recorded_at"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise OntologyError("the approval has no readable time") from exc
+    if recorded.tzinfo is None:
+        raise OntologyError("the approval has no readable time")
+    return recorded
+
+
+def _expiry(approved_at: datetime, lifetime: timedelta, now: datetime) -> datetime:
+    if now < approved_at - _CLOCK_SKEW:
+        raise OntologyError("the approval is dated after the current time")
+    try:
+        expires_at = approved_at + lifetime
+    except OverflowError as exc:
+        raise OntologyError("the approval has no readable time") from exc
+    if now >= expires_at:
+        raise OntologyError("this approval has expired")
+    return expires_at
+
+
+def _end_event(
+    writer: Any, event_type: str, operation: str, decision: Any, subject: str,
+    resource_ids: list[str], digest: str, *, in_transaction: Any = None, **extra: str,
+) -> None:
+    try:
+        writer.append({
+            "event_id": _final_id(digest),
+            "event_type": event_type,
+            "operation": operation,
+            "decision": "allow",
+            "subject_id": subject,
+            "policy_version": str(decision.get("policy_version", "unknown")),
+            "resource_ids": resource_ids,
+            "reason": "policy_allow",
+            **extra,
+        }, in_transaction=in_transaction)
+    except AuditReplayError as exc:
+        raise OntologyError(_ENDED) from exc
+    except AnchorWriteError as exc:
+        raise OntologyError(
+            "the event was appended but not anchored; the approval is spent, do not act") from exc
+
+
 def decide_action_proposal(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     outcome: str, reason: str, *, policy: PolicyCallable | None, audit: Any | None,
@@ -129,9 +245,7 @@ def decide_action_proposal(
     # Decided before the chain is read, so a denied caller learns nothing about what was proposed.
     decision = store._authorize(
         _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
-    subject = decision.get("subject_id") if isinstance(decision, Mapping) else None
-    if not isinstance(subject, str) or not subject.strip() or subject == "unknown":
-        raise OntologyError("approval requires a principal-bound identity")
+    subject = _principal(decision)
     if subject == fields["proposed_by"]:
         raise OntologyError("a proposal must be decided by someone other than its proposer")
     _proposed_by_this_chain(writer, fields, expected_digest)
@@ -160,34 +274,92 @@ def verify_approved_action(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     *, policy: PolicyCallable | None, audit: Any | None,
     purpose: str | None = None, retention: str | None = None,
+    max_age_seconds: int | None = None,
 ) -> dict[str, str]:
-    """Raise unless this exact proposal is still valid and holds one approving decision from someone else.
+    """Raise unless this exact proposal is still valid and holds one live approval from someone else.
 
     Needs read authority (the objects and sources are re-read, so a proposal whose pack, objects or
     sources changed is refused), then checks the chain: the proposal was recorded by the person it
-    names, and its single decision is an approval by a different identity. Run it again immediately
-    before acting; an approval is not a lease and does not expire.
+    names, its single decision is an approval by a different identity, and that approval has not
+    been withdrawn, used or expired. This check consumes nothing; before acting, use
+    ``admit_approved_action``.
     """
+    lifetime = _lifetime(max_age_seconds)
     fields = _fields(store, document, expected_digest)
     writer = _anchored(audit)
     recheck_action_proposal(store, document, expected_digest, policy=policy, audit=writer,
                             purpose=purpose, retention=retention)
-    _proposed_by_this_chain(writer, fields, expected_digest)
-    decided = _events(writer, expected_digest, _OUTCOMES.values())
-    if not decided:
-        raise OntologyError("this proposal has not been decided")
-    if len(decided) != 1:
-        raise OntologyError("this proposal has more than one decision")
-    event = decided[0]
-    if (event.get("event_id") != _DECISION_PREFIX + expected_digest.split(":", 1)[1]
-            or event.get("operation") != _DECIDE or event.get("decision") != "allow"):
-        raise OntologyError("the decision event is not well formed")
-    if event.get("event_type") != _APPROVED_TYPE:
-        raise OntologyError("this proposal was not approved")
-    approver = event.get("subject_id")
-    if not isinstance(approver, str) or not approver.strip() or approver == fields["proposed_by"]:
-        raise OntologyError("the approval is not from someone other than the proposer")
-    return {"digest": expected_digest, "approved_by": approver, "proposed_by": fields["proposed_by"]}
+    approver, event = _approval(writer, fields, expected_digest)
+    _not_ended(writer, expected_digest)
+    expires_at = _expiry(_approved_at(event), lifetime, _now())
+    return {"digest": expected_digest, "approved_by": approver, "proposed_by": fields["proposed_by"],
+            "expires_at": expires_at.isoformat()}
 
 
-__all__ = ["decide_action_proposal", "verify_approved_action"]
+def withdraw_approval(
+    store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
+    reason: str, *, policy: PolicyCallable | None, audit: Any | None,
+) -> dict[str, str]:
+    """Withdraw an approval that has not been used. Permanent.
+
+    Needs decision authority and an identity other than the proposer; it need not be the original
+    approver. The objects are not re-read, so a stale approval can still be withdrawn. Refused if
+    the approval was already used: a withdrawal does not undo an admission.
+    """
+    reason = _exact_text(reason, "reason")
+    fields = _fields(store, document, expected_digest)
+    writer = _anchored(audit)
+    resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
+    decision = store._authorize(
+        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+    subject = _principal(decision)
+    if subject == fields["proposed_by"]:
+        raise OntologyError("an approval must be withdrawn by someone other than the proposer")
+    _approval(writer, fields, expected_digest)
+    _not_ended(writer, expected_digest)
+    _end_event(writer, "ontology_action_withdrawn", _DECIDE, decision, subject, resource_ids,
+               expected_digest,
+               reason_hash="sha256:" + hashlib.sha256(reason.encode("utf-8")).hexdigest())
+    return {"digest": expected_digest, "withdrawn_by": subject}
+
+
+def admit_approved_action(
+    store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
+    *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
+    max_age_seconds: int | None = None,
+) -> dict[str, str]:
+    """Use a live approval, once, to admit the action for simulation. Executes nothing.
+
+    Needs admission authority and read authority, and an identity other than the approver. The
+    caller must not start the simulation unless this returns. The expiry is checked again while the
+    chain's write lock is held. The objects are re-read before that lock, not inside it.
+    """
+    lifetime = _lifetime(max_age_seconds)
+    fields = _fields(store, document, expected_digest)
+    writer = _anchored(audit)
+    resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
+    # Decided before anything is read, at the proposal's own classification.
+    decision = store._authorize(
+        _ADMIT, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+    subject = _principal(decision)
+    live = verify_approved_action(
+        store, document, expected_digest, policy=policy, audit=writer, purpose=purpose,
+        retention=retention, max_age_seconds=max_age_seconds)
+    if subject == live["approved_by"]:
+        raise OntologyError("an action must be admitted by someone other than its approver")
+    expires_at = datetime.fromisoformat(live["expires_at"])
+    approved_at = expires_at - lifetime
+
+    def still_live(_db: Any) -> None:
+        _expiry(approved_at, lifetime, _now())
+
+    _end_event(writer, "ontology_action_admitted", _ADMIT, decision, subject, resource_ids,
+               expected_digest, in_transaction=still_live)
+    return {**live, "admitted_by": subject}
+
+
+__all__ = [
+    "APPROVAL_LIFETIME_SECONDS", "admit_approved_action", "decide_action_proposal",
+    "verify_approved_action", "withdraw_approval",
+]
