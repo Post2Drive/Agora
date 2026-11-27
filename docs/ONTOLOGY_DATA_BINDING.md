@@ -137,7 +137,7 @@ Every ontology read of a snapshot (in-memory materialization, object-reference i
 - Each row's `row_id` is recomputed from its stored values and record number together with those manifest facts, and its source locator must match exactly.
 - Reads of a whole import also require the stored row count to equal `accepted_records`.
 
-Limits. These are unkeyed hashes, not signatures. A single-object read compares against the row ID pinned in the ontology store, so a changed row is refused even if its row ID was recomputed, as long as the ontology store itself was not rewritten. Before a row ID is pinned, someone who can write `tabular.sqlite3` can forge values together with a matching row ID, or delete rows and adjust `accepted_records`, and these checks alone will not notice; object-reference indexing also requires the ingest record described below. The stored values are not re-derived from the original file bytes. Column types, column sensitivity and column policies in the manifest are covered by neither identifier.
+Limits. These are unkeyed hashes, not signatures. A single-object read compares against the row ID pinned in the ontology store, so a changed row is refused even if its row ID was recomputed, as long as the ontology store itself was not rewritten. Before a row ID is pinned, someone who can write `tabular.sqlite3` can forge values together with a matching row ID, or delete rows and adjust `accepted_records`, and these checks alone will not notice; object-reference indexing and scenario-input construction also require the ingest record described below. The stored values are not re-derived from the original file bytes. Column types, column sensitivity and column policies in the manifest are covered by neither identifier.
 
 ## Ingest record in the audit chain
 
@@ -147,7 +147,8 @@ Under the protected defaults, `ingest_csv` needs an anchored audit writer. Befor
 
 - **Imports made without a record cannot be indexed.** This includes every import made before this change. Importing the same bytes again is a no-op and deliberately records nothing, because that would attest whatever is stored now. To index such data, import the source file into a new project.
 - The same chain must be supplied at ingest and at indexing.
-- Only object-reference indexing requires the record. In-memory materialization, scenario inputs, link source references and single-object reads do not check it.
+- `build_scenario_input` makes the same check under the protected defaults: it needs the anchored writer, the rows it packages must be the rows in the recorded digest, and the manifest it takes the data role and hashes from must equal the recorded one. Imports made without a record cannot feed scenario inputs either.
+- Object-reference indexing and scenario inputs require the record. In-memory materialization on its own, link source references and single-object reads do not check it.
 - This is not a signature. Someone who can append to the chain and its anchor, or run code in the service process, can record a forged snapshot. It does not show that the source file was correct.
 - A commit that fails after the event was appended leaves an event for content that was never stored.
 
