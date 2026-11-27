@@ -336,7 +336,6 @@ class Simulation:
         The order is consume, then act: a failure after admission leaves a spent receipt and no run, and a new
         receipt (in an empty project) is needed. Admission refusals raise ``agora.security.signed_receipt.ReceiptError``.
         """
-        from ..scenario_projection import ProjectionError
         from ..security import run_scope
         from ..security.signed_receipt import ReceiptError
         if not isinstance(signed_input, Mapping) or set(signed_input) != _SIGNED_FIELDS:
