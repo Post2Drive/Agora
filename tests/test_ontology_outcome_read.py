@@ -2,7 +2,9 @@
 import pytest
 
 from agora import protection
-from agora.ontology import OntologyError, co_approve_action_proposal, outcome_read, read_simulation_outcome
+from agora.ontology import (
+    OntologyError, action_proposal_state, co_approve_action_proposal, outcome_read, read_simulation_outcome,
+)
 from agora.ontology.actions import proposal_digest
 from agora.policy import decide
 
@@ -267,3 +269,48 @@ def test_an_admission_by_the_second_approver_is_refused(world):
     _forge_outcome(world, proposal, subject_id="approver-2")
     with pytest.raises(OntologyError, match="other than the second approver"):
         _read(world, proposal)
+
+
+def _refused_like_the_state_view(w, proposal, reason):
+    state = action_proposal_state(w.store, proposal.document, proposal.digest, policy=READER, audit=w.audit)
+    assert state["state"] == "inconsistent" and state["reason"] == reason
+    with pytest.raises(OntologyError, match="state view does not accept this history: " + reason):
+        _read(w, proposal)
+
+
+def _other_resources(proposal):
+    return ["other-pack", "other-action", "9", proposal.digest]
+
+
+def test_a_decision_naming_other_resources_is_refused(world):
+    proposal = _propose(world)
+    world.audit.append({
+        "event_id": "ontology-action-decision-" + _hex(proposal),
+        "event_type": "ontology_action_approved", "operation": "ontology_action_decide",
+        "decision": "allow", "subject_id": "approver-1", "policy_version": "v",
+        "resource_ids": _other_resources(proposal), "reason": "policy_allow"})
+    _forge(world, proposal)
+    _forge_outcome(world, proposal)
+    _refused_like_the_state_view(world, proposal, "the decision is not well formed")
+
+
+def test_a_second_approval_naming_other_resources_is_refused(world):
+    proposal = _approved(world)
+    _forge_co(world, proposal, resource_ids=_other_resources(proposal))
+    _admit(world, proposal)
+    _record(world, proposal)
+    _refused_like_the_state_view(world, proposal, "the second approval is not well formed")
+
+
+@pytest.mark.parametrize("field", ["subject_id", "policy_version", "resource_ids"])
+def test_proposal_records_that_disagree_are_refused(world, field):
+    proposal = _admitted(world)
+    _record(world, proposal)
+    event = {"event_id": "second-proposal", "event_type": "ontology_action_proposed",
+             "operation": "ontology_action_propose", "decision": "allow",
+             "subject_id": proposal.document["proposed_by"],
+             "policy_version": proposal.document["policy_version"],
+             "resource_ids": _resources(proposal), "reason": "policy_allow"}
+    event[field] = _other_resources(proposal) if field == "resource_ids" else "other"
+    world.audit.append(event)
+    _refused_like_the_state_view(world, proposal, "the proposal records disagree about who proposed what")

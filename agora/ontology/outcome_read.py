@@ -14,10 +14,11 @@ from typing import Any
 
 from ..policy_enforcement import PolicyCallable
 from .approvals import (
-    _APPROVED_TYPE, _CO_TYPE, _DIGEST, _ENDINGS, _OUTCOMES, _PROPOSED_TYPE, _anchored, _approval,
-    _co_approval, _events, _fields, _principal, _two_person,
+    _APPROVED_TYPE, _CO_TYPE, _DIGEST, _PROPOSED_TYPE, _anchored, _approval, _co_approval, _events,
+    _fields, _lifetime, _now, _principal, _two_person,
 )
 from .outcomes import _ADMITTED_TYPE, _OUTCOME, _OUTCOME_PREFIX, _STATUSES, _admission
+from .states import _STATUS_STATES, _TYPES, _derive
 from .store import OntologyError, OntologyObjectStore
 
 _READ = "ontology_read"
@@ -36,7 +37,8 @@ def read_simulation_outcome(
     then the second approval where there is one, then one admission by someone who gave neither
     approval, then one outcome from that admitter, in that order. A sensitive proposal needs the
     second approval while ``protection.TWO_PERSON_SENSITIVE`` is set; a second approval that is
-    recorded is checked whatever the flag says. The objects are not re-read and neither signed
+    recorded is checked whatever the flag says. The history must also pass the checks of
+    ``states.action_proposal_state``. The objects are not re-read and neither signed
     statements nor the approval's age are checked again.
     """
     fields = _fields(store, document, expected_digest)
@@ -53,8 +55,7 @@ def read_simulation_outcome(
         if admitter == co_approver:
             raise OntologyError("the admission is not from someone other than the second approver")
     # One pass in chain order. Each lookup above is by type; none of them compares positions.
-    history = _events(writer, expected_digest, {
-        _PROPOSED_TYPE, _CO_TYPE, *_OUTCOMES.values(), *_ENDINGS, *_BY_TYPE})
+    history = _events(writer, expected_digest, _TYPES)
     steps = [e for e in history if e.get("event_type") != _PROPOSED_TYPE]
     reported = [e for e in steps if e.get("event_type") in _BY_TYPE]
     event_id = _OUTCOME_PREFIX + expected_digest.split(":", 1)[1]
@@ -82,6 +83,12 @@ def read_simulation_outcome(
         for e in history[:history.index(steps[0])])
     if not proposed_first or [e.get("event_type") for e in steps] != expected_steps:
         raise OntologyError("the chain does not hold these events in order")
+    # The state view's rules apply too (matching proposal records, the same resources on every step),
+    # so this read never reports an outcome for a history the view calls inconsistent.
+    view = _derive(expected_digest, history, _now(), _lifetime(None))
+    if view["state"] != _STATUS_STATES[event["event_type"]]:
+        raise OntologyError(
+            f"the proposal state view does not accept this history: {view.get('reason', view['state'])}")
     found = {"digest": expected_digest, "status": _BY_TYPE[event["event_type"]],
              "result_digest": result_digest, "recorded_by": admitter,
              "recorded_at": event["recorded_at"], "proposed_by": fields["proposed_by"],
