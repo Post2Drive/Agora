@@ -5,8 +5,9 @@ the chain and its anchor can forge one. This statement is the start of a second 
 of a signing key states that one identity approved one proposal digest that another identity proposed, in
 one tenant, project and release, for at most five minutes.
 
-Nothing calls this module. No admission requires a statement yet, so it protects nothing today. The caller
-passes the trusted keys and the clock. A verified statement can be verified again until it expires; it is
+The only package caller is ``receipt_gate.ReceiptGate.check_approval_statement``, which ontology admission
+requires under the protected defaults. This function takes the trusted keys and the clock from its caller; the
+gate takes the keys from the store's newest accepted signed key list. A verified statement can be verified again until it expires; it is
 not single-use by itself (an admission in the chain is). No production key exists, and the signer used here
 is not constant-time. The format reuses the canonical bytes, key entry and Ed25519 verifier of
 ``signed_receipt`` under its own domain tag, so neither kind of signature validates as the other.

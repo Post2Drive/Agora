@@ -11,13 +11,19 @@ The request fields are the scope being authorised. The worker MUST derive them f
 run (the authenticated subject and the hashes of the inputs it actually loaded), not copy them from the receipt
 or take the requester's word; otherwise the scope check compares a claim with itself.
 
+``check_approval_statement`` applies the same trust to a signed approval statement: tenant, release id, key
+mode and keys come from this gate. It consumes nothing, and returns a recheck for the caller to run inside the
+transaction that acts on the statement.
+
 One gate per thread (its SQLite connection is not shared across threads). Reached by the engine only through ``Simulation(signed_input=...)`` (a signed start). The clock
 is whatever the worker process passes in; there is no trusted time source. Not a boundary against code in the
 same process, or against anyone who can edit the configuration file or both the audit database and the anchor.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,6 +32,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 from agora.audit_anchor import AnchoredAuditChain, open_anchored_audit
 from agora.pathsafe import read_stable_bytes
+from agora.security import approval_receipt as ap
 from agora.security import key_list as kl
 from agora.security import receipt_ledger as ledger
 from agora.security import signed_receipt as sr
@@ -38,6 +45,7 @@ _CONFIG_FIELDS = {"type", "v", "tenant", "release_id", "key_mode", "root_public"
                   "audit_db", "audit_anchor", "chain_id"}
 WORKER_FIELDS = ("tenant", "release_id")
 REQUEST_FIELDS = tuple(name for name in sr.SCOPE_FIELDS if name not in WORKER_FIELDS)
+APPROVAL_REQUEST_FIELDS = tuple(name for name in ap.SCOPE_FIELDS if name not in WORKER_FIELDS)
 
 
 @dataclass(frozen=True)
@@ -111,6 +119,15 @@ def load_gate_config(path: str | Path) -> GateConfig:
                       paths[0], paths[1], data["chain_id"])
 
 
+@dataclass(frozen=True)
+class CheckedApproval:
+    """A statement that verified at one moment. Holding one is not authority: run ``recheck`` where you act."""
+
+    expires_at: datetime
+    statement_hash: str
+    recheck: Callable[[sqlite3.Connection], None]
+
+
 class ReceiptGate:
     """Holds the worker's trust settings and the key list last accepted through this object."""
 
@@ -172,6 +189,46 @@ class ReceiptGate:
             monotonic=self._monotonic, expected=scope, allow_test_keys=self._allow_test_keys,
         )
 
+    def check_approval_statement(
+        self, envelope: Mapping[str, Any], *, request: Mapping[str, str],
+    ) -> CheckedApproval:
+        """Verify a signed approval statement with this gate's trust, or raise ``sr.ReceiptError``.
+
+        ``request`` names the project, proposal digest, proposer and approver of what is about to be acted on.
+        The caller must take them from its own verified state, never from the statement. The returned
+        ``recheck(db)`` takes the connection of the store being written, inside its transaction, and refuses
+        unless that store's newest accepted key list is still the one used here, and the list and the
+        statement are still in time.
+        """
+        if not isinstance(request, Mapping):
+            raise sr.ReceiptError("BAD_REQUEST", "request must be a mapping")
+        scope = dict(request)  # one read: the caller's mapping cannot change what is checked
+        if set(scope) != set(APPROVAL_REQUEST_FIELDS) or not all(isinstance(v, str) for v in scope.values()):
+            raise sr.ReceiptError(
+                "BAD_REQUEST", "request must be strings for exactly " + ",".join(APPROVAL_REQUEST_FIELDS))
+        scope.update(tenant=self._config.tenant, release_id=self._config.release_id)
+        key_list = self._key_list
+        if key_list is None:
+            raise sr.ReceiptError("KEY_LIST_NOT_LOADED", "load a signed key list before checking a statement")
+        first = self._clock()
+        statement = ap.verify_approval_statement(
+            envelope, keys=key_list.keys(first, self._monotonic()), now=first, expected=scope,
+            allow_test_keys=self._allow_test_keys,
+        )
+        expires = sr._parse_time(statement["expires_at"])
+        tenant, clock, monotonic = self._config.tenant, self._clock, self._monotonic
+
+        def recheck(db: sqlite3.Connection) -> None:
+            second = clock()
+            if second.tzinfo is None or second < first:
+                raise sr.ReceiptError("BAD_CLOCK", "trusted time is naive or moved backwards")
+            if second >= expires:
+                raise sr.ReceiptError("EXPIRED")
+            kl.require_current(db, tenant, key_list, second, monotonic())
+
+        digest = hashlib.sha256(ap.DOMAIN + sr.canonical_bytes(statement)).hexdigest()
+        return CheckedApproval(expires, "sha256:" + digest, recheck)
+
 
 @contextmanager
 def open_receipt_gate(config_path: str | Path, *, clock: Callable[[], datetime],
@@ -192,4 +249,4 @@ def open_receipt_gate(config_path: str | Path, *, clock: Callable[[], datetime],
         manager.__exit__(None, None, None)
 
 
-__all__ = ["GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]
+__all__ = ["APPROVAL_REQUEST_FIELDS", "CheckedApproval", "GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]

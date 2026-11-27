@@ -475,6 +475,16 @@ def accept_root_change(
     )
 
 
+def require_current(db: sqlite3.Connection, tenant: str, key_list: TrustedKeyList, now: datetime,
+                    monotonic_now: float) -> None:
+    """Refuse unless ``key_list`` is the newest list accepted in the store behind ``db`` and still fresh.
+
+    For use inside the transaction that acts on a signature checked with that list.
+    """
+    _require_newest(db, tenant, key_list.list_hash)
+    key_list.check_fresh(now, monotonic_now)
+
+
 def admit_receipt_with_key_list(
     envelope: Mapping[str, Any], *, key_list: TrustedKeyList, tenant: str, audit: AnchoredAuditChain,
     clock: Callable[[], datetime], monotonic: Callable[[], float], expected: Mapping[str, str],
@@ -484,8 +494,7 @@ def admit_receipt_with_key_list(
     keys = key_list.keys(clock(), monotonic())
 
     def still_current(db: sqlite3.Connection, now: datetime) -> None:
-        _require_newest(db, tenant, key_list.list_hash)
-        key_list.check_fresh(now, monotonic())
+        require_current(db, tenant, key_list, now, monotonic())
 
     return ledger.admit_receipt(
         envelope, tenant=tenant, audit=audit, keys=keys, clock=clock, expected=expected,

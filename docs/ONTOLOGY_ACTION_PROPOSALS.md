@@ -57,6 +57,19 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 
 An admission records that one simulation may start. Nothing here starts or retries one (its reported outcome can be recorded, below): a failure after admission leaves the approval spent.
 
+## Signed statement at admission
+
+Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`, relaxed only by tests; there is no environment variable or CLI flag), `admit_approved_action` also needs `gate`, a [`ReceiptGate`](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) with a loaded signed key list, and `statement`, a signed approval statement. Giving only one of them is refused, and a statement is checked even when the requirement is relaxed. A chain that holds a forged proposal and approval therefore admits nothing without a signature from an accepted key, as long as the worker's code and gate configuration are intact.
+
+- The gate supplies the tenant, release id, key mode, pinned roots, clock and keys. Keys come only from its signed key list, which must be the newest accepted in the audit store being written.
+- The expected project comes from the object store. The proposal digest, proposer and approver come from `verify_approved_action`. Nothing expected is read from the statement.
+- A statement that expires after the approval (at the lifetime asked for in this call) is refused.
+- Inside the admission's append transaction the key list is checked again (newest in that store, still fresh), the statement must not have expired, and the gate's clock must not have moved backwards.
+- The admission event records `approval_statement_hash`. The statement itself is not stored.
+- A refusal writes no admission, so the approval can still be used.
+
+**Limits of this check.** Test keys only; there is no issuer service or production key, so no production use is possible. The library cannot tell whether the `gate` it is given was opened from the worker's own configuration. The key list does not say what a key is for: any accepted online key, including one used for run receipts, can sign a statement (the two signatures are not interchangeable, but the signer is). The signature shows that a key holder stated the approval, not that the named approver did. Only admission requires it: approval, verification, withdrawal and outcome recording still rest on the chain, and reading an admission later does not verify the signature again. Subject and project names must fit the statement's token format (letters, digits and `. _ : -`, at most 128 characters), otherwise they cannot be admitted. An owner of both the audit database and the anchor can still roll back key-list history, including a revocation.
+
 ## Simulation outcome (O2, fourth slice)
 
 `record_simulation_outcome(store, document, digest, status, result_digest, ...)` records, once, how the simulation allowed by an admission ended. It runs nothing: this is the admitter's report.
@@ -72,7 +85,7 @@ An admission records that one simulation may start. Nothing here starts or retri
 ## Limits
 
 - An outcome is not evidence that a simulation ran, that the digest belongs to a real result, or that nothing else was done with the admission.
-- `recheck_action_proposal` alone does not authenticate `proposed_by` and `policy_version`; `decide_action_proposal` and `verify_approved_action` check them against the anchored chain. No signature: the chain is a local file, so someone who can rewrite it and its anchor, or run code in the service, can forge a proposal or an approval. A valid digest alone is not an approval.
+- `recheck_action_proposal` alone does not authenticate `proposed_by` and `policy_version`; `decide_action_proposal` and `verify_approved_action` check them against the anchored chain. The chain is a local file, so someone who can rewrite it and its anchor, or run code in the service, can forge a proposal or an approval. Only admission asks for a signature (above), and code in the same process can bypass it. A valid digest alone is not an approval.
 - **Row checks on read are unkeyed.** Object reads recompute the stored row ID, so a source row edited under its pinned row ID is refused both before and after a proposal. This is not a signature and does not authenticate the snapshot against the original file; see [the snapshot content checks and their limits](ONTOLOGY_DATA_BINDING.md#snapshot-content-checks-on-read).
 - Cited evidence is checked for existence, import status, row count and the recorded file hash. Row content is not hashed, and the evidence is not judged relevant to the reason.
 - The lifetime rests on the clock of the machine that records and checks the events. There is no trusted time source.
@@ -86,4 +99,4 @@ An admission records that one simulation may start. Nothing here starts or retri
 
 ## Not yet built (next O2 slices)
 
-Requiring a signed statement at admission (the [format and verifier](PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md) exist in `agora/security/approval_receipt.py`; nothing calls them), a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+An issuer for signed approval statements and a restriction on which keys may sign them, a stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).

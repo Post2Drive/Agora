@@ -44,7 +44,9 @@ def _unprotected_fixture_defaults(request, monkeypatch):
         monkeypatch.setattr(protection, "POLICY_REQUIRED", True)
         monkeypatch.setattr(protection, "ANCHOR_REQUIRED", True)
         monkeypatch.setattr(protection, "PRINCIPAL_BOUND_REQUIRED", True)
+        monkeypatch.setattr(protection, "SIGNED_APPROVAL_REQUIRED", True)
         return
     monkeypatch.setattr(protection, "POLICY_REQUIRED", False)
     monkeypatch.setattr(protection, "ANCHOR_REQUIRED", False)
     monkeypatch.setattr(protection, "PRINCIPAL_BOUND_REQUIRED", False)
+    monkeypatch.setattr(protection, "SIGNED_APPROVAL_REQUIRED", False)

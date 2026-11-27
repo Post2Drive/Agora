@@ -138,9 +138,10 @@ def test_a_clock_without_a_timezone_is_refused():
                                      expected=SCOPE, allow_test_keys=True)
 
 
-def test_nothing_else_in_the_package_uses_statements_yet():
-    """The documents say nothing calls this. Whoever wires it in must update them and this test."""
+def test_only_the_receipt_gate_uses_the_verifier():
+    """Admission reaches statements through the gate, which supplies the trust. A second caller would
+    have to choose its own keys; whoever adds one must update the documents and this test."""
     package = Path(ap.__file__).resolve().parents[1]
     users = [p.name for p in package.rglob("*.py")
              if p.name != "approval_receipt.py" and "approval_receipt" in p.read_text(encoding="utf-8")]
-    assert users == []
+    assert users == ["receipt_gate.py"]

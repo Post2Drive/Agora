@@ -11,6 +11,10 @@ approver withdraws it, or ``admit_approved_action`` uses it once for a simulatio
 under the same fixed event ID, so the chain cannot hold both, or either twice. Nothing here executes
 an action.
 
+Under the protected defaults admission also needs a signed approval statement for this proposal and
+approver, checked through a ``ReceiptGate`` (``agora.security.receipt_gate``): a forged chain alone
+then admits nothing. Test keys only.
+
 The chain keeps no free text, so the decider's reason is recorded as a hash only.
 
 Rules and limits: docs/ONTOLOGY_ACTION_PROPOSALS.md.
@@ -25,9 +29,12 @@ import json
 import re
 from typing import Any
 
+from .. import protection as _protection
 from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from ..audit_chain import AuditReplayError
 from ..policy_enforcement import PolicyCallable
+from ..security import signed_receipt as sr
+from ..security.receipt_gate import CheckedApproval, ReceiptGate
 from .actions import (
     PROPOSAL_FORMAT, _SENSITIVITY_RANK, _exact_text, proposal_digest, recheck_action_proposal,
 )
@@ -67,6 +74,36 @@ def _lifetime(max_age_seconds: Any) -> timedelta:
         raise OntologyError(
             f"max_age_seconds must be a whole number from 1 to {APPROVAL_LIFETIME_SECONDS}")
     return timedelta(seconds=max_age_seconds)
+
+
+_STATEMENT_REFUSED = "the signed approval statement was refused: "
+
+
+def _statement_inputs(gate: Any, statement: Any) -> None:
+    """Shape only, with no I/O. A statement is never ignored, and required under the protected defaults."""
+    if gate is None and statement is None:
+        if _protection.SIGNED_APPROVAL_REQUIRED:
+            raise OntologyError("admission requires a signed approval statement and a receipt gate")
+        return
+    if gate is None or statement is None:
+        raise OntologyError("a signed approval statement and a receipt gate must be given together")
+    if not isinstance(gate, ReceiptGate):
+        raise OntologyError("gate must be a ReceiptGate")
+
+
+def _checked_statement(
+    gate: ReceiptGate, statement: Any, project: str, live: Mapping[str, str],
+) -> CheckedApproval:
+    """Check the statement against what the chain says was approved, never against its own claims."""
+    try:
+        checked = gate.check_approval_statement(statement, request={
+            "project": project, "proposal_digest": live["digest"],
+            "proposed_by": live["proposed_by"], "approved_by": live["approved_by"]})
+    except sr.ReceiptError as exc:
+        raise OntologyError(_STATEMENT_REFUSED + exc.code) from exc
+    if checked.expires_at > datetime.fromisoformat(live["expires_at"]):
+        raise OntologyError("the signed approval statement outlives the approval")
+    return checked
 
 
 def _fields(store: OntologyObjectStore, document: Any, expected_digest: Any) -> dict[str, Any]:
@@ -328,14 +365,24 @@ def admit_approved_action(
     *, policy: PolicyCallable | None, audit: Any | None,
     purpose: str | None = None, retention: str | None = None,
     max_age_seconds: int | None = None,
+    gate: ReceiptGate | None = None, statement: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Use a live approval, once, to admit the action for simulation. Executes nothing.
 
     Needs admission authority and read authority, and an identity other than the approver. The
     caller must not start the simulation unless this returns. The expiry is checked again while the
     chain's write lock is held. The objects are re-read before that lock, not inside it.
+
+    ``statement`` is a signed approval statement and ``gate`` the worker's ``ReceiptGate`` with a
+    loaded key list. Both are required when ``protection.SIGNED_APPROVAL_REQUIRED`` is on (the
+    default), and a statement given while it is off is still checked. The statement must name this
+    project, proposal, proposer and approver, and the gate's tenant and release, and must not expire
+    after the approval. Inside the append transaction, the store being written must still have the
+    gate's key list as its newest, and the list and statement must still be in time. The admission
+    event records the statement's hash.
     """
     lifetime = _lifetime(max_age_seconds)
+    _statement_inputs(gate, statement)
     fields = _fields(store, document, expected_digest)
     writer = _anchored(audit)
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
@@ -348,15 +395,24 @@ def admit_approved_action(
         retention=retention, max_age_seconds=max_age_seconds)
     if subject == live["approved_by"]:
         raise OntologyError("an action must be admitted by someone other than its approver")
+    checked = None
+    if gate is not None:
+        checked = _checked_statement(gate, statement, store.project_id, live)
     expires_at = datetime.fromisoformat(live["expires_at"])
     approved_at = expires_at - lifetime
 
-    def still_live(_db: Any) -> None:
+    def still_live(db: Any) -> None:
         _expiry(approved_at, lifetime, _now())
+        if checked is not None:
+            try:
+                checked.recheck(db)
+            except sr.ReceiptError as exc:
+                raise OntologyError(_STATEMENT_REFUSED + exc.code) from exc
 
+    proof = {} if checked is None else {"approval_statement_hash": checked.statement_hash}
     _end_event(writer, "ontology_action_admitted", _ADMIT, decision, subject, resource_ids,
-               expected_digest, in_transaction=still_live)
-    return {**live, "admitted_by": subject}
+               expected_digest, in_transaction=still_live, **proof)
+    return {**live, "admitted_by": subject, **proof}
 
 
 __all__ = [
