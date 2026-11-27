@@ -6,7 +6,8 @@ source rows remain in tabular snapshots and are not copied here.
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 import hashlib
 import json
 import os
@@ -353,6 +354,53 @@ def _decode_cursor(value: str | None) -> dict[str, Any] | None:
     if not isinstance(result, dict):
         raise OntologyError("query cursor is invalid")
     return result
+
+
+# The decimal form tabular ingestion stores: no spaces, underscores or exponent.
+_PLAIN_DECIMAL = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
+
+
+def _filter_form(data_type: str, value: Any) -> Any:
+    """Return what a filter compares for one non-null value; ValueError if unusable.
+
+    Decimals, dates and timestamps are stored as text, so they are compared as
+    the values they stand for. A float decimal is refused: it may have lost digits.
+    """
+    if data_type == "decimal":
+        if type(value) is int:
+            return Decimal(value)
+        if not isinstance(value, str) or not _PLAIN_DECIMAL.fullmatch(value):
+            raise ValueError
+        return Decimal(value)
+    if data_type == "date":
+        if not isinstance(value, str):
+            raise ValueError
+        parsed_day = date.fromisoformat(value)
+        if parsed_day.isoformat() != value:
+            raise ValueError
+        return parsed_day
+    if data_type == "timestamp":
+        if not isinstance(value, str):
+            raise ValueError
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            raise ValueError
+        try:
+            return parsed.astimezone(timezone.utc)
+        except OverflowError:
+            raise ValueError from None
+    kind = (
+        str if data_type in {"string", "identifier", "enum"}
+        else int if data_type == "integer"
+        else bool if data_type == "boolean"
+        else None
+    )
+    if data_type == "structured_object":
+        if not isinstance(value, (dict, list)):
+            raise ValueError
+    elif kind is None or type(value) is not kind:
+        raise ValueError
+    return _canonical(value) if data_type in {"boolean", "structured_object"} else value
 
 
 def _canonical(value: Any) -> str:
@@ -1393,27 +1441,26 @@ class OntologyObjectStore:
             raise OntologyError("page_size must be an integer from 1 to 100")
 
     @staticmethod
-    def _validate_filter_value(prop: Any, value: Any) -> None:
+    def _validate_filter_value(prop: Any, value: Any) -> Any:
+        """Check one filter operand and return the form it is compared in."""
         if value is None:
             if not prop.nullable:
                 raise OntologyError("null filter value is not allowed for this property")
-            return
+            return None
         kind = prop.data_type
-        valid = (
-            isinstance(value, str) if kind in {"string", "identifier", "enum", "date", "timestamp"}
-            else isinstance(value, int) and not isinstance(value, bool) if kind == "integer"
-            else isinstance(value, (int, float)) and not isinstance(value, bool) if kind == "decimal"
-            else isinstance(value, bool) if kind == "boolean"
-            else isinstance(value, (dict, list)) if kind == "structured_object"
-            else False
-        )
-        if not valid:
-            raise OntologyError(f"filter value does not match property type {kind}")
+        try:
+            operand = _filter_form(kind, value)
+        except ValueError:
+            # No chained cause: the standard library's message can repeat the value.
+            raise OntologyError(f"filter value does not match property type {kind}") from None
         if kind == "enum" and prop.allowed_values and value not in prop.allowed_values:
             raise OntologyError("enum filter value is not allowed by the property definition")
+        return operand
 
     @classmethod
-    def _validate_filters(cls, pack: OntologyPack, type_id: str, filters: Mapping[str, Any]) -> list[tuple[str, str, Any]]:
+    def _validate_filters(
+        cls, pack: OntologyPack, type_id: str, filters: Mapping[str, Any],
+    ) -> list[tuple[str, str, str, Any]]:
         obj = next((item for item in pack.object_types if item.type_id == type_id), None)
         if obj is None:
             raise OntologyError("unknown object type")
@@ -1435,24 +1482,31 @@ class OntologyObjectStore:
                 raise OntologyError("ordering is not supported for this property type")
             if op == "contains" and (prop.data_type != "string" or value is None):
                 raise OntologyError("contains requires a non-null value and a string property")
+            if op in {"gt", "gte", "lt", "lte"} and value is None:
+                raise OntologyError("ordering requires a non-null filter value")
             if op == "in":
                 if not isinstance(value, list) or not value or len(value) > 100:
                     raise OntologyError("in requires a list of 1 to 100 typed values")
-                for item in value:
-                    cls._validate_filter_value(prop, item)
+                operand: Any = [cls._validate_filter_value(prop, item) for item in value]
             else:
-                cls._validate_filter_value(prop, value)
-            checked.append((property_id, op, value))
+                operand = cls._validate_filter_value(prop, value)
+            checked.append((property_id, prop.data_type, op, operand))
         return checked
 
     @staticmethod
-    def _matches_filters(values: Mapping[str, Any], filters: list[tuple[str, str, Any]]) -> bool:
-        for property_id, op, expected in filters:
+    def _matches_filters(values: Mapping[str, Any], filters: list[tuple[str, str, str, Any]]) -> bool:
+        for property_id, data_type, op, expected in filters:
             actual = values.get(property_id)
+            if actual is not None:
+                try:
+                    actual = _filter_form(data_type, actual)
+                except ValueError:
+                    raise OntologyError(
+                        f"stored value of {property_id} cannot be compared as {data_type}") from None
             if op == "eq":
-                matched = _canonical(actual) == _canonical(expected)
+                matched = actual == expected
             elif op == "in":
-                matched = any(_canonical(actual) == _canonical(item) for item in expected)
+                matched = actual in expected
             elif actual is None:
                 matched = False
             elif op == "contains":
