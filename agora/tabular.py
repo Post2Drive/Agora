@@ -150,6 +150,80 @@ def verify_snapshot_row(row: dict[str, Any], manifest: dict[str, Any]) -> None:
         raise SnapshotIntegrityError("snapshot row locator does not match its import")
 
 
+IMPORT_DIGEST_ALGORITHM = "agora-import-content-sha256/v1"
+IMPORT_ATTESTED_EVENT = "tabular_import_attested"
+_IMPORT_COLUMNS = (
+    "import_id", "idempotency_key", "dataset_id", "source_registry_id",
+    "file_sha256", "status", "manifest_json", "created_at",
+)
+_IMPORT_ROW_COLUMNS = (
+    "row_id", "record_key", "import_id", "source_record_number",
+    "payload_json", "locator_json",
+)
+
+
+def _content_digest(header: Any, rows: Any) -> tuple[str, int]:
+    """Digest an import record and its rows, given as column-ordered sequences.
+
+    Each line is canonical JSON (which never contains a raw newline), so line
+    boundaries are unambiguous.
+    """
+    digest = hashlib.sha256()
+    digest.update((_canonical([IMPORT_DIGEST_ALGORITHM, list(header)]) + "\n").encode("utf-8"))
+    row_count = 0
+    for row in rows:
+        digest.update((_canonical(list(row)) + "\n").encode("utf-8"))
+        row_count += 1
+    return digest.hexdigest(), row_count
+
+
+def import_content_attestation(conn: sqlite3.Connection, import_id: str) -> dict[str, Any] | None:
+    """Digest one import's stored record and every one of its rows; None if absent.
+
+    The digest covers logical content, not database file bytes, so later imports,
+    VACUUM, or journal state do not change it.
+    """
+    header = conn.execute(
+        f"SELECT {', '.join(_IMPORT_COLUMNS)} FROM imports WHERE import_id=?", (import_id,)
+    ).fetchone()
+    if header is None:
+        return None
+    content_sha256, row_count = _content_digest(header, conn.execute(
+        f"SELECT {', '.join(_IMPORT_ROW_COLUMNS)} FROM import_rows "
+        "WHERE import_id=? ORDER BY source_record_number, row_id", (import_id,)
+    ))
+    return {
+        "import_id": import_id,
+        "algorithm": IMPORT_DIGEST_ALGORITHM,
+        "row_count": row_count,
+        "content_sha256": content_sha256,
+    }
+
+
+def import_attestation_event_id(import_id: str, content_sha256: str) -> str:
+    """The audit event ID under which ``ingest_csv`` records one import's content.
+
+    The digest is part of the ID, so a reader finds the record only by already
+    holding the matching content. A commit that failed after the audit append
+    leaves a record for content that was never stored; a retry adds its own.
+    """
+    return f"tabular-import-content-v1-{import_id}-{content_sha256}"
+
+
+def import_attestation_event(
+    dataset_id: str, import_id: str, content_sha256: str, row_count: int,
+) -> dict[str, Any]:
+    # Only keys the audit chain keeps unredacted.
+    return {
+        "event_id": import_attestation_event_id(import_id, content_sha256),
+        "event_type": IMPORT_ATTESTED_EVENT,
+        "operation": "import",
+        "resource_ids": [dataset_id, import_id],
+        "content_hash": content_sha256,
+        "count": row_count,
+    }
+
+
 def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str, str]:
     if not isinstance(schema, dict):
         raise TabularIngestError("SCHEMA_INVALID", "Schema must be an object.")
@@ -384,6 +458,32 @@ def _init_db(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _attest_before_commit(
+    conn: sqlite3.Connection, audit: Any, *, header: tuple[Any, ...], rows: list[dict[str, Any]],
+) -> None:
+    """Record the digest of what this import parsed, if the database holds exactly that.
+
+    The expected digest comes from the values in memory, not from the database,
+    so a trigger that rewrites inserted rows cannot get its output attested.
+    """
+    import_id, dataset_id = header[0], header[2]
+    expected, row_count = _content_digest(header, (
+        (row["row_id"], row["record_key"], import_id, row["source_record_number"],
+         _canonical(row["payload"]), _canonical(row["locator"]))
+        for row in rows
+    ))
+    stored = import_content_attestation(conn, import_id)
+    if stored is None or stored["content_sha256"] != expected:
+        raise TabularIngestError(
+            "SNAPSHOT_WRITE_MISMATCH", "Stored snapshot content differs from the parsed CSV.")
+    try:
+        audit.append(import_attestation_event(dataset_id, import_id, expected, row_count))
+    except Exception as exc:
+        raise TabularIngestError(
+            "IMPORT_ATTESTATION_FAILED", "The import could not be recorded in the audit chain."
+        ) from exc
+
+
 def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, Any], *,
                data_role: str, max_bytes: int = DEFAULT_MAX_BYTES,
                max_rows: int = DEFAULT_MAX_ROWS,
@@ -393,6 +493,11 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
 
     When supplied, policy is called as policy("import", resource) before the
     source file is checked or read. A policy is mandatory: None is denied (and audited).
+
+    ``audit`` receives a record of the new import's content digest before the
+    snapshot is committed; if that append fails, nothing is imported. Under the
+    protected defaults an anchored writer is mandatory. A repeated import of the same bytes is a no-op and
+    records nothing: it never attests rows that are already stored.
     """
     project, source_path = Path(project), Path(source_path)
     if data_role not in ROLES:
@@ -422,6 +527,15 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
         except PolicyEnforcementError as exc:
             raise TabularIngestError(
                 "POLICY_DENIED", "Policy denied CSV import."
+            ) from exc
+    if _protection.ANCHOR_REQUIRED:
+        # Lazy import, as in policy_enforcement.
+        from .audit_anchor import require_anchored
+        try:
+            require_anchored(audit)
+        except PermissionError as exc:
+            raise TabularIngestError(
+                "AUDIT_REQUIRED", "CSV import requires an anchored audit writer."
             ) from exc
     if not source_path.is_file():
         raise FileNotFoundError("CSV source file was not found.")
@@ -586,6 +700,11 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                     "latest_row_id=excluded.latest_row_id,updated_at=excluded.updated_at",
                     (dataset_id, row["record_key"], row["row_id"], now),
                 )
+        if audit is not None:
+            _attest_before_commit(conn, audit, header=(
+                import_id, idempotency_key, dataset_id, source_id, file_hash, "committed",
+                _canonical(manifest), now,
+            ), rows=rows)
         conn.commit()
         # The SQLite snapshot is already committed. If the external JSONL audit
         # append fails, leave the operation pending for manual reconciliation;

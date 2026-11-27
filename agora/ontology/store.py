@@ -20,8 +20,13 @@ from .. import protection as _protection
 from ..audit_anchor import require_anchored, verify_anchored
 from ..pathsafe import UnsafePathError, require_safe_path
 from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce_policy
+from ..tabular import (
+    IMPORT_ATTESTED_EVENT, import_attestation_event_id,
+    import_content_attestation,
+)
 from .binding import (
     DataBinding, declared_sensitivity, iter_source_object_refs, load_binding, materialize_source_object,
+    validate_binding,
 )
 from .registry import OntologyError, OntologyPack, LinkType, pack_document, parse_domain_pack
 
@@ -356,44 +361,64 @@ def _canonical(value: Any) -> str:
 
 
 _MANIFEST_FORMAT = "agora-ontology-backup-dependencies/v2"
-_IMPORT_DIGEST_ALGORITHM = "agora-import-content-sha256/v1"
-_IMPORT_COLUMNS = (
-    "import_id", "idempotency_key", "dataset_id", "source_registry_id",
-    "file_sha256", "status", "manifest_json", "created_at",
-)
-_IMPORT_ROW_COLUMNS = (
-    "row_id", "record_key", "import_id", "source_record_number",
-    "payload_json", "locator_json",
-)
 
 
 def _import_content_attestation(conn: sqlite3.Connection, import_id: str) -> dict[str, Any]:
-    """Digest one import's stored record and every one of its rows.
-
-    The digest covers logical content, not database file bytes, so later imports,
-    VACUUM, or journal state do not change it. Each line is canonical JSON (which
-    never contains a raw newline), so line boundaries are unambiguous.
-    """
-    header = conn.execute(
-        f"SELECT {', '.join(_IMPORT_COLUMNS)} FROM imports WHERE import_id=?", (import_id,)
-    ).fetchone()
-    if header is None:
+    attestation = import_content_attestation(conn, import_id)
+    if attestation is None:
         raise OntologyError("a referenced source import is missing or not committed")
-    digest = hashlib.sha256()
-    digest.update((_canonical([_IMPORT_DIGEST_ALGORITHM, list(header)]) + "\n").encode("utf-8"))
-    row_count = 0
-    for row in conn.execute(
-        f"SELECT {', '.join(_IMPORT_ROW_COLUMNS)} FROM import_rows "
-        "WHERE import_id=? ORDER BY source_record_number, row_id", (import_id,)
-    ):
-        digest.update((_canonical(list(row)) + "\n").encode("utf-8"))
-        row_count += 1
-    return {
-        "import_id": import_id,
-        "algorithm": _IMPORT_DIGEST_ALGORITHM,
-        "row_count": row_count,
-        "content_sha256": digest.hexdigest(),
-    }
+    return attestation
+
+
+def _require_attested_import(
+    project: Path, import_id: str, audit: Any, pack: OntologyPack, binding: DataBinding,
+    row_ids_sha256: str,
+) -> None:
+    """Require the rows just read to be those recorded in the audit chain at ingest.
+
+    One read transaction gives the content digest, the row IDs and the manifest.
+    The digest must have an ingest record in the anchored chain, the row IDs must
+    be the ones being pinned, and the binding must be valid for the recorded
+    manifest, so rows or a manifest swapped in for the indexing read are refused.
+    """
+    try:
+        writer = require_anchored(audit)
+        path = require_safe_path(project / "data" / "tabular.sqlite3")
+        conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True,
+                               timeout=30.0, isolation_level=None)
+        try:
+            conn.execute("BEGIN")
+            current = _import_content_attestation(conn, import_id)
+            seen = hashlib.sha256()
+            for (row_id,) in conn.execute(
+                "SELECT row_id FROM import_rows WHERE import_id=? "
+                "ORDER BY source_record_number, row_id", (import_id,)
+            ):
+                seen.update((_canonical(row_id) + "\n").encode("utf-8"))
+            manifest_json = conn.execute(
+                "SELECT manifest_json FROM imports WHERE import_id=?", (import_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        event = writer.find_event(
+            import_attestation_event_id(import_id, current["content_sha256"]))
+        if (
+            event is None
+            or event.get("event_type") != IMPORT_ATTESTED_EVENT
+            or event.get("content_hash") != current["content_sha256"]
+        ):
+            raise OntologyError(
+                "snapshot content has no matching ingest record in the audit chain")
+        if seen.hexdigest() != row_ids_sha256:
+            raise OntologyError("snapshot rows changed while they were being indexed")
+        manifest = json.loads(manifest_json)
+        # A binding that is valid for a manifest gets the same effective
+        # sensitivity from any such manifest, so validity is all there is to check.
+        validate_binding(pack, manifest, binding)
+    except OntologyError:
+        raise
+    except (OSError, sqlite3.Error, PermissionError, ValueError, TypeError, KeyError) as exc:
+        raise OntologyError("the import's ingest record could not be verified") from exc
 
 
 def _stage_private_copy(source: Path, destination: Path) -> tuple[int, str]:
@@ -665,7 +690,11 @@ class OntologyObjectStore:
         policy: PolicyCallable | None, audit: Any | None,
         purpose: str | None = None, retention: str | None = None,
     ) -> int:
-        """Index stable object identities and provenance for one exact import."""
+        """Index stable object identities and provenance for one exact import.
+
+        The import's current content must have the record ``ingest_csv`` wrote to
+        this anchored chain; imports made without one cannot be indexed.
+        """
         if not isinstance(import_id, str) or not import_id.strip() or import_id == "latest":
             raise OntologyError("an explicit import_id is required")
         self._authorize(
@@ -684,7 +713,9 @@ class OntologyObjectStore:
         count = 0
         try:
             conn.execute("BEGIN IMMEDIATE")
+            pinned = hashlib.sha256()
             for ref in refs:
+                pinned.update((_canonical(ref["row_id"]) + "\n").encode("utf-8"))
                 if not ref.get("file_sha256"):
                     raise OntologyError("source snapshot row is missing its content SHA-256")
                 values = (
@@ -726,6 +757,11 @@ class OntologyObjectStore:
                 count += 1
             if count == 0:
                 raise OntologyError("snapshot contains no materializable rows")
+            if _protection.ANCHOR_REQUIRED:
+                _require_attested_import(
+                    self.project, import_id, audit, pack, binding,
+                    pinned.hexdigest(),
+                )
             conn.commit()
             return count
         except (sqlite3.Error, OntologyError):
