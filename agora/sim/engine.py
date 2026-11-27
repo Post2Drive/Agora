@@ -106,6 +106,11 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _sql_row(row) -> str:
+    """Canonical text of one SQLite row. A BLOB is tagged, so it never hashes like the TEXT that spells its repr."""
+    return _canon([{"blob_hex": v.hex()} if isinstance(v, bytes) else v for v in row])
+
+
 def _state_digest(conn: sqlite3.Connection) -> str:
     """Digest simulation rows, schema, row order and SQLite's future AUTOINCREMENT values."""
     h = hashlib.sha256()
@@ -121,7 +126,7 @@ def _state_digest(conn: sqlite3.Connection) -> str:
         quoted = ",".join(f'"{c}"' for c in cols)
         # Preserve row order: World.load and event processing use insertion order for several tables.
         # Sorting rows here would make reordered event/membership records hash as the same state.
-        rows = [_canon(list(r)) for r in conn.execute(f'SELECT {quoted} FROM "{t}" ORDER BY rowid')]
+        rows = [_sql_row(r) for r in conn.execute(f'SELECT {quoted} FROM "{t}" ORDER BY rowid')]
         h.update(_canon([t, cols, rows]).encode("utf-8"))
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone():
         sequences = conn.execute("SELECT name, seq FROM sqlite_sequence ORDER BY name").fetchall()
@@ -134,7 +139,7 @@ def _cache_digest(path: Path) -> str | None:
         return None
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        return _sha(_canon(sorted(conn.execute("SELECT k, v FROM cache").fetchall())))
+        return _sha(_canon(sorted(_sql_row(r) for r in conn.execute("SELECT k, v FROM cache"))))
     except sqlite3.Error as exc:
         raise SnapshotError(f"model reply cache is unreadable: {exc}") from exc
     finally:
