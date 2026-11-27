@@ -1,6 +1,6 @@
 # Ontology action proposals (O2, first slice)
 
-**Status:** library only (`agora/ontology/actions.py`). No CLI, web or service uses it. It proposes; it does not approve, queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
+**Status:** library only (`agora/ontology/actions.py`, `agora/ontology/approvals.py`). No CLI, web or service uses it. It proposes and records an approval or rejection; it does not queue, execute or write back. The O2 guardrail in [ONTOLOGY_CAPABILITY_TARGET.md](ONTOLOGY_CAPABILITY_TARGET.md) (no general action executor yet) still applies.
 
 ## What a proposal binds
 
@@ -36,9 +36,20 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 
 `recheck_action_proposal(store, document, expected_digest, ...)` needs read authority, not proposal authority. It refuses unless the document has the expected digest and rebuilding it from the pack and sources gives the same content. The expected digest must come from somewhere the document's holder cannot rewrite.
 
+## Approval (O2, second slice)
+
+`decide_action_proposal(store, document, digest, outcome, reason, ...)` lets an approver approve or reject one proposal, once.
+
+- New policy operation `ontology_action_decide`. Under the central roles only `approver` has it; `operator`, who proposes, does not. It is decided before the audit chain is read and at the proposal's own classification.
+- The chain must hold an `ontology_action_proposed` event for the digest from the identity and policy version the document names. This authenticates `proposed_by` against the anchored chain, so the digest no longer has to be retained separately.
+- The deciding identity must be principal-bound and different from the proposer.
+- The decision is appended as `ontology_action_approved` or `ontology_action_rejected` under the event ID `ontology-action-decision-<digest>`. The chain refuses a duplicate ID, so a digest gets one decision; a rejection cannot be followed by an approval. The chain keeps no free text, so the reason is recorded only as `reason_hash`.
+- `verify_approved_action(store, document, digest, ...)` is the check to run before a later step acts. It needs read authority and re-reads the objects and sources (`recheck_action_proposal`), then requires the proposal event, exactly one decision event that is an approval, and an approver who is not the proposer. A changed pack, object or source row makes it fail, which is how a stale approval is caught.
+- The decision step does not re-read the objects: the approver decides on the document they were shown, and staleness is caught at verification.
+
 ## Limits
 
-- No signature: `proposed_by` and `policy_version` are covered by the digest but cannot be rebuilt, so recheck does not authenticate them. A valid digest is not an approval.
+- `recheck_action_proposal` alone does not authenticate `proposed_by` and `policy_version`; `decide_action_proposal` and `verify_approved_action` check them against the anchored chain. No signature: the chain is a local file, so someone who can rewrite it and its anchor, or run code in the service, can forge a proposal or an approval. A valid digest alone is not an approval.
 - **Object reads do not authenticate row content.** `get_object` accepts a source row edited in `data/tabular.sqlite3` when its identity and provenance still match (a test shows this). Recheck detects a change made *after* the proposal through the retained values digest. A change made before the proposal is not detected.
 - Cited evidence is checked for existence, import status, row count and the recorded file hash. Row content is not hashed, and the evidence is not judged relevant to the reason.
 - Preconditions are free text and are not evaluated. Declared `permissions` are recorded, not enforced.
@@ -49,4 +60,4 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 
 ## Not yet built (next O2 slices)
 
-Approval bound to the digest (reusing the decision approval rules, with proposer and approver separated), a signed receipt over the digest, a persisted proposal ledger with idempotency and states, precondition evaluation, and simulation-only application.
+A signed receipt over the digest, a persisted proposal ledger with states and expiry (an approval does not expire and is not a lease), precondition evaluation, approval by more than one person, and simulation-only application.
