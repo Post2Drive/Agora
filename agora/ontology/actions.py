@@ -25,7 +25,7 @@ from ..audit_anchor import require_anchored
 from ..policy_enforcement import PolicyCallable
 from .binding import _is_allowed_value
 from . import preconditions
-from .registry import ActionType, OntologyError, OntologyPack, PropertyType
+from .registry import ActionType, OntologyError, OntologyPack, PropertyType, ProposalMismatchError
 from .store import OntologyObjectStore, _canonical, _canonical_timestamp
 
 PROPOSAL_FORMAT = "agora.ontology.action_proposal/v1"
@@ -223,7 +223,7 @@ def _compose(
         scope = {**stored_values, "param": values}
         for text in expressions:
             if not preconditions.evaluate(text, properties, scope):
-                raise OntologyError(f"a declared precondition is not met: {text}")
+                raise ProposalMismatchError(f"a declared precondition is not met: {text}")
     # After authorization, so an unauthorized caller cannot probe which imports exist.
     store._verify_link_source_refs(cited, audit)
 
@@ -279,6 +279,7 @@ def propose_action(
         "subject_id": document["proposed_by"],
         "policy_version": document["policy_version"],
         "resource_ids": [*resource_ids, proposal.digest],
+        "proposal_sensitivity": document["sensitivity"],
         "reason": "proposal_recorded_not_executed",
     })
     return proposal
@@ -326,7 +327,7 @@ def recheck_action_proposal(
         rebuilt[name] = document[name]
     # Canonical text, not ==: Python treats True as 1.
     if _canonical(rebuilt) != _canonical(dict(document)):
-        raise OntologyError("proposal no longer matches the pack and source records")
+        raise ProposalMismatchError("proposal no longer matches the pack and source records")
 
 
 __all__ = [

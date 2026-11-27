@@ -3,8 +3,10 @@
 ``run_admitted_simulation`` is for the identity that admitted the action. It rebuilds the proposal from the
 objects and sources as they are now (so the preconditions are evaluated again), builds a result document
 from what the rebuild shows, and records its digest as the outcome. If the proposal no longer matches, it
-records a failed outcome with a failure report instead. The caller keeps the result document; the chain
-holds only its digest, so ``verify_simulation_result`` can later show that a document is the one recorded.
+records a failed outcome with a failure report instead. If the rebuild cannot be completed for any other
+reason, the error is raised, nothing is recorded and the run can be tried again. The caller keeps the result
+document; the chain holds only its digest, so ``verify_simulation_result`` can later show that a document is
+the one recorded.
 
 What the "simulation" is: the action's declared effects are listed as simulated, next to digests of the
 actor and target values and the parameters. The effects are names, not programs, so nothing is applied to
@@ -20,8 +22,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from .actions import proposal_digest, recheck_action_proposal
-from .approvals import _DIGEST, _anchored, _events, _fields
+from .approvals import _DIGEST, _anchored, _events, _fields, _lifetime, _now
 from .outcomes import _OUTCOME_PREFIX, _STATUSES, _record_outcome
+from .registry import ProposalMismatchError
+from .states import _STATUS_STATES, _TYPES, _derive
 from .store import OntologyError, OntologyObjectStore
 
 RESULT_FORMAT = "agora.ontology.simulation_result/v1"
@@ -59,8 +63,9 @@ def run_admitted_simulation(
     """Dry-run one admitted action and record the outcome. Returns the result document and what was recorded.
 
     Only the admitting identity can record, so anyone else is refused after the rebuild and nothing is
-    written. A proposal that no longer matches the pack, objects, sources or preconditions records a
-    failed outcome; a refusal by policy (including a runner without read authority) is raised and records nothing.
+    written. A false precondition, a changed or missing source row or a rebuild that differs records a
+    failed outcome. Every other error is raised and records nothing, including a refusal by policy and a
+    snapshot or ingest record that cannot be read or verified.
     """
     _fields(store, document, expected_digest)
     writer = _anchored(audit)
@@ -68,9 +73,8 @@ def run_admitted_simulation(
         recheck_action_proposal(store, document, expected_digest, policy=policy, audit=writer,
                                 purpose=purpose, retention=retention)
         status, report = "succeeded", _result_document(document, expected_digest)
-    except OntologyError as exc:
-        if isinstance(exc.__cause__, PermissionError):
-            raise  # a refusal by policy is not a finding about the proposal
+    except ProposalMismatchError:
+        # Only a positive finding is recorded. A refusal, an outage or an unverifiable read propagates.
         status, report = "failed", _failure_document(expected_digest)
     recorded = _record_outcome(
         store, document, expected_digest, status, proposal_digest(report), policy=policy, audit=writer)
@@ -78,10 +82,29 @@ def run_admitted_simulation(
             "recorded_by": recorded["recorded_by"]}
 
 
+def _check_history(history: list[dict[str, Any]], digest: str, outcome: Mapping[str, Any]) -> None:
+    """Raise unless the state view's rules accept the history as ending in this outcome.
+
+    ``history`` is the digest's proposal events in chain order. The caller has no proposal document, so
+    the proposer, pack, action and version are the ones the chain's proposal events agree on. The rules
+    are ``states._derive``, shared with ``action_proposal_state`` and ``read_simulation_outcome``.
+    """
+    view = _derive(digest, history, _now(), _lifetime(None))
+    if view["state"] != _STATUS_STATES[outcome["event_type"]]:
+        raise OntologyError("the chain does not show an approved and admitted action behind this outcome: "
+                            + view.get("reason", view["state"]))
+
+
 def verify_simulation_result(
     store: OntologyObjectStore, result: Any, *, policy: Any, audit: Any | None,
 ) -> dict[str, str]:
-    """Raise unless this result or failure document is exactly the one recorded as its proposal's outcome."""
+    """Raise unless this result or failure document is exactly the one recorded as its proposal's outcome.
+
+    The chain must also show, in this order, the proposal, an approval by someone else, any second
+    approval by a third person, an admission by someone who approved neither, and the outcome from that
+    admitter. This reads the chain only. It does not re-read objects or sources, check the approval's
+    age or a signed statement, or know whether a second approval was required.
+    """
     if not isinstance(result, Mapping) or result.get("format") not in (RESULT_FORMAT, FAILURE_FORMAT):
         raise OntologyError("not a simulation result document")
     digest = result.get("proposal_digest")
@@ -93,7 +116,8 @@ def verify_simulation_result(
         raise OntologyError("the result is not canonical JSON content") from exc
     writer = _anchored(audit)
     store._authorize(_READ, [digest], policy=policy, audit=writer)
-    found = _events(writer, digest, _BY_TYPE)
+    history = _events(writer, digest, _TYPES)  # one verified read, in chain order
+    found = [e for e in history if e.get("event_type") in _BY_TYPE]
     if len(found) != 1:
         raise OntologyError("the proposal has no single recorded outcome")
     event = found[0]
@@ -106,6 +130,7 @@ def verify_simulation_result(
     status = _BY_TYPE[event["event_type"]]
     if (status == "succeeded") != (result["format"] == RESULT_FORMAT):
         raise OntologyError("the document kind does not match the recorded status")
+    _check_history(history, digest, event)
     return {"digest": digest, "status": status, "result_digest": result_digest,
             "recorded_by": event["subject_id"]}
 

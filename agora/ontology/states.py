@@ -6,8 +6,14 @@ digest; ``action_proposal_state`` does the same for one proposal document. A dig
 fit the rules in ``approvals.py`` is reported as ``inconsistent`` with a reason, so one bad record does
 not hide the others.
 
-States: ``proposed``, ``rejected``, ``approved`` (live), ``expired``, ``withdrawn``, ``admitted``,
+States: ``proposed``, ``rejected``, ``approved`` (live), ``awaiting_second_approval`` (a live first
+approval where a second is required), ``expired``, ``withdrawn``, ``admitted``,
 ``simulation_succeeded``, ``simulation_failed``, ``inconsistent``.
+
+The classification that decides the second-approval rule comes from the proposal document
+(``action_proposal_state``) or from the proposal record in the chain. Records written before the
+chain held it give the list no classification: such an entry stays ``approved`` and carries
+``second_approval_requirement: "unknown"``.
 
 Limits: this reads the chain only. It does not re-read objects or sources, so ``approved`` means the chain
 shows a live approval, not that the proposal would still pass ``verify_approved_action``. The chain is
@@ -22,9 +28,11 @@ from datetime import datetime, timedelta
 import json
 from typing import Any
 
+from .. import protection as _protection
 from ..audit_anchor import verify_anchored
 from . import approvals as _a
 from . import outcomes as _o
+from .actions import _SENSITIVITY_RANK
 from .store import OntologyError, OntologyObjectStore
 
 _READ = "ontology_read"
@@ -39,16 +47,41 @@ def _bad(digest: str, reason: str, /, **known: Any) -> dict[str, Any]:
     return {"digest": digest, "state": "inconsistent", "reason": reason, **known}
 
 
-def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: timedelta) -> dict[str, Any]:
+def _named(value: Any) -> bool:
+    """A real identity: not blank, and not the ``unknown`` placeholder written when none was established."""
+    return isinstance(value, str) and bool(value.strip()) and value != "unknown"
+
+
+def _authorship(event: dict[str, Any]) -> tuple[Any, Any, Any]:
+    return event.get("subject_id"), event.get("policy_version"), event.get("resource_ids")
+
+
+def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: timedelta,
+            sensitivity: str | None = None) -> dict[str, Any]:
     by_type: dict[str, list[dict[str, Any]]] = {}
     for event in events:
         by_type.setdefault(event["event_type"], []).append(event)
     proposed = by_type.get(_a._PROPOSED_TYPE, [])
-    allowed = [e for e in proposed if e.get("decision") == "allow" and isinstance(e.get("subject_id"), str)
-               and e["subject_id"].strip()]
-    if len(allowed) != 1:
-        return _bad(digest, "the proposal is not recorded exactly once")
-    proposer = allowed[0]["subject_id"]
+    allowed = [e for e in proposed if e.get("decision") == "allow" and _named(e.get("subject_id"))]
+    if not allowed:
+        return _bad(digest, "the proposal is not recorded")
+    # The same content may be proposed again (same digest), so repeats are normal. They must agree.
+    first = allowed[0]
+    if any(_authorship(e) != _authorship(first) for e in allowed[1:]):
+        return _bad(digest, "the proposal records disagree about who proposed what")
+    proposer = first["subject_id"]
+    # Older records carry no classification; the ones that do must agree with each other and the document.
+    classes = [e["proposal_sensitivity"] for e in allowed if "proposal_sensitivity" in e]
+    if sensitivity is not None:
+        classes.append(sensitivity)
+    if any(not isinstance(c, str) or c not in _SENSITIVITY_RANK for c in classes) or len(set(classes)) > 1:
+        return _bad(digest, "the recorded classification is unknown or disagrees", proposed_by=proposer)
+    sensitivity = classes[0] if classes else None
+    recorded = first.get("resource_ids")  # pack, action, version, then the bound objects, then the digest
+    # Every later step names the pack, action, version and digest only.
+    resources = [*recorded[:3], digest]
+    # ``events`` is in chain order. Compare positions: lookups by type say nothing about order.
+    place = {id(e): n for n, e in enumerate(events)}
     entry: dict[str, Any] = {"digest": digest, "proposed_by": proposer}
     decisions = [e for t in _a._OUTCOMES.values() for e in by_type.get(t, [])]
     endings = [e for t in _a._ENDINGS for e in by_type.get(t, [])]
@@ -66,15 +99,18 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     decision = decisions[0]
     decider = decision.get("subject_id")
     if (decision.get("event_id") != _a._DECISION_PREFIX + suffix or decision.get("operation") != _a._DECIDE
-            or decision.get("decision") != "allow" or not isinstance(decider, str) or not decider.strip()
-            or decider == proposer):
+            or decision.get("decision") != "allow" or not _named(decider)
+            or decider == proposer or decision.get("resource_ids") != resources
+            or place[id(decision)] < place[id(first)]):
         return _bad(digest, "the decision is not well formed", proposed_by=proposer)
     entry["decided_by"] = decider
     if seconds:
         co = seconds[0].get("subject_id")
         if (seconds[0].get("event_id") != _a._CO_PREFIX + suffix or seconds[0].get("operation") != _a._DECIDE
-                or seconds[0].get("decision") != "allow" or not isinstance(co, str) or not co.strip()
-                or co in (proposer, decider)):
+                or seconds[0].get("decision") != "allow" or not _named(co)
+                or co in (proposer, decider) or seconds[0].get("resource_ids") != resources
+                or place[id(seconds[0])] < place[id(decision)]
+                or any(place[id(seconds[0])] > place[id(e)] for e in endings)):
             return _bad(digest, "the second approval is not well formed", **entry)
         entry["co_approved_by"] = co
     if decision["event_type"] == _a._OUTCOMES["reject"]:
@@ -89,19 +125,27 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if not endings:
         if results:
             return _bad(digest, "an outcome has no admission", **entry)
-        return {**entry, "state": "expired" if now >= approved_at + lifetime else "approved"}
+        if now >= approved_at + lifetime:
+            return {**entry, "state": "expired"}
+        if "co_approved_by" not in entry:
+            if sensitivity is None and _protection.TWO_PERSON_SENSITIVE:
+                return {**entry, "state": "approved", "second_approval_requirement": "unknown"}
+            if _a._two_person({"sensitivity": sensitivity}):
+                return {**entry, "state": "awaiting_second_approval"}
+        return {**entry, "state": "approved"}
     if len(endings) != 1:
         return _bad(digest, "more than one ending", **entry)
     ending = endings[0]
     actor = ending.get("subject_id")
     if (ending.get("event_id") != _a._final_id(digest) or ending.get("decision") != "allow"
-            or not isinstance(actor, str) or not actor.strip()):
+            or not _named(actor)
+            or ending.get("resource_ids") != resources or place[id(ending)] < place[id(decision)]):
         return _bad(digest, "the ending is not well formed", **entry)
     if ending["event_type"] == "ontology_action_withdrawn":
         if results:
             return _bad(digest, "an outcome has no admission", **entry)
         return {**entry, "state": "withdrawn", "ended_by": actor}
-    if actor == decider or ending.get("operation") != _a._ADMIT:
+    if actor in (decider, entry.get("co_approved_by")) or ending.get("operation") != _a._ADMIT:
         return _bad(digest, "the admission is not well formed", **entry)
     entry["admitted_by"] = actor
     if not results:
@@ -109,10 +153,13 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if len(results) != 1:
         return _bad(digest, "more than one outcome", **entry)
     result = results[0]
+    result_hash = result.get("result_hash")
     if (result.get("event_id") != _o._OUTCOME_PREFIX + suffix or result.get("subject_id") != actor
-            or result.get("decision") != "allow"):
+            or result.get("decision") != "allow" or result.get("operation") != _o._OUTCOME
+            or result.get("resource_ids") != resources or place[id(result)] < place[id(ending)]
+            or not isinstance(result_hash, str) or not _a._DIGEST.fullmatch(result_hash)):
         return _bad(digest, "the outcome is not well formed", **entry)
-    return {**entry, "state": _STATUS_STATES[result["event_type"]], "result_hash": result.get("result_hash")}
+    return {**entry, "state": _STATUS_STATES[result["event_type"]], "result_hash": result_hash}
 
 
 def _read(writer: Any, digest: str | None) -> dict[str, list[dict[str, Any]]]:
@@ -167,7 +214,7 @@ def action_proposal_state(
     events = _read(writer, expected_digest).get(expected_digest)
     if not events:
         return _bad(expected_digest, "the proposal is not recorded in this chain")
-    entry = _derive(expected_digest, events, _a._now(), lifetime)
+    entry = _derive(expected_digest, events, _a._now(), lifetime, fields["sensitivity"])
     if "proposed_by" in entry and entry["proposed_by"] != fields["proposed_by"]:
         return _bad(expected_digest, "the proposal was recorded by someone other than the person it names")
     return entry

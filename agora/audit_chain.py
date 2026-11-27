@@ -20,6 +20,8 @@ BUSY_TIMEOUT_SECONDS = 30.0
 _SAFE_KEYS = {
     "event_id", "event_type", "subject_id", "operation", "decision", "policy_version",
     "resource_ids", "reason", "recorded_at", "count", "sequence", "duration_ms",
+    # A fixed classification word on an action proposal record, never free text.
+    "proposal_sensitivity",
 }
 _SAFE_SUFFIXES = ("_hash", "_fingerprint")
 
