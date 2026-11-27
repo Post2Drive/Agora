@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 
 import pytest
 
+from agora import audit_chain
 from agora.audit_chain import AuditChainStore
 
 
@@ -114,3 +116,68 @@ def test_concurrent_threads_do_not_fork_chain(tmp_path):
     assert errors == []
     assert result["valid"] is True
     assert result["entries"] == 100
+
+
+def _hold_write_lock(path):
+    holder = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+    return holder
+
+
+def test_append_waits_out_a_writer_that_holds_the_lock_longer_than_five_seconds(tmp_path):
+    import threading
+
+    path = tmp_path / "audit.db"
+    store = AuditChainStore(path)
+    holder = _hold_write_lock(path)
+    release = threading.Timer(6.0, holder.rollback)
+    release.start()
+    try:
+        store.append({"event_id": "waited", "event_type": "t"})
+        result = store.verify()
+    finally:
+        release.join()
+        holder.close()
+        store.close()
+    assert result["valid"] is True
+    assert result["entries"] == 1
+
+
+def test_append_wait_is_bounded_and_a_timed_out_append_writes_nothing(tmp_path, monkeypatch):
+    path = tmp_path / "audit.db"
+    AuditChainStore(path).close()
+    monkeypatch.setattr(audit_chain, "BUSY_TIMEOUT_SECONDS", 0.2)
+    store = AuditChainStore(path)
+    holder = _hold_write_lock(path)
+    try:
+        started = time.monotonic()
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            store.append({"event_id": "refused", "event_type": "t"})
+        assert time.monotonic() - started < 10  # the configured wait is the one used
+        holder.rollback()
+        assert store.find_event("refused") is None
+        store.append({"event_id": "refused", "event_type": "t"})  # the same connection is still usable
+        assert store.verify()["entries"] == 1
+    finally:
+        holder.close()
+        store.close()
+
+
+def test_commit_that_times_out_behind_a_reader_rolls_back_and_leaves_the_store_usable(tmp_path, monkeypatch):
+    path = tmp_path / "audit.db"
+    AuditChainStore(path).close()
+    monkeypatch.setattr(audit_chain, "BUSY_TIMEOUT_SECONDS", 0.2)
+    store = AuditChainStore(path)
+    reader = sqlite3.connect(str(path), isolation_level=None)
+    try:
+        reader.execute("BEGIN")
+        reader.execute("SELECT COUNT(*) FROM audit_events").fetchall()  # keeps a shared lock until rollback
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            store.append({"event_id": "refused", "event_type": "t"})
+        reader.rollback()
+        assert store.find_event("refused") is None
+        store.append({"event_id": "refused", "event_type": "t"})
+        assert store.verify()["entries"] == 1
+    finally:
+        reader.close()
+        store.close()
