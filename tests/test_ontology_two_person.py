@@ -150,6 +150,35 @@ def test_either_approver_cannot_admit(two, world):
     assert _endings(world) == []
 
 
+def test_a_second_approver_cannot_admit_even_when_a_second_approval_was_not_required(world, monkeypatch):
+    # Same path as a proposal that is not sensitive: verification does not name the second approver.
+    monkeypatch.setattr(protection, "TWO_PERSON_SENSITIVE", False)
+    proposal = _approved(world)
+    _co(world, proposal)
+    assert "co_approved_by" not in _verify(world, proposal)
+    with pytest.raises(OntologyError, match="other than its second approver"):
+        _admit(world, proposal, policy=SECOND)
+    assert _endings(world) == []  # the approval is not spent
+    assert _admit(world, proposal)["admitted_by"] == "runner-1"
+
+
+def test_a_second_approval_that_lands_after_verification_still_blocks_its_author(world, monkeypatch):
+    monkeypatch.setattr(protection, "TWO_PERSON_SENSITIVE", False)
+    proposal = _approved(world)
+    real = approvals.verify_approved_action
+
+    def verify_then_second(*args, **kwargs):
+        live = real(*args, **kwargs)
+        _co(world, proposal)
+        return live
+
+    monkeypatch.setattr(approvals, "verify_approved_action", verify_then_second)
+    with pytest.raises(OntologyError, match="other than its second approver"):
+        _admit(world, proposal, policy=SECOND)
+    assert _endings(world) == [] and len(_events(world, "ontology_action_co_approved")) == 1
+    assert world.audit.verify()["valid"]
+
+
 def test_a_decision_needs_authority_before_anything_is_read(two, world):
     proposal = _approved(world)
     with pytest.raises(Exception):

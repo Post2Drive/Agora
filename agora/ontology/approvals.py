@@ -484,6 +484,12 @@ def admit_approved_action(
 
     def still_live(db: Any) -> None:
         _expiry(approved_at, lifetime, _now())
+        # A recorded second approver never admits, required or not. Read under the chain's write lock,
+        # so a second approval that landed after verification is seen.
+        rows = db.execute("SELECT event_json FROM audit_events WHERE event_id=?",
+                          (_CO_PREFIX + expected_digest.split(":", 1)[1],)).fetchall()
+        if any(json.loads(raw).get("subject_id") == subject for (raw,) in rows):
+            raise OntologyError("an action must be admitted by someone other than its second approver")
         for item in checked:
             if _now() >= item.expires_at:
                 raise OntologyError("the signed approval statement expired before admission")
