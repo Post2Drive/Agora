@@ -884,7 +884,7 @@ def test_link_only_import_is_attested_and_its_content_protected(linked):
 
 def test_conflicting_link_hashes_for_one_import_block_attestation(linked, monkeypatch):
     # Writes now refuse this; simulate a link stored before that check existed.
-    monkeypatch.setattr(linked["store"], "_verify_link_source_refs", lambda refs: None)
+    monkeypatch.setattr(linked["store"], "_verify_link_source_refs", lambda refs, audit: None)
     linked["link"](1, 0, "f" * 64)
     with pytest.raises(OntologyError, match="conflicting hashes"):
         _backup_and_target(linked)
@@ -1059,7 +1059,7 @@ def _linked_backup(catalog, conflicting=False):
     with pytest.MonkeyPatch.context() as patch:
         if conflicting:
             # Writes now refuse this; simulate a link stored before that check existed.
-            patch.setattr(store, "_verify_link_source_refs", lambda refs: None)
+            patch.setattr(store, "_verify_link_source_refs", lambda refs, audit: None)
         store.add_link(
             pack_fp, "backup:refers", "1.0.0", endpoint("C-1"), endpoint("C-2"),
             "2026-01-01T00:00:00+00:00", None, "referral",
