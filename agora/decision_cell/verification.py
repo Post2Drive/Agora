@@ -9,11 +9,14 @@ this statement, nobody recorded it as not independent, both have a known owner a
 those owners differ, and the supplied citation links and origins show neither a path between them nor a
 common upstream (including the origin of a source that one of them copies).
 
-A promotion is bound to a fingerprint of the exact evidence judged. If a source or judgment is added,
-removed or edited, the old promotion no longer applies and the computed label is returned.
+A promotion is bound to a fingerprint of the evidence judged: the statement wording, each source's
+attributes and content hash, and the judgments. If any of these is added, removed or edited, the old
+promotion no longer applies and the computed label is returned.
 
 Trust boundary. Sources, their attributes (owner, origin, citations, primary kind, correction policy) and
 the judgments are trusted service-layer inputs; nothing here authenticates them or looks for hidden copying.
+A content hash is not checked against any content here. Judgments name a statement id, so after the wording
+changes they still count towards the computed label; only the promotion lapses.
 ``tenant_id`` and ``audit`` come from the service's configuration. The audit chain keeps hashes of the
 evidence and reason texts, not the texts; the service must keep them. This module fetches nothing, scores
 no source and does not handle retractions.
@@ -21,9 +24,10 @@ no source and does not handle retractions.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from itertools import combinations
@@ -38,6 +42,7 @@ from agora.policy import POLICY_VERSION
 from agora.principal import Principal, decide_principal
 
 MAX_SOURCES = 100
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _PREFIX = "dc-label-"
 _CONFIRMED, _DEMOTED = "confirmed", "demoted"
 
@@ -71,6 +76,8 @@ class VerificationError(DecisionCellError):
 @dataclass(frozen=True)
 class Source:
     source_id: str
+    # SHA-256 (64 lower-case hex) of the source content that was judged, computed by the service.
+    content_hash: str = field(kw_only=True)
     owner_id: str | None = None             # None: unknown, so independence cannot be established
     upstream_origin_id: str | None = None   # wire story, press release or original post; None: unknown
     cites: frozenset[str] = frozenset()     # ids this source cites, syndicates or copies
@@ -124,9 +131,11 @@ def _reason_text(value: object) -> bool:
     return True
 
 
-def _validate(statement_id: object, sources: object, judgments: object) -> None:
+def _validate(statement_id: object, statement_text: object, sources: object, judgments: object) -> None:
     if not _identifier(statement_id):
         raise VerificationError("ID_INVALID", "statement id")
+    if not _reason_text(statement_text):
+        raise VerificationError("EVIDENCE_INVALID", "the statement wording is required")
     if not isinstance(sources, tuple) or not 1 <= len(sources) <= MAX_SOURCES:
         raise VerificationError("EVIDENCE_INVALID", f"sources must be a tuple of 1 to {MAX_SOURCES}")
     ids: set[str] = set()
@@ -134,6 +143,8 @@ def _validate(statement_id: object, sources: object, judgments: object) -> None:
         if not isinstance(source, Source) or not _identifier(source.source_id) or source.source_id in ids:
             raise VerificationError("EVIDENCE_INVALID", "every source needs its own exact id")
         ids.add(source.source_id)
+        if not isinstance(source.content_hash, str) or not _SHA256.fullmatch(source.content_hash):
+            raise VerificationError("EVIDENCE_INVALID", "every source needs the SHA-256 of its content")
         if not all(v is None or _identifier(v) for v in (source.owner_id, source.upstream_origin_id)):
             raise VerificationError("EVIDENCE_INVALID", "owner and origin are exact ids or None")
         if not isinstance(source.cites, frozenset) or not all(_identifier(c) for c in source.cites):
@@ -153,37 +164,36 @@ def _validate(statement_id: object, sources: object, judgments: object) -> None:
             raise VerificationError("EVIDENCE_INVALID", "a judgment names this statement, two listed sources, who and why")
 
 
-def _lineage(source_id: str, cites: dict[str, frozenset[str]]) -> set[str]:
-    """The source and everything it cites, directly or through other listed sources."""
+def _upstream(source_id: str, sources_by_id: dict[str, Source]) -> set[str]:
+    """The source and everything it draws on: citations and recorded origins, followed through every
+    listed source reached by either. Source ids and origin ids share one set, so a listed source named
+    as another's origin brings its own citations and origin with it.
+    """
     seen, todo = set(), [source_id]
     while todo:
         current = todo.pop()
         if current not in seen:
             seen.add(current)
-            todo.extend(cites.get(current, ()))
+            listed = sources_by_id.get(current)
+            if listed is not None:
+                todo.extend(listed.cites)
+                if listed.upstream_origin_id is not None:
+                    todo.append(listed.upstream_origin_id)
     return seen
 
 
 def assess_statement(
     statement_id: str, sources: tuple[Source, ...],
-    judgments: tuple[IndependenceJudgment, ...] = (),
+    judgments: tuple[IndependenceJudgment, ...] = (), *, statement_text: str,
 ) -> Assessment:
     """The label the system may show by itself, and whether an approver could confirm. Pure."""
-    _validate(statement_id, sources, judgments)
+    _validate(statement_id, statement_text, sources, judgments)
     verdicts: dict[frozenset[str], bool] = {}
     for judgment in judgments:
         pair = frozenset((judgment.source_a, judgment.source_b))
         verdicts[pair] = verdicts.get(pair, True) and judgment.independent  # any "no" wins
-    cites = {s.source_id: s.cites for s in sources}
-    origins = {s.source_id: s.upstream_origin_id for s in sources}
-
-    def upstream(source_id: str) -> set[str]:
-        # Everything this source draws on, including the recorded origins of the sources it copies.
-        # Source ids and origin ids share one set, so a source named as another's origin also counts.
-        lineage = _lineage(source_id, cites)
-        return lineage | {origins[i] for i in lineage if origins.get(i) is not None}
-
-    upstreams = {s.source_id: upstream(s.source_id) for s in sources}
+    by_id = {s.source_id: s for s in sources}
+    upstreams = {i: _upstream(i, by_id) for i in by_id}
 
     def independent(a: Source, b: Source) -> bool:
         return (verdicts.get(frozenset((a.source_id, b.source_id))) is True
@@ -199,9 +209,11 @@ def assess_statement(
 
     body = {
         "statement_id": statement_id,
+        "statement_text": statement_text,
         "sources": sorted(
             [s.source_id, s.owner_id, s.upstream_origin_id, sorted(s.cites),
-             s.primary_kind.value if s.primary_kind else None, s.published_correction_policy]
+             s.primary_kind.value if s.primary_kind else None, s.published_correction_policy,
+             s.content_hash]
             for s in sources),
         "judgments": sorted(
             [*sorted((j.source_a, j.source_b)), j.independent, j.judged_by_subject_id, j.basis]
@@ -248,14 +260,14 @@ def _history(writer: AnchoredAuditChain, key: str) -> list[dict]:
 
 def statement_label(
     *, tenant_id: str, project_id: str, study_id: str, item_id: str, statement_id: str,
-    sources: tuple[Source, ...], judgments: tuple[IndependenceJudgment, ...] = (),
+    statement_text: str, sources: tuple[Source, ...], judgments: tuple[IndependenceJudgment, ...] = (),
     audit: AnchoredAuditChain,
 ) -> StatementLabel:
     """The label in force for this evidence. A trusted service-side read; no caller permission check."""
     writer = _writer(audit)
     if not all(_identifier(v) for v in (tenant_id, project_id, study_id, item_id)):
         raise VerificationError("ID_INVALID", "ids must be exact non-empty strings")
-    assessment = assess_statement(statement_id, sources, judgments)
+    assessment = assess_statement(statement_id, sources, judgments, statement_text=statement_text)
     history = _history(writer, _key(tenant_id, project_id, study_id, item_id, statement_id))
     revision = len(history)
     if revision % 2 == 0:
@@ -276,14 +288,15 @@ def statement_label(
 
 def _change_label(
     principal: Principal | None, *, kind: str, tenant_id: str, project_id: str, study_id: str,
-    item_id: str, statement_id: str, sources: tuple[Source, ...],
+    item_id: str, statement_id: str, statement_text: str, sources: tuple[Source, ...],
     judgments: tuple[IndependenceJudgment, ...], reason_text: str, primary_source_id: str | None,
     primary_reason_text: str | None, expected_revision: int, audit: AnchoredAuditChain,
     now: datetime | None,
 ) -> StatementLabel:
     writer = _writer(audit)
     context = dict(tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id,
-                   statement_id=statement_id, sources=sources, judgments=judgments, audit=writer)
+                   statement_id=statement_id, statement_text=statement_text, sources=sources,
+                   judgments=judgments, audit=writer)
     current = statement_label(**context)
     subject = principal.subject_id if isinstance(principal, Principal) else "unknown"
     operation = "confirm_statement" if kind == _CONFIRMED else "demote_statement"
@@ -369,7 +382,7 @@ def _change_label(
 
 def confirm_statement(
     principal: Principal | None, *, tenant_id: str, project_id: str, study_id: str, item_id: str,
-    statement_id: str, sources: tuple[Source, ...],
+    statement_id: str, statement_text: str, sources: tuple[Source, ...],
     judgments: tuple[IndependenceJudgment, ...] = (), reason_text: str, expected_revision: int,
     audit: AnchoredAuditChain, primary_source_id: str | None = None,
     primary_reason_text: str | None = None, now: datetime | None = None,
@@ -377,22 +390,22 @@ def confirm_statement(
     """Promote to CONFIRMED. Refused attempts are audited and raise ``VerificationError``."""
     return _change_label(
         principal, kind=_CONFIRMED, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
-        item_id=item_id, statement_id=statement_id, sources=sources, judgments=judgments,
-        reason_text=reason_text, primary_source_id=primary_source_id,
+        item_id=item_id, statement_id=statement_id, statement_text=statement_text,
+        sources=sources, judgments=judgments, reason_text=reason_text, primary_source_id=primary_source_id,
         primary_reason_text=primary_reason_text, expected_revision=expected_revision, audit=audit, now=now)
 
 
 def demote_statement(
     principal: Principal | None, *, tenant_id: str, project_id: str, study_id: str, item_id: str,
-    statement_id: str, sources: tuple[Source, ...],
+    statement_id: str, statement_text: str, sources: tuple[Source, ...],
     judgments: tuple[IndependenceJudgment, ...] = (), reason_text: str, expected_revision: int,
     audit: AnchoredAuditChain, now: datetime | None = None,
 ) -> StatementLabel:
     """Withdraw the promotion in force, including a stale one. Same permission as promotion."""
     return _change_label(
         principal, kind=_DEMOTED, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
-        item_id=item_id, statement_id=statement_id, sources=sources, judgments=judgments,
-        reason_text=reason_text, primary_source_id=None, primary_reason_text=None,
+        item_id=item_id, statement_id=statement_id, statement_text=statement_text,
+        sources=sources, judgments=judgments, reason_text=reason_text, primary_source_id=None, primary_reason_text=None,
         expected_revision=expected_revision, audit=audit, now=now)
 
 

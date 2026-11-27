@@ -11,7 +11,7 @@ from agora.audit_anchor import AnchorStore, AnchoredAuditChain, bootstrap_anchor
 from agora.audit_chain import AuditChainStore
 from agora.decision_cell import (
     Basis, IndependenceJudgment, Label, PrimaryKind, ProjectRecord, Source, VerificationError,
-    assess_statement, confirm_statement, demote_statement, statement_label, write_project_record,
+    assess_statement as _assess, confirm_statement, demote_statement, statement_label, write_project_record,
 )
 from agora.decision_cell import verification as v
 from agora.principal import SyntheticFixtureAdapter
@@ -34,9 +34,15 @@ AD = SyntheticFixtureAdapter({
 })
 OWNER = AD.issue("owner")
 
-A = Source("a", "owner-a", "origin-a", published_correction_policy=True)
-B = Source("b", "owner-b", "origin-b")
-PRIMARY = Source("gazette", "state", "notice-1", primary_kind=PrimaryKind.OFFICIAL_RECORD)
+H, H2 = "a" * 64, "b" * 64
+TEXT = "the port closed on 27 November"
+A = Source("a", "owner-a", "origin-a", published_correction_policy=True, content_hash=H)
+B = Source("b", "owner-b", "origin-b", content_hash=H)
+PRIMARY = Source("gazette", "state", "notice-1", primary_kind=PrimaryKind.OFFICIAL_RECORD, content_hash=H)
+
+
+def assess_statement(statement_id, sources, judgments=(), statement_text=TEXT):
+    return _assess(statement_id, sources, judgments, statement_text=statement_text)
 
 
 def judged(a="a", b="b", independent=True, who="analyst", why="separate reporters on site", statement="st1"):
@@ -61,7 +67,7 @@ def events(audit):
 
 def where(audit, sources=(A, B), judgments=(judged(),), **kw):
     return dict(tenant_id="t1", project_id="p1", study_id="s1", item_id="e1", statement_id="st1",
-                sources=sources, judgments=judgments, audit=audit, **kw)
+                statement_text=TEXT, sources=sources, judgments=judgments, audit=audit, **kw)
 
 
 def confirm(audit, principal=OWNER, revision=0, **kw):
@@ -105,13 +111,13 @@ def test_sources_count_as_one_unless_independence_is_established(second, judgmen
 
 
 def test_copying_through_a_third_source_makes_a_pair_dependent():
-    middle = Source("m", "owner-m", "origin-m", cites=frozenset({"a"}))
+    middle = Source("m", "owner-m", "origin-m", cites=frozenset({"a"}), content_hash=H)
     b = replace(B, cites=frozenset({"m"}))
     assert assess_statement("st1", (A, middle, b), (judged(),)).computed_label is Label.CLAIM
 
 
 def test_sharing_the_origin_of_a_copied_source_makes_a_pair_dependent():
-    middle = Source("m", "owner-m", "origin-b")  # A copies m, which comes from B's origin
+    middle = Source("m", "owner-m", "origin-b", content_hash=H)  # A copies m, which comes from B's origin
     a = replace(A, cites=frozenset({"m"}))
     assert assess_statement("st1", (a, middle, B), (judged(),)).computed_label is Label.CLAIM
 
@@ -119,6 +125,53 @@ def test_sharing_the_origin_of_a_copied_source_makes_a_pair_dependent():
 def test_a_source_named_as_the_others_origin_makes_a_pair_dependent():
     b = replace(B, upstream_origin_id="a")
     assert assess_statement("st1", (A, b), (judged(),)).computed_label is Label.CLAIM
+
+
+@pytest.mark.parametrize("extra", [
+    # a's origin is a listed post that itself comes from b's origin
+    (Source("m", "owner-m", "origin-b", content_hash=H),),
+    # a's origin is a listed post that copies b
+    (Source("m", "owner-m", "origin-m", cites=frozenset({"b"}), content_hash=H),),
+    # ... and the same one step further along the chain of origins
+    (Source("m", "owner-m", "n", content_hash=H),
+     Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=H)),
+])
+def test_a_listed_origin_brings_its_own_upstream_with_it(extra):
+    sources = (replace(A, upstream_origin_id="m"), B, *extra)
+    result = assess_statement("st1", sources, (judged(),))
+    assert (result.computed_label, result.confirmable_by) == (Label.CLAIM, None)
+
+
+def test_an_origin_followed_from_a_cited_source_counts():
+    sources = (replace(A, cites=frozenset({"m"})), B, Source("m", "owner-m", "n", content_hash=H),
+               Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=H))
+    assert assess_statement("st1", sources, (judged(),)).computed_label is Label.CLAIM
+
+
+def test_a_source_that_is_its_own_origin_terminates_and_stays_independent():
+    sources = (replace(A, upstream_origin_id="a"), B)
+    assert assess_statement("st1", sources, (judged(),)).computed_label is Label.REPORTED_BY_MULTIPLE
+
+
+@pytest.mark.parametrize("bad", [None, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64, H + "\n", 5])
+def test_every_source_needs_a_content_hash(bad):
+    refused("EVIDENCE_INVALID", lambda: assess_statement("st1", (A, replace(B, content_hash=bad)), (judged(),)))
+
+
+@pytest.mark.parametrize("text", [None, "", "  ", "\ud800"])
+def test_the_statement_wording_is_required(text):
+    refused("EVIDENCE_INVALID", lambda: assess_statement("st1", (A, B), (judged(),), text))
+
+
+@pytest.mark.parametrize("change", [
+    {"statement_text": "the port reopened on 27 November"},
+    {"sources": (A, replace(B, content_hash=H2))},
+])
+def test_edited_wording_or_source_content_drops_a_confirmation(audit, change):
+    confirm(audit)
+    after = statement_label(**{**where(audit), **change})
+    assert after.label is Label.REPORTED_BY_MULTIPLE and after.stale_confirmation
+    assert after.confirmed_by_subject_id is None
 
 
 def test_a_judgment_for_another_statement_is_refused():
@@ -139,7 +192,7 @@ def test_a_pair_without_primary_or_correction_policy_cannot_be_confirmed(audit):
 
 def test_a_correction_policy_outside_the_independent_pair_does_not_qualify_it():
     sources = (replace(A, published_correction_policy=False), B,
-               Source("c", published_correction_policy=True))
+               Source("c", published_correction_policy=True, content_hash=H))
     assert assess_statement("st1", sources, (judged(),)).confirmable_by is None
 
 
@@ -155,7 +208,7 @@ def test_the_system_never_computes_confirmed(audit):
     ((replace(A, published_correction_policy=1),), ()), ((replace(A, owner_id=""),), ()),
     ((A, B), [judged()]), ((A, B), (judged(b="zz"),)), ((A, B), (judged(b="a"),)),
     ((A, B), (judged(independent=1),)), ((A, B), (judged(who=""),)), ((A, B), (judged(why=" "),)),
-    (tuple(Source(f"s{i}") for i in range(v.MAX_SOURCES + 1)), ()),
+    (tuple(Source(f"s{i}", content_hash=H) for i in range(v.MAX_SOURCES + 1)), ()),
 ])
 def test_malformed_evidence_is_refused(sources, judgments):
     refused("EVIDENCE_INVALID", lambda: assess_statement("st1", sources, judgments))
