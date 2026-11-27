@@ -11,7 +11,7 @@ The request fields are the scope being authorised. The worker MUST derive them f
 run (the authenticated subject and the hashes of the inputs it actually loaded), not copy them from the receipt
 or take the requester's word; otherwise the scope check compares a claim with itself.
 
-One gate per thread (its SQLite connection is not shared across threads). NOT wired into the engine. The clock
+One gate per thread (its SQLite connection is not shared across threads). Reached by the engine only through ``Simulation(signed_input=...)`` (a signed start). The clock
 is whatever the worker process passes in; there is no trusted time source. Not a boundary against code in the
 same process, or against anyone who can edit the configuration file or both the audit database and the anchor.
 """
