@@ -26,9 +26,10 @@ import json
 import re
 from typing import Any
 
-from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from .. import protection as _protection
+from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from ..audit_chain import AuditReplayError
+from ..security.receipt_gate import CheckedApproval, ReceiptGate
 from ..security.signed_receipt import ReceiptError
 from ..policy_enforcement import PolicyCallable
 from .actions import (
@@ -337,19 +338,24 @@ class SignedApproval:
     envelope: Mapping[str, Any]
 
 
+def _refused(exc: ReceiptError) -> OntologyError:
+    return OntologyError(f"the signed approval statement was refused ({exc.code})")
+
+
 def _check_signed_approval(
     signed: Any, fields: Mapping[str, Any], digest: str, approver: str, store: OntologyObjectStore,
-) -> datetime:
-    """Verify the statement against what this chain says; return when the statement expires."""
+) -> CheckedApproval:
+    """Verify the statement against what this chain says, never against its own claims."""
     if not isinstance(signed, SignedApproval):
         raise OntologyError("admission requires a signed approval statement")
+    if not isinstance(signed.gate, ReceiptGate):
+        raise OntologyError("the signed approval statement needs a ReceiptGate")
     request = {"project": store.project_id, "proposal_digest": digest,
                "proposed_by": fields["proposed_by"], "approved_by": approver}
     try:
-        statement = signed.gate.verify_approval(signed.envelope, request=request)
-        return datetime.strptime(statement["expires_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return signed.gate.check_approval(signed.envelope, request=request)
     except ReceiptError as exc:
-        raise OntologyError(f"the signed approval statement was refused ({exc.code})") from exc
+        raise _refused(exc) from exc
 
 
 def admit_approved_action(
@@ -364,8 +370,10 @@ def admit_approved_action(
     caller must not start the simulation unless this returns. Under the protected defaults a
     ``SignedApproval`` is required: a statement signed with a key from the gate's accepted key list,
     naming this tenant, release, project, digest, proposer and the approver this chain recorded. The
-    statement lasts at most five minutes and is checked again, for expiry, while the chain's write
-    lock is held. The expiry is checked again while the chain's write lock is held. The objects are re-read before that lock, not inside it.
+    statement lasts at most five minutes and must not expire after the approval. While the chain's
+    write lock is held, the approval's and the statement's expiry are checked again, and the store
+    being written must still have the gate's key list as its newest, fresh one. The admission event
+    records the statement's hash. The objects are re-read before that lock, not inside it.
     """
     lifetime = _lifetime(max_age_seconds)
     fields = _fields(store, document, expected_digest)
@@ -380,21 +388,30 @@ def admit_approved_action(
         retention=retention, max_age_seconds=max_age_seconds)
     if subject == live["approved_by"]:
         raise OntologyError("an action must be admitted by someone other than its approver")
-    statement_expires = None
+    checked = None
     if _protection.SIGNED_APPROVAL_REQUIRED or signed_approval is not None:
-        statement_expires = _check_signed_approval(
+        checked = _check_signed_approval(
             signed_approval, fields, expected_digest, live["approved_by"], store)
+        if checked.expires_at > datetime.fromisoformat(live["expires_at"]):
+            raise OntologyError("the signed approval statement outlives the approval")
     expires_at = datetime.fromisoformat(live["expires_at"])
     approved_at = expires_at - lifetime
 
-    def still_live(_db: Any) -> None:
+    def still_live(db: Any) -> None:
         _expiry(approved_at, lifetime, _now())
-        if statement_expires is not None and _now() >= statement_expires:
+        if checked is None:
+            return
+        if _now() >= checked.expires_at:
             raise OntologyError("the signed approval statement expired before admission")
+        try:
+            checked.recheck(db)
+        except ReceiptError as exc:
+            raise _refused(exc) from exc
 
+    proof = {} if checked is None else {"approval_statement_hash": checked.statement_hash}
     _end_event(writer, "ontology_action_admitted", _ADMIT, decision, subject, resource_ids,
-               expected_digest, in_transaction=still_live)
-    return {**live, "admitted_by": subject}
+               expected_digest, in_transaction=still_live, **proof)
+    return {**live, "admitted_by": subject, **proof}
 
 
 __all__ = [

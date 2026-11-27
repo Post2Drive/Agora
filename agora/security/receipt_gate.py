@@ -17,7 +17,9 @@ same process, or against anyone who can edit the configuration file or both the 
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -113,6 +115,16 @@ def load_gate_config(path: str | Path) -> GateConfig:
                       paths[0], paths[1], data["chain_id"])
 
 
+@dataclass(frozen=True)
+class CheckedApproval:
+    """A statement that verified at one moment. Holding one is not authority: run ``recheck`` where you act."""
+
+    statement: Mapping[str, Any]
+    expires_at: datetime
+    statement_hash: str
+    recheck: Callable[[sqlite3.Connection], None]
+
+
 class ReceiptGate:
     """Holds the worker's trust settings and the key list last accepted through this object."""
 
@@ -160,12 +172,20 @@ class ReceiptGate:
         return accepted.list_version
 
     def verify_approval(self, envelope: Mapping[str, Any], *, request: Mapping[str, str]) -> dict[str, Any]:
+        """``check_approval`` returning only the statement. Not enough on its own before acting."""
+        return dict(self.check_approval(envelope, request=request).statement)
+
+    def check_approval(self, envelope: Mapping[str, Any], *, request: Mapping[str, str]) -> CheckedApproval:
         """Verify a signed approval statement for one proposal, or raise ``sr.ReceiptError``. Consumes nothing.
 
         Keys come only from the newest accepted, fresh key list in this store; the tenant and release come
         from this worker's configuration. The request must be derived by the caller from its own chain
         (the proposal digest it is about to admit, the proposer and approver it found there), never from
         the statement. Not single-use: the same statement verifies again until it expires.
+
+        ``recheck(db)`` takes the connection of the store being written, inside its transaction. It refuses
+        unless the list used here is still that store's newest and fresh, the statement is unexpired and the
+        clock has not moved back. It holds on to that list, so refreshing this gate cannot swap it.
         """
         if not isinstance(request, Mapping) or set(request) != set(APPROVAL_REQUEST_FIELDS):
             raise sr.ReceiptError("BAD_REQUEST", "request fields must be exactly " + ",".join(APPROVAL_REQUEST_FIELDS))
@@ -173,12 +193,26 @@ class ReceiptGate:
         if set(scope) != set(APPROVAL_REQUEST_FIELDS) or not all(isinstance(v, str) for v in scope.values()):
             raise sr.ReceiptError("BAD_REQUEST", "request values must be strings")
         scope.update(tenant=self._config.tenant, release_id=self._config.release_id)
-        if self._key_list is None:
+        key_list = self._key_list
+        if key_list is None:
             raise sr.ReceiptError("KEY_LIST_NOT_LOADED", "load a signed key list before verifying")
-        keys = kl.current_keys(self._key_list, tenant=self._config.tenant, audit=self._audit,
-                               clock=self._clock, monotonic=self._monotonic)
-        return ap.verify_approval_statement(
-            envelope, keys=keys, now=self._clock(), expected=scope, allow_test_keys=self._allow_test_keys)
+        tenant, clock, monotonic = self._config.tenant, self._clock, self._monotonic
+        keys = kl.current_keys(key_list, tenant=tenant, audit=self._audit, clock=clock, monotonic=monotonic)
+        first = clock()
+        statement = ap.verify_approval_statement(
+            envelope, keys=keys, now=first, expected=scope, allow_test_keys=self._allow_test_keys)
+        expires = sr._parse_time(statement["expires_at"])
+
+        def recheck(db: sqlite3.Connection) -> None:
+            second = clock()
+            if second.tzinfo is None or second < first:
+                raise sr.ReceiptError("BAD_CLOCK", "trusted time is naive or moved backwards")
+            if second >= expires:
+                raise sr.ReceiptError("EXPIRED")
+            kl.require_current(db, tenant, key_list, second, monotonic())
+
+        digest = hashlib.sha256(ap.DOMAIN + sr.canonical_bytes(statement)).hexdigest()
+        return CheckedApproval(statement, expires, "sha256:" + digest, recheck)
 
     def admit(self, envelope: Mapping[str, Any], *, request: Mapping[str, str]) -> ledger.AdmittedReceipt:
         """Admit one receipt for one request, or raise ``sr.ReceiptError``. Do not act on any exception."""
@@ -215,4 +249,4 @@ def open_receipt_gate(config_path: str | Path, *, clock: Callable[[], datetime],
         manager.__exit__(None, None, None)
 
 
-__all__ = ["APPROVAL_REQUEST_FIELDS", "GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]
+__all__ = ["APPROVAL_REQUEST_FIELDS", "CheckedApproval", "GateConfig", "REQUEST_FIELDS", "ReceiptGate", "load_gate_config", "open_receipt_gate"]

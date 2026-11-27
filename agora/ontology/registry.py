@@ -334,6 +334,15 @@ def parse_domain_pack(data: Any) -> OntologyPack:
     for item in actions:
         if item.actor_type_id not in object_ids or item.target_type_id not in object_ids:
             raise OntologyError(f"ActionType {item.action_type_id} actor_type_id/target_type_id does not resolve")
+    from . import preconditions
+
+    by_property = {item.property_id: item for item in properties}
+    by_object = {item.type_id: item.properties for item in objects}
+    for item in actions:
+        try:
+            preconditions.validate(item, by_object, by_property)
+        except preconditions.PreconditionError as exc:
+            raise OntologyError(f"ActionType {item.action_type_id} precondition is not valid: {exc}") from exc
 
     pack = OntologyPack(pack_id, schema_version, objects, properties, links, actions)
     pack.fingerprint
