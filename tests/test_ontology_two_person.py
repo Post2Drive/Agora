@@ -5,17 +5,20 @@ import pytest
 
 from agora import protection
 from agora.ontology import (
-    OntologyError, co_approve_action_proposal, run_admitted_simulation, verify_approved_action, withdraw_approval,
+    OntologyError, action_proposal_state, co_approve_action_proposal, list_action_proposals,
+    run_admitted_simulation, verify_approved_action, withdraw_approval,
 )
-from agora.ontology import approvals
+from agora.ontology import approvals, states
 from agora.ontology.approvals import SignedApproval
 
 from test_ontology_action_admission import RUNNER, _admit, _endings, _later  # noqa: F401
 from test_ontology_action_approvals import APPROVER, _as, _decide, _events, catalog  # noqa: F401
+import test_ontology_action_states as _state_events
 from test_ontology_action_proposals import _allow, _deny, _propose, world  # noqa: F401
 from test_ontology_action_signed_admission import _gate, _signed, _statement, clock  # noqa: F401
 
 SECOND = _as("approver-2")
+READER = _as("reader-1")
 
 
 @pytest.fixture
@@ -357,3 +360,82 @@ def test_the_second_statement_may_not_outlive_the_approval(two, world, clock, mo
     with pytest.raises(OntologyError, match="outlives the approval"):
         _admit(world, proposal, signed_approval=statements)
     assert _endings(world) == []
+
+
+def _views(w, proposal):
+    one = action_proposal_state(w.store, proposal.document, proposal.digest, policy=READER, audit=w.audit)
+    (listed,) = list_action_proposals(w.store, policy=READER, audit=w.audit)
+    return one, listed
+
+
+def test_both_state_views_wait_for_the_second_approval(two, world):
+    proposal = _approved(world)
+    for entry in _views(world, proposal):
+        assert entry["state"] == "awaiting_second_approval" and entry["decided_by"] == "approver-1"
+        assert entry["expires_at"] and "second_approval_requirement" not in entry
+    assert list_action_proposals(world.store, policy=READER, audit=world.audit, state="approved") == []
+    _co(world, proposal)
+    for entry in _views(world, proposal):
+        assert entry["state"] == "approved" and entry["co_approved_by"] == "approver-2"
+
+
+def test_with_the_flag_off_one_approval_shows_as_approved(world):
+    proposal = _approved(world)
+    assert [e["state"] for e in _views(world, proposal)] == ["approved", "approved"]
+
+
+def test_the_proposal_record_holds_the_classification_unredacted(two, world):
+    _propose(world)
+    (event,) = _events(world, "ontology_action_proposed")
+    assert event["proposal_sensitivity"] == "sensitive"
+
+
+def test_an_expired_first_approval_is_expired_not_waiting(two, world, monkeypatch):
+    proposal = _approved(world)
+    _later(monkeypatch, hours=25)
+    assert [e["state"] for e in _views(world, proposal)] == ["expired", "expired"]
+
+
+def _derived(*records, document=None):
+    """Derive from one approval and one proposal record per entry of ``records`` (extra record fields)."""
+    from datetime import datetime, timezone
+    events = [*(_state_events._proposed(**extra) for extra in records), _state_events._decided()]
+    return states._derive(_state_events.DIGEST, events, datetime(2026, 11, 27, 1, tzinfo=timezone.utc),
+                          timedelta(hours=24), document)
+
+
+def test_a_record_without_a_classification_is_marked_unknown(two):
+    entry = _derived({})
+    assert entry["state"] == "approved" and entry["second_approval_requirement"] == "unknown"
+    # An older record next to a newer one is not a disagreement; the classification that is there counts.
+    assert _derived({}, {"proposal_sensitivity": "sensitive"})["state"] == "awaiting_second_approval"
+    assert _derived({}, document="sensitive")["state"] == "awaiting_second_approval"
+    assert _derived({"proposal_sensitivity": "internal"}) == {
+        "digest": _state_events.DIGEST, "proposed_by": "p", "decided_by": "a", "state": "approved",
+        "expires_at": "2026-11-28T00:00:00+00:00"}
+
+
+@pytest.mark.parametrize("records,document", [
+    (({"proposal_sensitivity": "sensitive"}, {"proposal_sensitivity": "internal"}), None),
+    (({"proposal_sensitivity": "internal"},), "sensitive"),
+    (({"proposal_sensitivity": "[REDACTED]"},), None),
+    (({"proposal_sensitivity": ["sensitive"]},), None),
+    (({"proposal_sensitivity": None},), None),
+])
+def test_a_disagreeing_or_unknown_classification_is_inconsistent(two, records, document):
+    entry = _derived(*records, document=document)
+    assert entry["state"] == "inconsistent" and "classification" in entry["reason"], entry
+
+
+def test_for_an_older_record_one_view_uses_the_document_and_the_list_says_unknown(two, world, monkeypatch):
+    proposal = _approved(world)
+    real = states._read
+
+    def older(writer, digest):
+        return {d: [{k: v for k, v in e.items() if k != "proposal_sensitivity"} for e in events]
+                for d, events in real(writer, digest).items()}
+
+    monkeypatch.setattr(states, "_read", older)
+    one, listed = _views(world, proposal)
+    assert one["state"] == "awaiting_second_approval"
+    assert listed["state"] == "approved" and listed["second_approval_requirement"] == "unknown"

@@ -6,8 +6,14 @@ digest; ``action_proposal_state`` does the same for one proposal document. A dig
 fit the rules in ``approvals.py`` is reported as ``inconsistent`` with a reason, so one bad record does
 not hide the others.
 
-States: ``proposed``, ``rejected``, ``approved`` (live), ``expired``, ``withdrawn``, ``admitted``,
+States: ``proposed``, ``rejected``, ``approved`` (live), ``awaiting_second_approval`` (a live first
+approval where a second is required), ``expired``, ``withdrawn``, ``admitted``,
 ``simulation_succeeded``, ``simulation_failed``, ``inconsistent``.
+
+The classification that decides the second-approval rule comes from the proposal document
+(``action_proposal_state``) or from the proposal record in the chain. Records written before the
+chain held it give the list no classification: such an entry stays ``approved`` and carries
+``second_approval_requirement: "unknown"``.
 
 Limits: this reads the chain only. It does not re-read objects or sources, so ``approved`` means the chain
 shows a live approval, not that the proposal would still pass ``verify_approved_action``. The chain is
@@ -22,9 +28,11 @@ from datetime import datetime, timedelta
 import json
 from typing import Any
 
+from .. import protection as _protection
 from ..audit_anchor import verify_anchored
 from . import approvals as _a
 from . import outcomes as _o
+from .actions import _SENSITIVITY_RANK
 from .store import OntologyError, OntologyObjectStore
 
 _READ = "ontology_read"
@@ -43,7 +51,8 @@ def _authorship(event: dict[str, Any]) -> tuple[Any, Any, Any]:
     return event.get("subject_id"), event.get("policy_version"), event.get("resource_ids")
 
 
-def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: timedelta) -> dict[str, Any]:
+def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: timedelta,
+            sensitivity: str | None = None) -> dict[str, Any]:
     by_type: dict[str, list[dict[str, Any]]] = {}
     for event in events:
         by_type.setdefault(event["event_type"], []).append(event)
@@ -57,6 +66,13 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if any(_authorship(e) != _authorship(first) for e in allowed[1:]):
         return _bad(digest, "the proposal records disagree about who proposed what")
     proposer = first["subject_id"]
+    # Older records carry no classification; the ones that do must agree with each other and the document.
+    classes = [e["proposal_sensitivity"] for e in allowed if "proposal_sensitivity" in e]
+    if sensitivity is not None:
+        classes.append(sensitivity)
+    if any(not isinstance(c, str) or c not in _SENSITIVITY_RANK for c in classes) or len(set(classes)) > 1:
+        return _bad(digest, "the recorded classification is unknown or disagrees", proposed_by=proposer)
+    sensitivity = classes[0] if classes else None
     recorded = first.get("resource_ids")  # pack, action, version, then the bound objects, then the digest
     # Every later step names the pack, action, version and digest only.
     resources = [*recorded[:3], digest]
@@ -105,7 +121,14 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if not endings:
         if results:
             return _bad(digest, "an outcome has no admission", **entry)
-        return {**entry, "state": "expired" if now >= approved_at + lifetime else "approved"}
+        if now >= approved_at + lifetime:
+            return {**entry, "state": "expired"}
+        if "co_approved_by" not in entry:
+            if sensitivity is None and _protection.TWO_PERSON_SENSITIVE:
+                return {**entry, "state": "approved", "second_approval_requirement": "unknown"}
+            if _a._two_person({"sensitivity": sensitivity}):
+                return {**entry, "state": "awaiting_second_approval"}
+        return {**entry, "state": "approved"}
     if len(endings) != 1:
         return _bad(digest, "more than one ending", **entry)
     ending = endings[0]
@@ -187,7 +210,7 @@ def action_proposal_state(
     events = _read(writer, expected_digest).get(expected_digest)
     if not events:
         return _bad(expected_digest, "the proposal is not recorded in this chain")
-    entry = _derive(expected_digest, events, _a._now(), lifetime)
+    entry = _derive(expected_digest, events, _a._now(), lifetime, fields["sensitivity"])
     if "proposed_by" in entry and entry["proposed_by"] != fields["proposed_by"]:
         return _bad(expected_digest, "the proposal was recorded by someone other than the person it names")
     return entry
