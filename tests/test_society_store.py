@@ -110,8 +110,8 @@ def test_messages_and_relationship_changes_are_append_only(store):
     c = store.direct(1, 2, round=0)
     m = store.post(c, 1, round=1, text="a", reason="r")
     store.adjust_relationship(2, 1, round=1, trust_delta=0.1, cause_message_id=m, reason="friendly")
-    for sql in ("UPDATE messages SET text='x'", "DELETE FROM messages",
-                "UPDATE relationship_changes SET reason='x'", "DELETE FROM relationship_changes"):
+    for sql in ("UPDATE society_messages SET text='x'", "DELETE FROM society_messages",
+                "UPDATE society_relationship_changes SET reason='x'", "DELETE FROM society_relationship_changes"):
         with pytest.raises(sqlite3.DatabaseError):
             store._conn.execute(sql)
 
@@ -178,10 +178,10 @@ def test_digest_is_deterministic_and_covers_every_table(store):
     base = store.digest()
     assert base == other.digest() and len(base) == 64
     mutations = {
-        "conversations": "UPDATE conversations SET topic='zz' WHERE conversation_id=2",
-        "memberships": "UPDATE memberships SET role='moderator' WHERE agent_id=2 AND conversation_id=2",
-        "relationships": "UPDATE relationships SET trust=0.9",
-        "read_cursors": "UPDATE read_cursors SET last_read_message_id=2",
+        "conversations": "UPDATE society_conversations SET topic='zz' WHERE conversation_id=2",
+        "memberships": "UPDATE society_memberships SET role='moderator' WHERE agent_id=2 AND conversation_id=2",
+        "relationships": "UPDATE society_relationships SET trust=0.9",
+        "read_cursors": "UPDATE society_read_cursors SET last_read_message_id=2",
     }
     for table, sql in mutations.items():
         copy = SocietyStore(":memory:")
@@ -190,8 +190,8 @@ def test_digest_is_deterministic_and_covers_every_table(store):
         assert copy.digest() != base, table
         copy.close()
     for table, sql in {
-        "messages": "DROP TRIGGER messages_no_update;UPDATE messages SET text='tampered'",
-        "relationship_changes": "DROP TRIGGER changes_no_update;UPDATE relationship_changes SET reason='tampered'",
+        "messages": "DROP TRIGGER society_messages_no_update;UPDATE society_messages SET text='tampered'",
+        "relationship_changes": "DROP TRIGGER society_changes_no_update;UPDATE society_relationship_changes SET reason='tampered'",
     }.items():
         copy = SocietyStore(":memory:")
         _scenario(copy)
@@ -238,8 +238,28 @@ def test_symlinked_path_is_refused(tmp_path):
 def test_incomplete_schema_is_refused(tmp_path):
     path = tmp_path / "society.sqlite3"
     conn = sqlite3.connect(path)
-    conn.execute("CREATE TABLE messages(x)")
+    conn.execute("CREATE TABLE society_messages(x)")
     conn.commit()
     conn.close()
     with pytest.raises(SocietyError, match="incomplete"):
         SocietyStore(path)
+
+
+def test_attached_store_shares_the_run_transaction(tmp_path):
+    conn = sqlite3.connect(tmp_path / "run.db")
+    conn.execute("CREATE TABLE posts(x)")
+    conn.commit()
+    s = SocietyStore.attach(conn)
+    c = s.direct(1, 2, round=0)
+    s.post(c, 1, round=1, text="hi", reason="r")
+    assert conn.in_transaction  # nothing was committed by the store itself
+    conn.rollback()
+    assert conn.execute("SELECT COUNT(*) FROM society_messages").fetchone()[0] == 0
+    c = s.direct(1, 2, round=0)
+    s.post(c, 1, round=1, text="hi", reason="r")
+    conn.commit()
+    s.close()  # closing an attached store leaves the run's connection open
+    assert conn.execute("SELECT COUNT(*) FROM society_messages").fetchone()[0] == 1
+    reopened = SocietyStore.attach(conn)
+    assert reopened.thread(c)[0]["text"] == "hi"
+    conn.close()
