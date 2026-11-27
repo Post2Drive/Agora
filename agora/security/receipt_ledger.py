@@ -10,7 +10,8 @@ Two guards refuse a replay: the audit event id is derived from ``(key_id, nonce)
 repeated event id, and the nonce table must match the chain's consumption events one for one, so a removed or
 added nonce row stops all further admissions.
 
-NOT wired into the engine and NOT a boundary against code in the same process or an owner of the database and
+Reached by the engine only through ``Simulation(signed_input=...)`` (a signed start).
+NOT a boundary against code in the same process or an owner of the database and
 anchor files: such a party can construct an ``AdmittedReceipt`` or rewrite both files. The anchor is a local
 sidecar (see agora.audit_anchor). The action a receipt authorises happens outside this transaction; this
 module does not make that action atomic with the consumption. Nonce records are never purged in this version.

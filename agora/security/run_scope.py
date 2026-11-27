@@ -10,7 +10,8 @@ admit a run whose rows, mapping or scenario had been changed. For purpose ``gove
 The worker never takes request fields from a caller. ``admit_governed_run`` copies the inputs once, derives
 every request field from that copy, admits through the ``ReceiptGate`` and returns the same copy to be run.
 
-NOT wired into the engine: nothing makes a run use the returned scenario. Not bound by the action: the model
+Engine use: ``Simulation(signed_input=...)`` can START a run through this admission; resume is refused, and the
+CLI and web app do not use it. Calling this module alone makes no run use the returned scenario. Not bound by the action: the model
 configuration override, the knowledge graph, the reply cache, earlier run state, and the engine code (release
 attestation is not built). There is no production identity adapter; only the synthetic fixture issuer exists.
 Not a boundary against code in the same process.
@@ -65,6 +66,12 @@ def _json_copy(value: Any) -> Any:
             raise _refuse("object keys must be text")
         return {key: _json_copy(item) for key, item in items}
     raise _refuse(f"inputs must be plain JSON data, not {kind.__name__}")
+
+
+def plain_copy(value: Any) -> Any:
+    """The same private, exact-types-only copy the run action is derived from, for a caller that has to inspect an
+    input before admission without reading the original twice."""
+    return _json_copy(value)
 
 
 def _typed(value: Any) -> Any:
@@ -205,4 +212,4 @@ def admit_governed_run(gate: rg.ReceiptGate, envelope: Mapping[str, Any], *, pri
 
 
 __all__ = ["ACTION_DOMAIN", "PURPOSE", "AdmittedRun", "RunDescription", "admit_governed_run", "describe_run",
-           "scenario_digest"]
+           "plain_copy", "scenario_digest"]

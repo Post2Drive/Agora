@@ -46,6 +46,10 @@ from .world import Agent, Post, World, dm_people, dm_space
 SCENARIO_FILE = "scenario.yaml"
 DB_FILE = "agora.db"
 CACHE_FILE = "llm_cache.db"
+# A signed run starts from an empty project: none of these is named by the run action, so each is refused if present.
+_SIGNED_UNBOUND = (*(name + suffix for name in (DB_FILE, CACHE_FILE) for suffix in ("", "-wal", "-shm", "-journal")),
+                   "graph.db", "graph.db-wal", "graph.db-journal", "decisions.jsonl", "snapshots", "fork.json")
+_SIGNED_FIELDS = {"gate", "envelope", "principal", "package", "mapping"}
 
 
 def _seed(*parts) -> int:
@@ -189,11 +193,17 @@ class Simulation:
     retried_replies = 0   # replies that needed a second try
 
     def __init__(self, project: str | Path, llm_override: dict | None = None,
-                 governed_input: Mapping | None = None, snapshot_rounds: Iterable[int] = ()):
+                 governed_input: Mapping | None = None, snapshot_rounds: Iterable[int] = (),
+                 signed_input: Mapping | None = None):
         """governed_input (optional, M3): {"package": <scenario-input package>, "mapping": <declared mapping>}.
 
         When given, the population comes from the approved, hash-verified package and the run
         carries an append-once provenance envelope. When None, behaviour is exactly the legacy path.
+
+        signed_input (optional): {"gate", "envelope", "principal", "package", "mapping"}. STARTS a governed run on a
+        single-use signed receipt (docs/PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md section 3C). The engine performs
+        the admission itself, on the scenario it loaded, and runs what was admitted. No resume: one ``run`` call.
+        Test keys and the synthetic identity adapter only; the engine code itself is not attested.
         """
         self.dir = Path(project)
         # Rounds after whose commit an immutable, verifiable snapshot is written (default none: legacy behaviour).
@@ -205,8 +215,15 @@ class Simulation:
         if any(r >= self.sc.rounds for r in self.snapshot_rounds):
             raise ValueError("snapshot_rounds must be inside the scenario run")
         self.governed: dict | None = None
+        self.signed = signed_input is not None
+        self._signed_started = False
         self.base_scenario_hash = self.scenario_hash  # scenario.yaml as loaded, before any projection
-        if governed_input is not None:
+        if self.signed:
+            if governed_input is not None:
+                raise GovernedInputError("give either governed_input or signed_input, not both")
+            self.governed = self._admit_signed(signed_input, self.sc, self.dir, llm_override)  # before any write
+            self.sc = self.governed["scenario"]
+        elif governed_input is not None:
             self.governed = self._verify_governed(governed_input, self.sc, self.dir.name)
             self.sc = self.governed["scenario"]
         cfg = safe_study_llm(self.sc.llm)
@@ -226,7 +243,7 @@ class Simulation:
         self._to_reflect: list[Agent] = []
         self.facts = None
         gpath = self.dir / "graph.db"
-        if gpath.exists():
+        if not self.signed and gpath.exists():  # the knowledge graph is not bound by a signed receipt
             from ..graph import GraphStore
             from ..graph.retrieve import FactIndex
             gs = GraphStore(gpath)
@@ -312,6 +329,61 @@ class Simulation:
         return {"scenario": derived, "manifest": {**dict(manifest), "projection": record, "input_origin": origin},
                 "receipt": governed_input["receipt"], "receipt_scope": scope}
 
+    @staticmethod
+    def _admit_signed(signed_input: Mapping, base, project: Path, llm_override) -> dict:
+        """Check everything that can be refused without spending the receipt, consume it, then claim the project.
+
+        The order is consume, then act: a failure after admission leaves a spent receipt and no run, and a new
+        receipt (in an empty project) is needed. Admission refusals raise ``agora.security.signed_receipt.ReceiptError``.
+        """
+        from ..security import run_scope
+        from ..security.signed_receipt import ReceiptError
+        if not isinstance(signed_input, Mapping) or set(signed_input) != _SIGNED_FIELDS:
+            raise GovernedInputError("signed_input must be exactly {gate, envelope, principal, package, mapping}")
+        values = dict(signed_input)  # one read
+        if llm_override is not None:
+            raise GovernedInputError("a model override is not bound by a signed receipt; set the model in scenario.yaml")
+        if base.communication != "platform":
+            raise GovernedInputError("native communication is not supported for governed runs")
+        present = [name for name in _SIGNED_UNBOUND if os.path.lexists(project / name)]
+        if present:
+            raise GovernedInputError(
+                "a signed run starts only in a project with no earlier run, reply cache or knowledge graph "
+                "(resume is not supported); found: " + ", ".join(present))
+        try:
+            package = run_scope.plain_copy(values["package"])
+            mapping = run_scope.plain_copy(values["mapping"])
+        except ReceiptError as exc:
+            raise GovernedInputError(f"signed input refused: {exc}") from exc
+        if not isinstance(package, dict) or package.get("validated_prediction_enabled") is not False:
+            raise GovernedInputError("package must be a scenario-input package with validated_prediction_enabled False")
+        manifest = package.get("manifest")
+        if not isinstance(manifest, dict):
+            raise GovernedInputError("package manifest is incomplete")
+        origin = Simulation._input_origin(package, manifest)
+        # A model configuration that cannot be built must not cost a receipt. No cache path: nothing is written.
+        cfg = LLMConfig.from_dict(safe_study_llm(base.llm))
+        make_backend(cfg)
+        admitted = run_scope.admit_governed_run(
+            values["gate"], values["envelope"], principal=values["principal"], package=package, mapping=mapping,
+            base_scenario=base, project_id=project.name)
+        # Claim the files exclusively: of two starts on one project only one proceeds, and nothing planted since
+        # the check above is opened.
+        for name in (DB_FILE, CACHE_FILE) if cfg.cache else (DB_FILE,):
+            try:
+                os.close(os.open(project / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
+            except OSError as exc:
+                raise GovernedInputError(
+                    f"could not claim {name} after admission; the receipt is spent and nothing was run") from exc
+        run, admission = admitted.run, admitted.admission
+        record = {"action": dict(run.action), "purpose": run.request["purpose"], "subject": run.request["subject"],
+                  "tenant": admission.receipt["tenant"], "release_id": admission.receipt["release_id"],
+                  "release_attested": False, "key_id": admission.receipt["key_id"],
+                  "receipt_sha256": admission.receipt_hash, "audit_event_id": admission.audit_event_id}
+        return {"scenario": run.scenario, "receipt": None, "receipt_scope": None,
+                "manifest": {**run.package["manifest"], "projection": run.projection, "input_origin": origin,
+                             "signed_admission": record}}
+
     def _guard_provenance(self) -> None:
         """Governed runs are append-once and never forceable; legacy runs cannot adopt or ignore an envelope."""
         stored = self.store.get_meta("input_provenance")
@@ -319,7 +391,12 @@ class Simulation:
             if stored is not None:
                 raise GovernedInputError("this run is governed: resume it with its governed input")
             return
-        self._check_receipt(self.governed["receipt"], self.governed["receipt_scope"])  # expiry re-checked before any write
+        if self.signed:
+            # The receipt was consumed at construction. It does not authorise continuing a run that has begun.
+            if self.store.is_initialised():
+                raise GovernedInputError("a signed run cannot be resumed: no receipt form binds a resume yet")
+        else:
+            self._check_receipt(self.governed["receipt"], self.governed["receipt_scope"])  # expiry re-checked before any write
         manifest_projection = self.governed["manifest"]["projection"]
         manifest = {**self.governed["manifest"], "base_scenario_hash": self.base_scenario_hash,
                     "projected_scenario_hash": self._projected_scenario_hash(manifest_projection)}
@@ -366,6 +443,10 @@ class Simulation:
     # ---------------------------------------------------------------- running
     def run(self, rounds: int | None = None, progress: Callable[[dict], None] | None = None,
             force: bool = False, should_stop: Callable[[], bool] | None = None) -> int:
+        if self.signed:
+            if self._signed_started:
+                raise GovernedInputError("a signed receipt covers one run call; resume is not supported")
+            self._signed_started = True
         w = self.world or self.prepare(force=force)
         start = self.store.last_round() + 1
         end = self.sc.rounds if rounds is None else min(self.sc.rounds, start + rounds)
@@ -766,6 +847,8 @@ class Simulation:
     def _injected(self, r: int) -> list:
         evs = []
         for (raw,) in self.store.rows("SELECT event FROM injected WHERE round = ? ORDER BY id", (r,)):
+            if self.signed:  # an added event changes what the run does, and the receipt did not name it
+                raise GovernedInputError(f"an event was added for round {r}; a signed run does not accept added events")
             d = json.loads(raw)
             evs.append(scenario_mod.Event(**{k: v for k, v in d.items()
                                              if k in scenario_mod.Event.__dataclass_fields__}))
