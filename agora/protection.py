@@ -18,6 +18,8 @@ PRINCIPAL_BOUND_REQUIRED = True
 SIGNED_APPROVAL_REQUIRED = True
 # An ontology action outcome is recorded by run_admitted_simulation, not by a caller-supplied digest.
 RUNNER_ONLY_OUTCOMES = True
+# An action proposal classified sensitive needs a second approver, a different person from proposer and first approver.
+TWO_PERSON_SENSITIVE = True
 # Governed enforce_policy() rejects any policy callable that is not a
 # BoundPolicy produced from an adapter-issued Principal. Test-only relaxation
 # via tests/conftest.py; no env var or CLI switch.
