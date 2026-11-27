@@ -17,7 +17,7 @@ Assessed against `main` at `47c17ac53bf265f75d1c3273553feb6accba583c` and the O0
 | Area | In the repository (library level) | Not established |
 |---|---|---|
 | Ontology contract | Versioned pack parser and registry, data bindings, structural JSON Schemas with conformance vectors, pack compatibility check | Third-party use; the store does not run the compatibility check |
-| Ontology store | Project-local SQLite store: immutable pack and binding snapshots, source-backed object references, typed temporal links, bounded queries and traversal, backup and restore with source-content digests and an audit-anchored manifest digest | Public API or SDK, authoring UI, migrations of stored records, link retraction, cardinality across pack versions, separate-storage recovery rehearsal |
+| Ontology store | Project-local SQLite store: immutable pack and binding snapshots, source-backed object references, typed temporal links with supersession and retraction, bounded queries and traversal, backup and restore with source-content digests and an audit-anchored manifest digest | Public API or SDK, authoring UI, migrations of stored records, cardinality across pack versions, separate-storage recovery rehearsal |
 | Decision cell | See [DECISION_CELL_SPEC.md](DECISION_CELL_SPEC.md) for the design; library slices exist in `agora/decision_cell/` | Alert delivery, timers, a service or user interface |
 
 The next ontology work is in the O0 audit table of the [capability target](ONTOLOGY_CAPABILITY_TARGET.md). None of this claims production readiness.
