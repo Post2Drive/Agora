@@ -8,6 +8,7 @@ from .approvals import (
 )
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
+from .outcome_read import read_simulation_outcome
 from .outcomes import record_simulation_outcome
 from .simulation import run_admitted_simulation, verify_simulation_result
 from .states import action_proposal_state, list_action_proposals
@@ -54,6 +55,7 @@ __all__ = [
     "materialize_instances",
     "parse_domain_pack",
     "propose_action",
+    "read_simulation_outcome",
     "recheck_action_proposal",
     "record_simulation_outcome",
     "stable_record_key",

@@ -69,6 +69,16 @@ An admission records that one simulation may start. Nothing here starts or retri
 - If the event is appended but its anchor cannot be written, the call raises and the anchored writer refuses further appends until reconciled.
 - If the admitter cannot record (lost role, lost identity, crash with no report), the admission stays without an outcome. That shows only that none was recorded, not that nothing ran.
 
+### Reading an outcome
+
+`read_simulation_outcome(store, document, digest, ...)` returns the recorded status, result digest, recording identity and time, the proposer, the approver and, where there is one, the second approver.
+
+- It needs `ontology_read` at the proposal's own classification and a principal-bound identity. Under the central roles `operator`, `reviewer` and `reader` have it; `approver` does not. The decision is made, and appended to the chain like other read decisions, before any proposal event is looked up.
+- The chain must hold the proposal from the person the document names, one approval from someone else, one well-formed admission by someone who gave neither approval, and one well-formed outcome from that admitter. A sensitive proposal also needs one well-formed second approval while `protection.TWO_PERSON_SENSITIVE` is set, so an outcome admitted without one is refused then. A second approval that is recorded is checked whatever the flag says. Positions in the chain must be: proposal, approval, second approval (where present), admission, outcome. Recording does not compare positions, so an outcome appended ahead of its admission by someone who can write to the chain is refused here.
+- With no outcome it raises "no outcome has been recorded". That does not show that nothing ran. A malformed or second outcome raises a different error; so does an unrelated event under the outcome's event ID.
+- It does not re-read the objects, check the approval's age or a signed statement, or receive or check the result content. The caller compares the content it holds with `result_digest`, so it is still a report in the chain, not proof that an effect happened.
+- `verify_simulation_result` takes only the result document and checks only the outcome event. It does **not** check the approval or admission behind it, so it accepts a matching outcome event appended without them. A caller who needs the whole sequence calls both and compares the two `result_digest` values.
+
 ## Limits
 
 - An outcome is not evidence that a simulation ran, that the digest belongs to a real result, or that nothing else was done with the admission.
