@@ -6,6 +6,7 @@ other's line (append mode is not atomic across separate handles on Windows).
 """
 from __future__ import annotations
 
+import errno
 import os
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -24,6 +25,44 @@ def writer_lock(path: str | os.PathLike[str]) -> Iterator[None]:
     """Cross-process exclusive lock for one journal file. Not re-entrant."""
     with _exclusive_lock(_lock_path(require_safe_path(path))):
         yield
+
+
+@contextmanager
+def try_writer_lock(path: str | os.PathLike[str]) -> Iterator[bool]:
+    """``writer_lock`` without waiting: yields True if the lock was taken, False if it is held.
+
+    For a caller that needs several of these locks at once. Taking all of them this way, and
+    releasing every one when any is busy, cannot deadlock whatever order writers nest them in.
+    """
+    lock_path = require_safe_path(_lock_path(require_safe_path(path)))
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EDEADLK):
+                    raise
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def reader_lock(path: str | os.PathLike[str]):
