@@ -30,7 +30,7 @@ from .store import OntologyError, OntologyObjectStore
 _READ = "ontology_read"
 _STATUS_STATES = {"ontology_action_simulation_succeeded": "simulation_succeeded",
                   "ontology_action_simulation_failed": "simulation_failed"}
-_TYPES = ({_a._PROPOSED_TYPE, *_a._OUTCOMES.values(), *_a._ENDINGS, *_STATUS_STATES})
+_TYPES = ({_a._PROPOSED_TYPE, _a._CO_TYPE, *_a._OUTCOMES.values(), *_a._ENDINGS, *_STATUS_STATES})
 _PREFIX = "ontology_action_"
 
 
@@ -67,6 +67,9 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     endings = [e for t in _a._ENDINGS for e in by_type.get(t, [])]
     results = [e for t in _STATUS_STATES for e in by_type.get(t, [])]
     suffix = digest.split(":", 1)[1]
+    seconds = by_type.get(_a._CO_TYPE, [])
+    if seconds and (len(seconds) != 1 or not decisions or decisions[0]["event_type"] != _a._OUTCOMES["approve"]):
+        return _bad(digest, "a second approval without exactly one approval", proposed_by=proposer)
     if not decisions:
         if endings or results:
             return _bad(digest, "an ending or outcome has no decision", proposed_by=proposer)
@@ -81,6 +84,13 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
             or place[id(decision)] < place[id(first)]):
         return _bad(digest, "the decision is not well formed", proposed_by=proposer)
     entry["decided_by"] = decider
+    if seconds:
+        co = seconds[0].get("subject_id")
+        if (seconds[0].get("event_id") != _a._CO_PREFIX + suffix or seconds[0].get("operation") != _a._DECIDE
+                or seconds[0].get("decision") != "allow" or not isinstance(co, str) or not co.strip()
+                or co in (proposer, decider)):
+            return _bad(digest, "the second approval is not well formed", **entry)
+        entry["co_approved_by"] = co
     if decision["event_type"] == _a._OUTCOMES["reject"]:
         if endings or results:
             return _bad(digest, "a rejected proposal has an ending or outcome", **entry)

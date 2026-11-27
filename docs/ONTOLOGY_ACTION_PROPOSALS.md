@@ -11,7 +11,7 @@
 - parameters, which must name exactly the ActionType inputs;
 - at least one cited source record (import, file hash, row), without duplicates;
 - the reason, the highest classification involved, and the proposer and policy version from the policy decision;
-- the declared preconditions, effects and permissions, with `preconditions_evaluated: false` and `executed: false`.
+- the declared preconditions, effects and permissions, with `executed: false` and `preconditions_evaluated` true only when every declared precondition is an evaluated `expr:` (see below).
 
 There is no timestamp, so the same request by the same proposer under the same policy version gives the same digest. A later step can use that to detect a repeat; this module does not.
 
@@ -78,7 +78,7 @@ An admission records that one simulation may start. Nothing here starts or retri
 - The lifetime rests on the clock of the machine that records and checks the events. There is no trusted time source.
 - Objects and sources are re-read before the admission is appended, not in the same transaction, so a change in between is not detected.
 - Removing a person's role does not end approvals they gave; withdraw them or let them expire.
-- Preconditions are free text and are not evaluated. Declared `permissions` are recorded, not enforced.
+- Only preconditions written as `expr:` are evaluated; any other precondition is free text and is not. Declared `permissions` are recorded, not enforced.
 - Recheck does not look for newer imports, retracted links or other later facts; it is not a staleness check against current state.
 - The proposal holds parameter values in clear text. The values digests are unsalted, so low-entropy values could be guessed. Handle a proposal at its recorded classification.
 - Policy decisions use the object store's existing fixed purpose and retention labels. The caller's `purpose` and `retention` apply to the source reads.
@@ -86,7 +86,7 @@ An admission records that one simulation may start. Nothing here starts or retri
 
 ## Signed approval at admission
 
-Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`), `admit_approved_action` also needs a `SignedApproval`: a signed statement and the `ReceiptGate` that checks it. The statement is verified with keys from the gate's newest accepted, fresh key list, and must name this gate's tenant and release, the project, the proposal digest, the proposer from the proposal and the approver the chain recorded. Those values come from the caller's own chain and store, never from the statement. A statement lasts at most five minutes, is checked again at the write, and is not single-use itself: the one-use rule still comes from the chain's final event. A statement that was supplied is checked even when the flag is off.
+Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`), `admit_approved_action` also needs a `SignedApproval`: a signed statement and the `ReceiptGate` that checks it. The statement is verified with keys from the gate's newest accepted, fresh key list, and must name this gate's tenant and release, the project, the proposal digest, the proposer from the proposal and the approver the chain recorded. Those values come from the caller's own chain and store, never from the statement. A statement lasts at most five minutes, must not expire after the approval (at the lifetime asked for in this call), and is not single-use itself: the one-use rule still comes from the chain's final event. Inside the admission's append transaction, the key list used for the check must still be the newest in the store being written and fresh, the statement unexpired, and the gate's clock not behind its first reading; so a revocation accepted after the signature check stops the admission. The admission event records `approval_statement_hash`; the statement itself is not stored, and reading the event later does not verify the signature again. The gate must be a `ReceiptGate`, but the library cannot tell that it was opened from the worker's own configuration. The key list does not say what a key is for, so any accepted online key, including one used for run receipts, can sign a statement. A statement that was supplied is checked even when the flag is off.
 
 Limits: the proposal digest and the approver are read from the same local chain the admission writes to, so someone who can rewrite that chain can still forge both; the statement adds a second root of trust (the issuer's key), not protection against a signer whose key is stolen. No issuer service exists; tests sign with a public test key. Nothing yet requires the statement at decision time, only at admission.
 
@@ -96,6 +96,39 @@ Limits: the proposal digest and the approver are read from the same local chain 
 
 Limits: the state comes from the chain only, so `approved` does not mean the proposal would still pass `verify_approved_action` (objects and sources are not re-read, and a signed statement is not checked). The list covers the whole chain, not one project. Expiry uses the process clock and the default 24 hours unless a shorter `max_age_seconds` is passed, so a caller using a shorter limit at admission must pass the same limit here. This is a view over the chain, not a separate stored ledger.
 
+## Preconditions (`expr:`)
+
+A precondition string that starts with `expr:` is machine-checked; others stay free text. The grammar is closed: one to eight clauses joined by ` and `, each `operand OP operand` with `OP` one of `==`, `!=`, `<`, `<=`, `>`, `>=`. An operand is `actor.<property>`, `target.<property>`, `param.<property>` (an input of the action) or a literal (`"text"`, a number, `true`, `false`, `null`). No `or`, arithmetic, functions or other lookups. Example: `expr: target.crm:Customer.status == "open" and param.crm:Request.count >= 1`.
+
+- A pack with an `expr:` that is outside the grammar, names a property the object type or action does not have, mixes kinds (number, text, date, boolean), orders text or booleans, or uses a property of another data type is refused when it is parsed.
+- When a proposal is built, every `expr:` is evaluated against the actor and target values read from their source rows and the parameter values. A false clause refuses the proposal and records nothing; the message names the precondition text, never a value. A missing, null or malformed value makes a clause false (`== null` and `!= null` aside).
+- The document lists the evaluated texts in `preconditions_met`, and `preconditions_evaluated` is true only when every declared precondition was an `expr:`. A pack with no `expr:` produces the same document as before.
+- Admission rebuilds the proposal from the current objects, so the same expressions are evaluated again and a changed source row is refused there. The rebuild and the audit append are not one transaction, as above.
+
+Limits: evaluation shows only that the stored values satisfied the expression when it was read. It does not look at anything outside the two objects and the parameters, such as other records, time or links. Dates compare as dates, timestamps cannot be used. The expression language was chosen to be small enough to read in full; it is not extended without a review of its grammar.
+
+## Dry-run simulation and its recorded result
+
+`run_admitted_simulation` is called by the identity that admitted the action. It rebuilds the proposal from the objects and sources as they are now (so `expr:` preconditions are evaluated again), builds a result document, and records the document's digest as the outcome through `record_simulation_outcome`. The caller keeps the document; `verify_simulation_result` later shows that a document is exactly the one recorded.
+
+- The result lists digests of the actor and target values and of the parameters, the `expr:` preconditions that held, and the action's declared effects marked `simulated`, with `state_changed: false`. There are no timestamps, so rebuilding it from the same proposal gives the same digest.
+- If the proposal no longer matches (a changed source row, a failed precondition, a changed pack), a failure report is recorded as a failed outcome. A refusal by policy, including a runner who cannot read, is raised and records nothing.
+- An admission still has one outcome. A second run is refused after the rebuild.
+- `verify_simulation_result` needs read authority. It requires exactly one outcome event for the proposal, under the fixed event ID, from an allowed `ontology_action_outcome` by a named identity, whose result hash equals the digest of the document, and whose success or failure kind matches the document's format.
+
+Limits: effects are names, not programs, so nothing is applied to any data and the result shows only that the rebuild passed at the time of the run, not what an effect would have done. The run is not tied to the admission beyond the same identity and the chain's one-outcome rule, and `record_simulation_outcome` with a caller-supplied digest is refused under the protected defaults (`protection.RUNNER_ONLY_OUTCOMES`), which stops accidental use, not code in the same process that calls the private recorder. Verification shows the document matches what the chain recorded; the chain is a local file with the limits above.
+
+## Second approver for sensitive proposals
+
+Under the protected defaults (`protection.TWO_PERSON_SENSITIVE`), a proposal classified `sensitive` needs two approvers who are three different people with the proposer. After the first approval, `co_approve_action_proposal` records the second as `ontology_action_co_approved` under the fixed event ID `ontology-action-coapproval-<digest>`, with the same decision operation and a reason hash. It needs a live first approval (not withdrawn, used, expired or a rejection), is once per proposal, and does not extend the first approval's lifetime.
+
+- `verify_approved_action` and so `admit_approved_action` refuse a sensitive proposal without exactly one well-formed second approval from someone other than the proposer and the first approver, and name `co_approved_by` in their result.
+- Neither approver can admit. With signed statements required, admission takes one statement per approver in order (first, second); each is checked against the approver this chain recorded. The admission event's `approval_statement_hash` is the statement's hash for one approver, or the hash of both statement hashes joined by a newline for two.
+- A rejection by the first decider still ends the proposal; there is no second rejection. Either approver (or any other decider) can withdraw.
+- `action_proposal_state` shows `co_approved_by`, and reports a second approval that is malformed, duplicated or has no approval as `inconsistent`.
+
+Limits: the requirement is set by the proposal's classification and a protection flag, not by the action type, and it is two people, not a configurable quorum. The state view does not know the requirement, so `approved` there does not mean admissible. Two identities are only as distinct as the policy that issues them.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), a configurable approver quorum, effects that are more than names (a real simulation).

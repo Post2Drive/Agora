@@ -18,7 +18,7 @@ Rules and limits: docs/ONTOLOGY_ACTION_PROPOSALS.md.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -26,9 +26,10 @@ import json
 import re
 from typing import Any
 
-from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from .. import protection as _protection
+from ..audit_anchor import AnchorWriteError, require_anchored, verify_anchored
 from ..audit_chain import AuditReplayError
+from ..security.receipt_gate import CheckedApproval, ReceiptGate
 from ..security.signed_receipt import ReceiptError
 from ..policy_enforcement import PolicyCallable
 from .actions import (
@@ -46,6 +47,8 @@ _OUTCOMES = {"approve": "ontology_action_approved", "reject": "ontology_action_r
 _APPROVED_TYPE = _OUTCOMES["approve"]
 _WORDS = {"approve": "approved", "reject": "rejected"}
 _ADMIT = "ontology_action_admit"
+_CO_TYPE = "ontology_action_co_approved"
+_CO_PREFIX = "ontology-action-coapproval-"
 # One event ID for both endings: the chain refuses a repeated ID, so they exclude each other.
 _FINAL_PREFIX = "ontology-action-final-"
 _ENDINGS = {
@@ -170,6 +173,27 @@ def _approval(writer: Any, fields: dict[str, Any], digest: str) -> tuple[str, di
     return approver, event
 
 
+def _two_person(fields: Mapping[str, Any]) -> bool:
+    return bool(_protection.TWO_PERSON_SENSITIVE) and fields["sensitivity"] == "sensitive"
+
+
+def _co_approval(writer: Any, fields: dict[str, Any], digest: str, approver: str) -> tuple[str, dict[str, Any]]:
+    """The one well-formed second approval for this digest, from someone other than proposer and approver."""
+    found = _events(writer, digest, _CO_TYPE)
+    if not found:
+        raise OntologyError("this proposal needs a second approver")
+    if len(found) != 1:
+        raise OntologyError("this proposal has more than one second approval")
+    event = found[0]
+    co = event.get("subject_id")
+    if (event.get("event_id") != _CO_PREFIX + digest.split(":", 1)[1] or event.get("operation") != _DECIDE
+            or event.get("decision") != "allow" or not isinstance(co, str) or not co.strip()):
+        raise OntologyError("the second approval event is not well formed")
+    if co in (fields["proposed_by"], approver):
+        raise OntologyError("the second approval is not from someone other than the proposer and first approver")
+    return co, event
+
+
 def _final_id(digest: str) -> str:
     return _FINAL_PREFIX + digest.split(":", 1)[1]
 
@@ -273,6 +297,54 @@ def decide_action_proposal(
             "proposed_by": fields["proposed_by"]}
 
 
+def co_approve_action_proposal(
+    store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
+    reason: str, *, policy: PolicyCallable | None, audit: Any | None,
+    max_age_seconds: int | None = None,
+) -> dict[str, str]:
+    """Add the second approval, once, from someone other than the proposer and the first approver.
+
+    Needs decision authority at the proposal's classification and a live first approval (not withdrawn,
+    used, expired or a rejection). The second approval does not extend the first approval's lifetime.
+    Executes nothing and does not re-read the objects. Admission requires it for sensitive proposals
+    under ``protection.TWO_PERSON_SENSITIVE``.
+    """
+    reason = _exact_text(reason, "reason")
+    lifetime = _lifetime(max_age_seconds)
+    fields = _fields(store, document, expected_digest)
+    writer = _anchored(audit)
+    resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
+    decision = store._authorize(
+        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+    subject = _principal(decision)
+    if subject == fields["proposed_by"]:
+        raise OntologyError("a proposal must be approved by someone other than its proposer")
+    approver, event = _approval(writer, fields, expected_digest)
+    if subject == approver:
+        raise OntologyError("the second approver must be someone other than the first approver")
+    _not_ended(writer, expected_digest)
+    _expiry(_approved_at(event), lifetime, _now())
+    event_id = _CO_PREFIX + expected_digest.split(":", 1)[1]
+    if writer.find_event(event_id) is not None:
+        raise OntologyError("this proposal already has a second approval")
+    try:
+        writer.append({
+            "event_id": event_id,
+            "event_type": _CO_TYPE,
+            "operation": _DECIDE,
+            "decision": "allow",
+            "subject_id": subject,
+            "policy_version": str(decision.get("policy_version", "unknown")),
+            "resource_ids": resource_ids,
+            "reason_hash": "sha256:" + hashlib.sha256(reason.encode("utf-8")).hexdigest(),
+            "reason": "policy_allow",
+        })
+    except AuditReplayError as exc:
+        raise OntologyError("this proposal already has a second approval") from exc
+    return {"digest": expected_digest, "co_approved_by": subject, "approved_by": approver,
+            "proposed_by": fields["proposed_by"]}
+
+
 def verify_approved_action(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     *, policy: PolicyCallable | None, audit: Any | None,
@@ -295,8 +367,11 @@ def verify_approved_action(
     approver, event = _approval(writer, fields, expected_digest)
     _not_ended(writer, expected_digest)
     expires_at = _expiry(_approved_at(event), lifetime, _now())
-    return {"digest": expected_digest, "approved_by": approver, "proposed_by": fields["proposed_by"],
-            "expires_at": expires_at.isoformat()}
+    result = {"digest": expected_digest, "approved_by": approver, "proposed_by": fields["proposed_by"],
+              "expires_at": expires_at.isoformat()}
+    if _two_person(fields):
+        result["co_approved_by"] = _co_approval(writer, fields, expected_digest, approver)[0]
+    return result
 
 
 def withdraw_approval(
@@ -337,26 +412,32 @@ class SignedApproval:
     envelope: Mapping[str, Any]
 
 
+def _refused(exc: ReceiptError) -> OntologyError:
+    return OntologyError(f"the signed approval statement was refused ({exc.code})")
+
+
 def _check_signed_approval(
     signed: Any, fields: Mapping[str, Any], digest: str, approver: str, store: OntologyObjectStore,
-) -> datetime:
-    """Verify the statement against what this chain says; return when the statement expires."""
+) -> CheckedApproval:
+    """Verify the statement against what this chain says, never against its own claims."""
     if not isinstance(signed, SignedApproval):
         raise OntologyError("admission requires a signed approval statement")
+    if not isinstance(signed.gate, ReceiptGate):
+        raise OntologyError("the signed approval statement needs a ReceiptGate")
     request = {"project": store.project_id, "proposal_digest": digest,
                "proposed_by": fields["proposed_by"], "approved_by": approver}
     try:
-        statement = signed.gate.verify_approval(signed.envelope, request=request)
-        return datetime.strptime(statement["expires_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return signed.gate.check_approval(signed.envelope, request=request)
     except ReceiptError as exc:
-        raise OntologyError(f"the signed approval statement was refused ({exc.code})") from exc
+        raise _refused(exc) from exc
 
 
 def admit_approved_action(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     *, policy: PolicyCallable | None, audit: Any | None,
     purpose: str | None = None, retention: str | None = None,
-    max_age_seconds: int | None = None, signed_approval: SignedApproval | None = None,
+    max_age_seconds: int | None = None,
+    signed_approval: SignedApproval | Sequence[SignedApproval] | None = None,
 ) -> dict[str, str]:
     """Use a live approval, once, to admit the action for simulation. Executes nothing.
 
@@ -364,8 +445,15 @@ def admit_approved_action(
     caller must not start the simulation unless this returns. Under the protected defaults a
     ``SignedApproval`` is required: a statement signed with a key from the gate's accepted key list,
     naming this tenant, release, project, digest, proposer and the approver this chain recorded. The
-    statement lasts at most five minutes and is checked again, for expiry, while the chain's write
-    lock is held. The expiry is checked again while the chain's write lock is held. The objects are re-read before that lock, not inside it.
+    statement lasts at most five minutes and must not expire after the approval. While the chain's
+    write lock is held, the approval's and the statement's expiry are checked again, and the store
+    being written must still have the gate's key list as its newest, fresh one. The admission event
+    records the statement's hash. The objects are re-read before that lock, not inside it.
+
+    When a second approval is required (``protection.TWO_PERSON_SENSITIVE`` and a sensitive proposal),
+    the admitter must differ from both approvers, and ``signed_approval`` is one statement per approver,
+    in order: first approver, then second approver. The event then records the hash of the statements'
+    hashes joined by newlines.
     """
     lifetime = _lifetime(max_age_seconds)
     fields = _fields(store, document, expected_digest)
@@ -378,26 +466,45 @@ def admit_approved_action(
     live = verify_approved_action(
         store, document, expected_digest, policy=policy, audit=writer, purpose=purpose,
         retention=retention, max_age_seconds=max_age_seconds)
-    if subject == live["approved_by"]:
+    approvers = [live["approved_by"], *([live["co_approved_by"]] if "co_approved_by" in live else [])]
+    if subject in approvers:
         raise OntologyError("an action must be admitted by someone other than its approver")
-    statement_expires = None
+    checked: list[CheckedApproval] = []
     if _protection.SIGNED_APPROVAL_REQUIRED or signed_approval is not None:
-        statement_expires = _check_signed_approval(
-            signed_approval, fields, expected_digest, live["approved_by"], store)
+        statements = [signed_approval] if isinstance(signed_approval, SignedApproval) else (
+            list(signed_approval) if isinstance(signed_approval, (list, tuple)) else [signed_approval])
+        if len(statements) != len(approvers):
+            raise OntologyError("admission requires one signed approval statement per approver")
+        for statement, approver in zip(statements, approvers):
+            checked.append(_check_signed_approval(statement, fields, expected_digest, approver, store))
+        if any(c.expires_at > datetime.fromisoformat(live["expires_at"]) for c in checked):
+            raise OntologyError("the signed approval statement outlives the approval")
     expires_at = datetime.fromisoformat(live["expires_at"])
     approved_at = expires_at - lifetime
 
-    def still_live(_db: Any) -> None:
+    def still_live(db: Any) -> None:
         _expiry(approved_at, lifetime, _now())
-        if statement_expires is not None and _now() >= statement_expires:
-            raise OntologyError("the signed approval statement expired before admission")
+        for item in checked:
+            if _now() >= item.expires_at:
+                raise OntologyError("the signed approval statement expired before admission")
+            try:
+                item.recheck(db)
+            except ReceiptError as exc:
+                raise _refused(exc) from exc
 
+    proof: dict[str, str] = {}
+    if len(checked) == 1:
+        proof = {"approval_statement_hash": checked[0].statement_hash}
+    elif checked:
+        joined = "\n".join(c.statement_hash for c in checked).encode("ascii")
+        proof = {"approval_statement_hash": "sha256:" + hashlib.sha256(joined).hexdigest()}
     _end_event(writer, "ontology_action_admitted", _ADMIT, decision, subject, resource_ids,
-               expected_digest, in_transaction=still_live)
-    return {**live, "admitted_by": subject}
+               expected_digest, in_transaction=still_live, **proof)
+    return {**live, "admitted_by": subject, **proof}
 
 
 __all__ = [
-    "APPROVAL_LIFETIME_SECONDS", "SignedApproval", "admit_approved_action", "decide_action_proposal",
+    "APPROVAL_LIFETIME_SECONDS", "SignedApproval", "admit_approved_action", "co_approve_action_proposal",
+    "decide_action_proposal",
     "verify_approved_action", "withdraw_approval",
 ]
