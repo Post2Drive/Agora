@@ -48,7 +48,7 @@ It adds no access: policy checks, audit entries and, under the protected default
 - **Not a security boundary.** Code that holds the store can call it directly, so the pinning guards against mistakes, not against the calling process.
 - **Links are read as stored.** `links` does not check that either end can still be read, apply the ingest-record check to link rows, or verify a link's cited sources again. `resolve` reads an end with the object checks.
 - **Messages from the store** pass through unchanged. This interface has not been reviewed for what they disclose to an untrusted caller.
-- **`repr`** leaves out record keys, link reasons, actors, link provenance and object property values. The attributes stay readable; logs and serializers can expose them.
+- **`repr` is not redaction.** `ObjectRef` and `Link` leave record keys out of `repr`, and `Link` also leaves out reasons, actors, provenance and retraction details. A generated object leaves out property values, but its `provenance` still shows the record key and row ID. Cursors in a page are encoded, not encrypted, and carry a record key. All attributes stay readable; logs and serializers can expose them.
 - `get_links`, writes and actions are not part of this interface.
 
 ## 5. Compatibility and deprecation
