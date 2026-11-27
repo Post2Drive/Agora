@@ -160,6 +160,7 @@ class Scenario:
     persuasion: float = 0.35          # how far one round of exposure moves an open-minded person
     reflection: bool = True           # LLM voices periodically summarise their older memories
     world_memory: bool = True         # LLM voices recall related things that happened elsewhere
+    communication: str = "platform"   # private messages: "platform" (simulated apps only), "native" (direct, no app) or "both"
     # daily rhythm: {peak_hours: [19,20,21,22], peak: 1.0, off_peak_hours: [0..5], off_peak: 0.08,
     #                morning_hours: [6,7,8], morning: 0.7, other: 0.5}  (multipliers on activity)
     time: dict[str, Any] = field(default_factory=dict)
@@ -268,6 +269,8 @@ def load(path: str | Path) -> Scenario:
 
 
 def validate(sc: Scenario) -> None:
+    if sc.communication not in ("platform", "native", "both"):
+        raise ScenarioError("communication must be platform, native or both")
     if not sc.segments:
         raise ScenarioError("A scenario needs at least one segment.")
     total = sum(s.share for s in sc.segments)

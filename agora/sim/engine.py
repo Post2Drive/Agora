@@ -40,6 +40,7 @@ from ..platforms import REGISTRY, is_spaced, resolve
 from .platforms import FeedIndex, where_options
 from .memory import WorldMemory
 from .timing import Rhythm
+from ..society import SocietyStore
 from .world import Agent, Post, World, dm_people, dm_space
 
 SCENARIO_FILE = "scenario.yaml"
@@ -213,6 +214,13 @@ class Simulation:
         self.llm_cfg = LLMConfig.from_dict(cfg)
         self.llm = make_backend(self.llm_cfg, cache_path=self.dir / CACHE_FILE)
         self.store = Store(self.dir / DB_FILE)
+        # Native agent-to-agent messages live in the run database (so digests, snapshots and forks cover them).
+        # Only created when the scenario asks for them: platform-only runs are byte-for-byte unchanged.
+        self.society: SocietyStore | None = None
+        if self.sc.communication != "platform":
+            if self.governed is not None:
+                raise ValueError("native communication is not supported for governed runs")
+            self.society = SocietyStore.attach(self.store.db)
         self.world: World | None = None
         self._rhythm = Rhythm(self.sc.time)
         self._to_reflect: list[Agent] = []
@@ -641,7 +649,8 @@ class Simulation:
 
         # 4a. LLM decisions in parallel
         voices = [a for a in active if a.is_llm]
-        decisions = self._decide_all(voices, feeds, opens, r, now)
+        private = self._native_inbox(voices, r)
+        decisions = self._decide_all(voices, feeds, opens, r, now, private)
 
         # 4b + 5. apply in id order
         for a in active:
@@ -793,7 +802,27 @@ class Simulation:
                 out.events.append(("experience", {"conversion": c.name, "agents": len(hit)}))
 
     # ---------------------------------------------------------------- LLM calls
-    def _decide_all(self, voices: list[Agent], feeds, opens, r, now) -> dict[int, dict]:
+    def _native_inbox(self, voices: list[Agent], r: int) -> dict[int, list[str]]:
+        """Unread native messages for each voice, oldest first, marked read and recorded as familiarity."""
+        out: dict[int, list[str]] = {}
+        soc = self.society
+        if soc is None:
+            return out
+        w = self.world
+        for a in sorted(voices, key=lambda x: x.id):
+            unread = soc.inbox(a.id)
+            if not unread:
+                continue
+            for m in unread:
+                soc.adjust_relationship(a.id, m["sender_id"], round=r, familiarity_delta=0.05,
+                                        cause_message_id=m["message_id"],
+                                        reason="received a private message")
+            soc.mark_read(a.id, unread[-1]["message_id"])
+            out[a.id] = [f"{w.agents[m['sender_id']].name} (@{w.agents[m['sender_id']].handle}) wrote to you "
+                         f"privately: \"{m['text'][:300]}\"" for m in unread[-4:]]
+        return out
+
+    def _decide_all(self, voices: list[Agent], feeds, opens, r, now, private=None) -> dict[int, dict]:
         if not voices:
             return {}
         sc, w = self.sc, self.world
@@ -813,7 +842,7 @@ class Simulation:
                                               " ".join(p.text for p in feeds[a.id]), r,
                                               {p.id for p in feeds[a.id]} | {p.root for p in feeds[a.id]})
             msgs = llm_agent.decision_messages(w, sc, a, feeds[a.id], now, opens[a.id], facts, trending,
-                                               recalled)
+                                               recalled, (private or {}).get(a.id))
             meta = llm_agent.decision_meta(w, sc, a, feeds[a.id], opens[a.id])
             d = None
             for attempt in range(3):             # an unusable reply is asked again with a different seed
@@ -1086,11 +1115,25 @@ class Simulation:
         want = resolve(x.get("platform") or "")
         shared = [q for q in a.platforms if q in dst.platforms and REGISTRY[q].dms]
         plat = want if want in shared else (shared[0] if shared else None)
+        if self.society is not None:
+            self._native_dm(a, dst, text, r)
+            if self.sc.communication == "native" or plat is None:
+                return f"you messaged {dst.name} privately: \"{text[:100]}\""
         if plat is None:
             return None
         self._new_post(a, r, t0, plat, dm_space(a.id, dst.id), "dm", text[:REGISTRY[plat].max_len],
                        a.stance, out=out)
         return f"you messaged {dst.name} privately on {REGISTRY[plat].label}: \"{text[:100]}\""
+
+    def _native_dm(self, a: Agent, dst: Agent, text: str, r: int) -> int:
+        """Deliver a private message directly, with no simulated app in between; it arrives next round."""
+        soc = self.society
+        cid = soc.direct(a.id, dst.id, round=r)
+        mid = soc.post(cid, a.id, round=r, text=text[:2000],
+                       reason=f"@{a.handle} chose to message @{dst.handle}")
+        soc.adjust_relationship(a.id, dst.id, round=r, familiarity_delta=0.05, cause_message_id=mid,
+                                reason="sent a private message")
+        return mid
 
     def _search(self, a: Agent, query: str) -> str | None:
         """Look something up: the best matching recent posts go straight into memory."""

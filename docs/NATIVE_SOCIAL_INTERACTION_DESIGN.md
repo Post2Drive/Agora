@@ -2,7 +2,9 @@
 
 Status: design, with phase 1 implemented (below). Direction set by the owner on 26 Nov 2026. The engine does not use the native store yet, so no run's behaviour has changed.
 
-**Implemented:** phase 1, `agora/society/store.py` (`SocietyStore`): conversations of four kinds, memberships with roles, an append-only message log that records the reason for every message, per-agent inboxes with read cursors, directed relationships with an append-only change log tied to the causing message, and a deterministic `digest()` over all state. Tests: `tests/test_society_store.py`, mutation-verified. **Not implemented:** phases 2-6, snapshot integration, any engine wiring.
+**Implemented:** phase 1, `agora/society/store.py` (`SocietyStore`): conversations of four kinds, memberships with roles, an append-only message log that records the reason for every message, per-agent inboxes with read cursors, directed relationships with an append-only change log tied to the causing message, and a deterministic `digest()` over all state. Tests: `tests/test_society_store.py`, mutation-verified. **Implemented, phase 2 (direct messaging path):** scenario option `communication: platform | native | both` (default `platform`, which leaves every run byte-for-byte unchanged and creates no native tables). In `native` and `both`, an LLM agent's private message is delivered through the store with no simulated app; in `both` it is also posted on a shared platform when one exists. Native tables live inside the run database, so state digests, snapshots and forks cover them with no extra code, and they commit with the round. A message sent in round N reaches the recipient's decision prompt in round N+1 (section "Private messages to you") and raises both parties' familiarity, with the message recorded as the cause. Governed runs refuse native communication until their evidence design covers it. Tests: `tests/test_native_communication.py`, mutation-verified.
+
+**Not implemented:** groups, open discussions and broadcasts in the engine (phase 3); scored initiation and permission matrix (phase 4); trust effects from message content (phase 4); crowd agents sending or receiving messages that change their state; platform adapters (phase 5); reports (phase 6). In phase 2 only LLM-driven agents read and send native messages.
 
 ## 1. Problem
 
@@ -71,7 +73,7 @@ For every message AGORA records: conversation ID and kind, sender, recipients, r
 ## 8. Phased delivery
 
 1. **Native data model and store (no behaviour change). Implemented.** Tables for conversations, messages, memberships, relationships, with digests and tests. Engine untouched except snapshot coverage hooks.
-2. **Direct messaging path.** `_dm` delivers natively when no platform is shared or when the scenario is `native`; inbox read path for agents; effects on relationships and memory; mutation-tested.
+2. **Direct messaging path. Implemented.** `_dm` delivers natively when no platform is shared or when the scenario is `native`; inbox read path for agents; effects on relationships and memory; mutation-tested.
 3. **Groups and open discussions.** Group lifecycle, membership permissions, public threads tied to events.
 4. **Initiation policy.** Scored counterpart choice, contact budgets, permission matrix.
 5. **Adapters.** Map native conversations to platform renderings; remove platform-only gating from direct paths.
