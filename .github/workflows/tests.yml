@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -e ".[dev]"
-      # Measurement: the SQLite-heavy tests are far slower on Windows runners. This moves test
-      # temporary files to the runner's work drive; no test or durability setting changes.
+      # SQLite-heavy tests were about 4x slower with temporary files on the Windows runner's
+      # default drive than on its work drive (PR #311). No test or durability setting differs.
       - name: Put test temporary files on the work drive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
