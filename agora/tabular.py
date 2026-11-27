@@ -60,6 +60,96 @@ def _hash(prefix: bytes, value: Any) -> str:
     return hashlib.sha256(prefix + _canonical(value).encode("utf-8")).hexdigest()
 
 
+def _import_identity(*, dataset_id: Any, file_sha256: Any, schema_fingerprint: Any,
+                     parser_version: Any, data_role: Any) -> tuple[str, str]:
+    """Return (idempotency_key, import_id) for the facts an import ID commits to."""
+    idempotency_key = _hash(b"agora-import-v1\0", {
+        "dataset_id": dataset_id, "file_sha256": file_sha256,
+        "schema_fingerprint": schema_fingerprint, "parser_version": parser_version,
+        "data_role": data_role,
+    })
+    return idempotency_key, hashlib.sha256(
+        ("agora-import-id-v1\0" + idempotency_key).encode()
+    ).hexdigest()
+
+
+def _source_registry_id(dataset_id: str, file_sha256: str, data_role: str) -> str:
+    return "tabular-" + hashlib.sha256(
+        f"{dataset_id}\0{file_sha256}\0{data_role}".encode("utf-8")
+    ).hexdigest()[:32]
+
+
+def _row_id(*, dataset_id: str, source_registry_id: str, file_sha256: str,
+            schema_fingerprint: str, payload: Any, source_record_number: int) -> str:
+    return _hash(b"agora-row-v1\0", {
+        "dataset_id": dataset_id, "source_registry_id": source_registry_id,
+        "file_sha256": file_sha256, "schema_fingerprint": schema_fingerprint,
+        "row": payload, "source_record_number": source_record_number,
+    })
+
+
+class SnapshotIntegrityError(ValueError):
+    """Stored snapshot content disagrees with its own identifiers; no values in messages."""
+
+
+_IDENTITY_FIELDS = ("dataset_id", "file_sha256", "schema_fingerprint", "parser_version", "data_role")
+
+
+def verify_snapshot_manifest(manifest: Any, import_id: str) -> None:
+    """Check that a stored manifest is the one the requested import ID commits to.
+
+    The import ID is derived from the dataset ID, file hash, schema fingerprint,
+    parser version and data role, so a caller who pins an import ID also pins
+    those. Other manifest fields (for example column types and sensitivity) are
+    not covered.
+    """
+    if not isinstance(manifest, dict) or manifest.get("import_id") != import_id:
+        raise SnapshotIntegrityError("snapshot manifest does not belong to the requested import")
+    if not all(isinstance(manifest.get(key), str) for key in _IDENTITY_FIELDS):
+        raise SnapshotIntegrityError("snapshot manifest is missing identity fields")
+    try:
+        _key, expected = _import_identity(**{key: manifest[key] for key in _IDENTITY_FIELDS})
+        source_id = _source_registry_id(
+            manifest["dataset_id"], manifest["file_sha256"], manifest["data_role"])
+    except (TypeError, ValueError) as exc:
+        raise SnapshotIntegrityError("snapshot manifest identity is not serializable") from exc
+    if expected != import_id or manifest.get("source_registry_id") != source_id:
+        raise SnapshotIntegrityError("snapshot manifest does not match its import ID")
+
+
+def verify_snapshot_row(row: dict[str, Any], manifest: dict[str, Any]) -> None:
+    """Check one stored row against its content-derived row ID.
+
+    ``manifest`` must already have passed :func:`verify_snapshot_manifest`. This
+    detects a payload, record number or locator changed under an unchanged row
+    ID. It is an unkeyed hash: someone who can write the database can also
+    compute a new row ID, so it only authenticates a row against a row ID that
+    the caller already holds from somewhere else.
+    """
+    number = row.get("source_record_number")
+    if type(number) is not int:
+        raise SnapshotIntegrityError("snapshot row has an invalid source record number")
+    try:
+        expected_id = _row_id(
+            dataset_id=manifest["dataset_id"],
+            source_registry_id=manifest["source_registry_id"],
+            file_sha256=manifest["file_sha256"],
+            schema_fingerprint=manifest["schema_fingerprint"],
+            payload=row.get("values"), source_record_number=number,
+        )
+        locator_matches = _canonical(row.get("source_locator")) == _canonical({
+            "source_registry_id": manifest["source_registry_id"],
+            "file_sha256": manifest["file_sha256"], "source_record_number": number,
+            "dataset_id": manifest["dataset_id"], "import_id": manifest["import_id"],
+        })
+    except (TypeError, ValueError) as exc:
+        raise SnapshotIntegrityError("snapshot row content is not serializable") from exc
+    if row.get("row_id") != expected_id:
+        raise SnapshotIntegrityError("snapshot row content does not match its row ID")
+    if not locator_matches:
+        raise SnapshotIntegrityError("snapshot row locator does not match its import")
+
+
 def _schema_contract(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], str, str]:
     if not isinstance(schema, dict):
         raise TabularIngestError("SCHEMA_INVALID", "Schema must be an object.")
@@ -342,15 +432,11 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
     schema_id = str(schema.get("schema_id", dataset_id))
     schema_version = str(schema.get("schema_version", "1.0.0"))
     primary = next((c for c in columns if c.get("primary_key")), None)
-    idempotency_key = _hash(b"agora-import-v1\0", {
-        "dataset_id": dataset_id, "file_sha256": file_hash,
-        "schema_fingerprint": schema_fp, "parser_version": PARSER_VERSION,
-        "data_role": data_role,
-    })
-    import_id = hashlib.sha256(("agora-import-id-v1\0" + idempotency_key).encode()).hexdigest()
-    source_id = "tabular-" + hashlib.sha256(
-        f"{dataset_id}\0{file_hash}\0{data_role}".encode("utf-8")
-    ).hexdigest()[:32]
+    idempotency_key, import_id = _import_identity(
+        dataset_id=dataset_id, file_sha256=file_hash, schema_fingerprint=schema_fp,
+        parser_version=PARSER_VERSION, data_role=data_role,
+    )
+    source_id = _source_registry_id(dataset_id, file_hash, data_role)
     now = datetime.now(timezone.utc).isoformat()
     manifest = {
         "manifest_version": 1, "import_id": import_id, "dataset_id": dataset_id,
@@ -432,13 +518,11 @@ def ingest_csv(project: str | Path, source_path: str | Path, schema: dict[str, A
                                                  "Duplicate primary key in CSV snapshot.",
                                                  row_number=record_number, column_name=primary["name"])
                     keys.add(record_key)
-                row_id = hashlib.sha256(
-                    b"agora-row-v1\0" + _canonical({
-                        "dataset_id": dataset_id, "source_registry_id": source_id,
-                        "file_sha256": file_hash, "schema_fingerprint": schema_fp,
-                        "row": payload, "source_record_number": record_number,
-                    }).encode("utf-8")
-                ).hexdigest()
+                row_id = _row_id(
+                    dataset_id=dataset_id, source_registry_id=source_id,
+                    file_sha256=file_hash, schema_fingerprint=schema_fp,
+                    payload=payload, source_record_number=record_number,
+                )
                 rows.append({"row_id": row_id, "record_key": record_key,
                              "source_record_number": record_number, "payload": payload,
                              "locator": {"source_registry_id": source_id, "file_sha256": file_hash,

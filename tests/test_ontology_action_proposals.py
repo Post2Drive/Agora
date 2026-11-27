@@ -317,10 +317,11 @@ def test_recheck_notices_a_source_row_edited_after_the_proposal(world):
     finally:
         conn.close()
     assert changed >= 1
-    # get_object accepts the edited row (O1 gap); only the retained values digest shows it.
-    assert world.store.get_object(
-        world.pack, "backup:Customer", "1.0.0", world.end("C-2")["record_key"], world.import_id,
-        policy=_allow, audit=world.audit, purpose="account support", retention="90 days",
-    )["property_values"]["backup:Customer.email"] == "xyz@example.test"
-    with pytest.raises(OntologyError, match="no longer matches"):
+    with pytest.raises(OntologyError, match="does not match its row ID"):
+        world.store.get_object(
+            world.pack, "backup:Customer", "1.0.0", world.end("C-2")["record_key"],
+            world.import_id, policy=_allow, audit=world.audit,
+            purpose="account support", retention="90 days",
+        )
+    with pytest.raises(OntologyError, match="does not match its row ID"):
         _recheck(world, proposal.document, proposal.digest)
