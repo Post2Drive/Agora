@@ -107,6 +107,17 @@ A precondition string that starts with `expr:` is machine-checked; others stay f
 
 Limits: evaluation shows only that the stored values satisfied the expression when it was read. It does not look at anything outside the two objects and the parameters, such as other records, time or links. Dates compare as dates, timestamps cannot be used. The expression language was chosen to be small enough to read in full; it is not extended without a review of its grammar.
 
+## Dry-run simulation and its recorded result
+
+`run_admitted_simulation` is called by the identity that admitted the action. It rebuilds the proposal from the objects and sources as they are now (so `expr:` preconditions are evaluated again), builds a result document, and records the document's digest as the outcome through `record_simulation_outcome`. The caller keeps the document; `verify_simulation_result` later shows that a document is exactly the one recorded.
+
+- The result lists digests of the actor and target values and of the parameters, the `expr:` preconditions that held, and the action's declared effects marked `simulated`, with `state_changed: false`. There are no timestamps, so rebuilding it from the same proposal gives the same digest.
+- If the proposal no longer matches (a changed source row, a failed precondition, a changed pack), a failure report is recorded as a failed outcome. A refusal by policy, including a runner who cannot read, is raised and records nothing.
+- An admission still has one outcome. A second run is refused after the rebuild.
+- `verify_simulation_result` needs read authority. It requires exactly one outcome event for the proposal, under the fixed event ID, from an allowed `ontology_action_outcome` by a named identity, whose result hash equals the digest of the document, and whose success or failure kind matches the document's format.
+
+Limits: effects are names, not programs, so nothing is applied to any data and the result shows only that the rebuild passed at the time of the run, not what an effect would have done. The run is not tied to the admission beyond the same identity and the chain's one-outcome rule, and runs outside this function can still record any digest through `record_simulation_outcome`. Verification shows the document matches what the chain recorded; the chain is a local file with the limits above.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), approval by more than one person, effects that are more than names (a real simulation), and a rule that an outcome can only be recorded by the runner (today `record_simulation_outcome` still accepts any digest from the admitter).
