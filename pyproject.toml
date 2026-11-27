@@ -34,4 +34,6 @@ include = ["agora*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A test still running after 300 s dumps every thread's stack to stderr (it is not stopped by this).
+faulthandler_timeout = 300
 markers = ["protected_defaults: keep production policy/anchor defaults (no test relaxation)", "legacy_approve_disabled: keep legacy approve() disabled (production default)"]
