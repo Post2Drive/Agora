@@ -4,7 +4,7 @@ The gate answers one question: may THIS person run THIS option, for THIS request
 now? It runs nothing, calls no model, reads no feed and changes no study.
 
 Trust boundary. ``ProjectRecord``, ``StudyState``, ``Escalation``, grants, input
-sensitivity, the cost estimate and the snapshot probe come from the trusted
+sensitivity, the cost estimate, the snapshot probe and the evidence hash come from the trusted
 service layer, never from request input; the gate cannot authenticate them. Only
 ``OptionRequest`` is the person's request. Identity comes from an adapter-issued
 Principal. A ``GateResult`` is not an authorization token: an executor must call
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from agora.principal import Principal, decide_principal
 # The furthest ahead one HOLD may defer an item. The spec names no limit; without one, a single HOLD could
 # silence an item for good.
 MAX_RECHECK = timedelta(days=7)
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class DecisionCellError(PermissionError):
@@ -52,6 +54,9 @@ MEMBER_OPTIONS = frozenset({Option.IGNORE, Option.HOLD, Option.COMPARE, Option.E
 RUN_OPTIONS = frozenset({Option.CONTINUE, Option.FORK_FROM_EVENT, Option.FORK_FROM_EARLIER,
                          Option.RERUN_FROM_START})
 # Branches executed per option: the spec prices a fork as two branches (with and without the event).
+# Options that decide something about the event on its evidence. HOLD defers, COMPARE looks and ESCALATE
+# asks, so a view that has since changed does not block those.
+EVIDENCE_DECIDING_OPTIONS = frozenset({Option.IGNORE, Option.CHANGE_INPUTS}) | RUN_OPTIONS
 _BRANCHES = {Option.CONTINUE: 1, Option.FORK_FROM_EVENT: 2, Option.FORK_FROM_EARLIER: 2,
              Option.RERUN_FROM_START: 1}
 
@@ -112,6 +117,7 @@ class OptionRequest:
     inputs: tuple[InputRef, ...] = ()       # CHANGE_INPUTS only: the full chosen evidence set
     confirmed_cost_units: int | None = None  # must equal the cost exactly when over budget
     recheck_at: datetime | None = None      # HOLD only, and required there: when to look again
+    viewed_evidence_hash: str | None = None  # the item's evidence view the person was shown
 
 
 @dataclass(frozen=True)
@@ -157,7 +163,7 @@ def _sha(value: Any) -> str:
 
 
 def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: StudyState,
-                        cost: int) -> str:
+                        cost: int, evidence_hash: str | None = None) -> str:
     """What would actually run. Excludes who asks, their reason, budget and confirmation."""
     action = {
         "project_id": record.project_id, "tenant_id": record.tenant_id, "study_id": study.study_id,
@@ -172,6 +178,8 @@ def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: St
     if request.recheck_at is not None:  # added only when set, so other actions keep their fingerprint
         due = _aware_utc(request.recheck_at)
         action["recheck_at"] = due.isoformat() if due else repr(request.recheck_at)
+    if evidence_hash is not None:  # so a second approval lapses when the labels or their evidence change
+        action["evidence_hash"] = evidence_hash
     return _sha(action)
 
 
@@ -186,6 +194,7 @@ def evaluate_option(
     escalation: Escalation = Escalation(),
     grants: tuple[InputGrant, ...] = (),
     now: datetime | None = None,
+    evidence_hash: str | None = None,
 ) -> GateResult:
     """Evaluate every check and return all failures. Pure apart from calling the snapshot probe."""
     if not isinstance(request, OptionRequest) or not isinstance(request.option, Option):
@@ -204,6 +213,19 @@ def evaluate_option(
         fail("event_missing")
     if not _text(request.reason):
         fail("reason_missing")
+
+    # -- evidence view --------------------------------------------------------
+    viewed = request.viewed_evidence_hash
+    if evidence_hash is None:
+        if viewed is not None:
+            fail("evidence_not_supplied")  # the person's view cannot be checked, so it is not ignored
+    elif not (isinstance(evidence_hash, str) and _SHA256.fullmatch(evidence_hash)):
+        fail("evidence_hash_invalid")
+    elif request.option in EVIDENCE_DECIDING_OPTIONS:
+        if viewed is None:
+            fail("evidence_view_required")
+        elif viewed != evidence_hash:
+            fail("evidence_changed_since_viewed")
 
     # -- re-check time --------------------------------------------------------
     if request.option is Option.HOLD:
@@ -329,7 +351,7 @@ def evaluate_option(
             if not (type(request.confirmed_cost_units) is int and request.confirmed_cost_units == cost):
                 fail("budget_confirmation_required")
 
-    fingerprint = _action_fingerprint(request, record, study, cost)
+    fingerprint = _action_fingerprint(request, record, study, cost, evidence_hash)
 
     # -- second approval of this exact action ---------------------------------
     if needs_approver:
@@ -349,12 +371,17 @@ def evaluate_option(
 
 
 def request_option(principal: Principal | None, request: OptionRequest, *, audit: Any,
-                   record_hash: str | None = None, **context: Any) -> GateResult:
+                   record_hash: str | None = None, audit_flags: tuple[str, ...] = (),
+                   in_transaction: Callable[[Any], None] | None = None, **context: Any) -> GateResult:
     """Evaluate a person's choice and audit the attempt, allowed or blocked.
 
     If the attempt cannot be recorded this raises, so nothing may proceed. The
     chain keeps only safe fields: failure codes, the cost in units, and hashes of
     the action and the reason text. The reason text itself is the caller's to keep.
+
+    ``audit_flags`` are service-built ids recorded with the attempt. ``in_transaction`` runs inside the
+    append, so it needs an anchored writer; a ``DecisionCellError`` it raises keeps its type and nothing is
+    recorded.
     """
     if audit is None:
         raise DecisionCellError("an audit writer is required")
@@ -377,12 +404,21 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
     }
     if record_hash is not None:
         event["record_hash"] = record_hash  # which stored project-record version was judged
+    if context.get("evidence_hash") is not None:
+        event["evidence_hash"] = context["evidence_hash"]
+    if audit_flags:
+        event["resource_ids"] = list(audit_flags)
     try:
-        if _protection.ANCHOR_REQUIRED:
+        writer = audit
+        if _protection.ANCHOR_REQUIRED or in_transaction is not None:
             from agora.audit_anchor import require_anchored
-            require_anchored(audit).append(event)
+            writer = require_anchored(audit)
+        if in_transaction is None:
+            writer.append(event)
         else:
-            audit.append(event)
+            writer.append(event, in_transaction=in_transaction)
+    except DecisionCellError:
+        raise
     except Exception as exc:
         raise DecisionCellError("the decision-cell attempt could not be recorded") from exc
     return result
