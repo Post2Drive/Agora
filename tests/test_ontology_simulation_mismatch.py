@@ -126,3 +126,10 @@ def test_a_rebuild_that_differs_records_failed(world, monkeypatch):
 
     monkeypatch.setattr(actions, "_compose", different)
     _assert_recorded_failed(world, proposal)
+
+
+def test_a_manifest_that_does_not_verify_records_nothing(world):
+    proposal = _admitted(world)
+    # The stored manifest is replaced, so nothing in it can be used to judge the rows.
+    _edit(_snapshot(world), "UPDATE imports SET manifest_json='{}'")
+    _assert_nothing_recorded(world, proposal, "snapshot integrity check failed")
