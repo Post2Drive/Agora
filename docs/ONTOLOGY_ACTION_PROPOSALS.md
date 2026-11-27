@@ -39,7 +39,7 @@ A parameter is a requested value. It is **not** compared with the actor's or tar
 ## Limits
 
 - No signature: `proposed_by` and `policy_version` are covered by the digest but cannot be rebuilt, so recheck does not authenticate them. A valid digest is not an approval.
-- **Object reads do not authenticate row content.** `get_object` accepts a source row edited in `data/tabular.sqlite3` when its identity and provenance still match (a test shows this). Recheck detects a change made *after* the proposal through the retained values digest. A change made before the proposal is not detected.
+- **Row checks on read are unkeyed.** Object reads recompute the stored row ID, so a source row edited under its pinned row ID is refused both before and after a proposal. This is not a signature and does not authenticate the snapshot against the original file; see [the snapshot content checks and their limits](ONTOLOGY_DATA_BINDING.md#snapshot-content-checks-on-read).
 - Cited evidence is checked for existence, import status, row count and the recorded file hash. Row content is not hashed, and the evidence is not judged relevant to the reason.
 - Preconditions are free text and are not evaluated. Declared `permissions` are recorded, not enforced.
 - Recheck does not look for newer imports, retracted links or other later facts; it is not a staleness check against current state.
