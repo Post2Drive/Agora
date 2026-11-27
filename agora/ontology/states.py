@@ -39,6 +39,11 @@ def _bad(digest: str, reason: str, /, **known: Any) -> dict[str, Any]:
     return {"digest": digest, "state": "inconsistent", "reason": reason, **known}
 
 
+def _named(value: Any) -> bool:
+    """A real identity: not blank, and not the ``unknown`` placeholder written when none was established."""
+    return isinstance(value, str) and bool(value.strip()) and value != "unknown"
+
+
 def _authorship(event: dict[str, Any]) -> tuple[Any, Any, Any]:
     return event.get("subject_id"), event.get("policy_version"), event.get("resource_ids")
 
@@ -48,8 +53,7 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     for event in events:
         by_type.setdefault(event["event_type"], []).append(event)
     proposed = by_type.get(_a._PROPOSED_TYPE, [])
-    allowed = [e for e in proposed if e.get("decision") == "allow" and isinstance(e.get("subject_id"), str)
-               and e["subject_id"].strip()]
+    allowed = [e for e in proposed if e.get("decision") == "allow" and _named(e.get("subject_id"))]
     if not allowed:
         return _bad(digest, "the proposal is not recorded")
     # The same content may be proposed again (same digest), so repeats are normal. They must agree.
@@ -79,7 +83,7 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     decision = decisions[0]
     decider = decision.get("subject_id")
     if (decision.get("event_id") != _a._DECISION_PREFIX + suffix or decision.get("operation") != _a._DECIDE
-            or decision.get("decision") != "allow" or not isinstance(decider, str) or not decider.strip()
+            or decision.get("decision") != "allow" or not _named(decider)
             or decider == proposer or decision.get("resource_ids") != resources
             or place[id(decision)] < place[id(first)]):
         return _bad(digest, "the decision is not well formed", proposed_by=proposer)
@@ -87,7 +91,7 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if seconds:
         co = seconds[0].get("subject_id")
         if (seconds[0].get("event_id") != _a._CO_PREFIX + suffix or seconds[0].get("operation") != _a._DECIDE
-                or seconds[0].get("decision") != "allow" or not isinstance(co, str) or not co.strip()
+                or seconds[0].get("decision") != "allow" or not _named(co)
                 or co in (proposer, decider) or seconds[0].get("resource_ids") != resources
                 or place[id(seconds[0])] < place[id(decision)]
                 or any(place[id(seconds[0])] > place[id(e)] for e in endings)):
@@ -111,7 +115,7 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     ending = endings[0]
     actor = ending.get("subject_id")
     if (ending.get("event_id") != _a._final_id(digest) or ending.get("decision") != "allow"
-            or not isinstance(actor, str) or not actor.strip()
+            or not _named(actor)
             or ending.get("resource_ids") != resources or place[id(ending)] < place[id(decision)]):
         return _bad(digest, "the ending is not well formed", **entry)
     if ending["event_type"] == "ontology_action_withdrawn":
