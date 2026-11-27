@@ -323,7 +323,15 @@ def co_approve_action_proposal(
     if subject == approver:
         raise OntologyError("the second approver must be someone other than the first approver")
     _not_ended(writer, expected_digest)
-    _expiry(_approved_at(event), lifetime, _now())
+    approved_at = _approved_at(event)
+    _expiry(approved_at, lifetime, _now())
+
+    def still_live(db: Any) -> None:
+        # Under the chain's write lock: a withdrawal or admission may have landed since the checks above.
+        if db.execute("SELECT 1 FROM audit_events WHERE event_id=?", (_final_id(expected_digest),)).fetchone():
+            raise OntologyError(_ENDED)
+        _expiry(approved_at, lifetime, _now())
+
     event_id = _CO_PREFIX + expected_digest.split(":", 1)[1]
     if writer.find_event(event_id) is not None:
         raise OntologyError("this proposal already has a second approval")
@@ -338,7 +346,7 @@ def co_approve_action_proposal(
             "resource_ids": resource_ids,
             "reason_hash": "sha256:" + hashlib.sha256(reason.encode("utf-8")).hexdigest(),
             "reason": "policy_allow",
-        })
+        }, in_transaction=still_live)
     except AuditReplayError as exc:
         raise OntologyError("this proposal already has a second approval") from exc
     return {"digest": expected_digest, "co_approved_by": subject, "approved_by": approver,
@@ -484,6 +492,12 @@ def admit_approved_action(
 
     def still_live(db: Any) -> None:
         _expiry(approved_at, lifetime, _now())
+        # A recorded second approver never admits, required or not. Read under the chain's write lock,
+        # so a second approval that landed after verification is seen.
+        rows = db.execute("SELECT event_json FROM audit_events WHERE event_id=?",
+                          (_CO_PREFIX + expected_digest.split(":", 1)[1],)).fetchall()
+        if any(json.loads(raw).get("subject_id") == subject for (raw,) in rows):
+            raise OntologyError("an action must be admitted by someone other than its second approver")
         for item in checked:
             if _now() >= item.expires_at:
                 raise OntologyError("the signed approval statement expired before admission")

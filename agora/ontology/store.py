@@ -471,6 +471,9 @@ def require_attested_rows(
         raise OntologyError("the import's ingest record could not be verified") from exc
 
 
+_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
+
+
 def _stage_private_copy(source: Path, destination: Path) -> tuple[int, str]:
     """Copy a closed SQLite file to a new private path, hashing the copied bytes.
 
@@ -1815,10 +1818,16 @@ class OntologyObjectStore:
     def backup(
         self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
     ) -> Path:
-        """Create an atomic project-local SQLite backup and verify its local integrity."""
+        """Create an atomic project-local SQLite backup and verify its local integrity.
+
+        Publishes a new file only: an existing destination is never replaced, even one
+        created while the backup runs. Names ending like a SQLite sidecar are refused,
+        because SQLite may reset or delete such a file beside its database.
+        """
         self._authorize("ontology_read", ["store_backup"], policy=policy, audit=audit)
         destination = Path(path)
-        temporary = destination.with_name(destination.name + ".tmp")
+        # One name per call, so concurrent backups never share or remove each other's work.
+        temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
         source_conn = None
         backup_conn = None
         created_temporary = False
@@ -1830,6 +1839,9 @@ class OntologyObjectStore:
             resolved_destination.relative_to(root)
             if resolved_destination == self.path.resolve():
                 raise OntologyError("backup destination cannot be the live ontology database")
+            # Windows drops trailing dots and spaces, so "x-wal." would create "x-wal".
+            if resolved_destination.name.rstrip(". ").lower().endswith(_SIDECAR_SUFFIXES):
+                raise OntologyError("backup destination cannot use a SQLite sidecar file name")
             require_safe_path(destination.parent)
             require_safe_path(destination)
             if destination.exists() or temporary.exists():
@@ -1848,16 +1860,15 @@ class OntologyObjectStore:
             source_conn.close()
             source_conn = None
             require_safe_path(temporary)
-            temporary.replace(destination)
+            # A hard link fails if the destination now exists; a rename would replace it.
+            os.link(temporary, destination)
             created_temporary = False
+            _discard_staged_copy(temporary)
             require_safe_path(destination)
             return destination
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
-            if created_temporary and temporary.exists():
-                try:
-                    temporary.unlink()
-                except OSError:
-                    pass
+            if created_temporary:
+                _discard_staged_copy(temporary)
             if isinstance(exc, OntologyError):
                 raise
             raise OntologyError("ontology store backup failed or did not pass verification") from exc

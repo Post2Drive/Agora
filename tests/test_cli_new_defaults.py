@@ -56,3 +56,46 @@ def test_nothing_added_when_scenario_already_sets_all_three(tmp_path):
     dst = tmp_path / "out"
     cli.cmd_new(_args(dst, src))
     assert (dst / "scenario.yaml").read_bytes() == src.read_bytes()
+
+
+# --- the warning for a scenario that would be silent ---------------------------------------
+def _no_spaces(tmp_path, **extra):
+    import yaml
+    src = _scenario(tmp_path, **extra)
+    d = yaml.safe_load(src.read_text(encoding="utf-8"))
+    d["spaces"], d["events"], d["conversions"] = {}, [], []
+    src.write_text(yaml.safe_dump(d, sort_keys=False), encoding="utf-8")
+    return src
+
+
+def test_warning_when_gated_contact_has_no_spaces(tmp_path):
+    sc = scenario_mod.load(_no_spaces(tmp_path, communication="native", contact="relationship", contact_budget=1))
+    (w,) = scenario_mod.contact_warnings(sc)
+    assert "relationship" in w and "no groups" in w
+    sc.contact = "group_only"
+    assert len(scenario_mod.contact_warnings(sc)) == 1
+
+
+def test_no_warning_in_the_ordinary_cases(tmp_path):
+    base = dict(communication="native", contact="relationship", contact_budget=1)
+    path = _no_spaces(tmp_path, **base)
+    assert len(scenario_mod.contact_warnings(scenario_mod.load(path))) == 1
+    for change in ({"contact": "open"}, {"contact_budget": 0}, {"communication": "platform"}):
+        sc = scenario_mod.load(path)
+        for k, v in change.items():
+            setattr(sc, k, v)
+        assert scenario_mod.contact_warnings(sc) == [], change
+
+
+def test_no_warning_when_spaces_exist(tmp_path):
+    sc = scenario_mod.load(make_project(tmp_path, "w", communication="native", contact="relationship",
+                                        contact_budget=1) / "scenario.yaml")
+    assert sc.spaces and scenario_mod.contact_warnings(sc) == []
+
+
+def test_new_and_check_print_the_warning(tmp_path, capsys):
+    src = _no_spaces(tmp_path)
+    assert cli.cmd_new(_args(tmp_path / "out", src)) == 0
+    assert "Warning: contact is 'relationship'" in capsys.readouterr().err
+    cli.cmd_new(_args(tmp_path / "plat", src, platform=True))
+    assert "Warning" not in capsys.readouterr().err
