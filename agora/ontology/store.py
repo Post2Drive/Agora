@@ -5,7 +5,6 @@ source rows remain in tabular snapshots and are not copied here.
 """
 from __future__ import annotations
 
-from dataclasses import asdict
 import base64
 from datetime import datetime, timezone
 import hashlib
@@ -24,7 +23,7 @@ from ..policy_enforcement import PolicyCallable, PolicyEnforcementError, enforce
 from .binding import (
     DataBinding, declared_sensitivity, iter_source_object_refs, load_binding, materialize_source_object,
 )
-from .registry import OntologyError, OntologyPack, LinkType, parse_domain_pack
+from .registry import OntologyError, OntologyPack, LinkType, pack_document, parse_domain_pack
 
 _MAX_LINK_SOURCE_REFS = 100
 _MAX_REPORTED_CONFLICTS = 100
@@ -452,11 +451,11 @@ class OntologyObjectStore:
     ) -> str:
         if not isinstance(pack, OntologyPack):
             raise OntologyError("pack must be a validated OntologyPack")
-        pack = parse_domain_pack(json.loads(_canonical(asdict(pack))))
+        pack = parse_domain_pack(json.loads(_canonical(pack_document(pack))))
         fingerprint = pack.fingerprint
         resource_id = f"{pack.pack_id}:{fingerprint}"
         self._authorize("ontology_write", [resource_id], policy=policy, audit=audit)
-        payload = _canonical(asdict(pack))
+        payload = _canonical(pack_document(pack))
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")

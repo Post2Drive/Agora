@@ -102,6 +102,7 @@ The current implementation provides:
 - An override may raise a property's classification and never lower it below the pack's declared value, even when the source column is less sensitive. The policy decision made before any read uses the highest declared classification of the mapped properties.
 - The ObjectType must use the `record_key` identity strategy. An `assigned` type cannot be bound.
 - Every row read must satisfy the property's `nullable` rule and, when listed, its `allowed_values`. Decimals compare numerically; other values must have the same type. Errors name the property and never the value. `iter_source_object_refs` checks rows as it yields them, so a caller that indexes them must do so in one transaction, as the object store does.
+- An object type's declared `unique_keys` are checked over the whole import by `materialize_instances` and `iter_source_object_refs`; a single-row read cannot check them. Scope and comparison rules: [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md) section 2b.
 - `materialize_instances` refuses a snapshot in which the binding's key column repeats. `iter_source_object_refs` does not keep every key in memory; the object store refuses the conflicting reference.
 - `OntologyObjectStore.register_binding` refuses a binding that breaks the identity or classification rules above.
 

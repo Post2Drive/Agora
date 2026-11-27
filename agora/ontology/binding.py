@@ -215,6 +215,53 @@ def _check_row_values(
             raise OntologyError(f"value is not allowed by property {property_id}")
 
 
+def _comparable(value: Any, prop: PropertyType) -> str:
+    """Encode one non-null value so that equal values of a property encode equally."""
+    if prop.data_type != "decimal":
+        return _canonical(value)
+    # Exact: Decimal.normalize() would round to the context precision.
+    try:
+        number = Decimal(str(value))
+        if not number.is_finite():
+            raise InvalidOperation
+    except (InvalidOperation, ValueError) as exc:
+        raise OntologyError(f"value of property {prop.property_id} is not a finite decimal") from exc
+    sign, digits, exponent = number.as_tuple()
+    significant = "".join(map(str, digits)).rstrip("0")
+    if not significant:
+        return "0"
+    return f"{sign}:{significant}:{exponent + len(digits) - len(significant)}"
+
+
+class _UniqueKeyCheck:
+    """Refuse two rows of one import that share all values of a declared unique key.
+
+    A key with a null component is not compared. Only digests of seen keys are
+    retained, never source values; memory grows with the number of rows.
+    """
+
+    def __init__(self, object_type: Any, binding: DataBinding, properties: Mapping[str, PropertyType]) -> None:
+        columns = {property_id: column for column, property_id in binding.column_map.items()}
+        self._keys: list[tuple[tuple[str, ...], list[tuple[str, PropertyType]], set[bytes]]] = []
+        for key in object_type.unique_keys:
+            if not key or any(property_id not in columns for property_id in key):
+                raise OntologyError("a declared unique key is empty or has a property that is not mapped")
+            parts = [(columns[property_id], properties[property_id]) for property_id in key]
+            self._keys.append((key, parts, set()))
+
+    def add(self, values: Mapping[str, Any]) -> None:
+        for key, parts, seen in self._keys:
+            if any(values.get(column) is None for column, _prop in parts):
+                continue
+            encoded = _canonical([_comparable(values[column], prop) for column, prop in parts])
+            digest = hashlib.sha256(encoded.encode("utf-8")).digest()
+            if digest in seen:
+                raise OntologyError(
+                    f"snapshot rows repeat a value of the unique key ({', '.join(key)})"
+                )
+            seen.add(digest)
+
+
 def validate_binding(pack: OntologyPack, snapshot_manifest: Mapping[str, Any], binding: DataBinding | Mapping[str, Any]) -> DataBinding:
     """Validate a binding against an ontology pack and explicit snapshot manifest."""
     binding = binding if isinstance(binding, DataBinding) else load_binding(binding)
@@ -343,6 +390,7 @@ def materialize_instances(
     }
     instances = []
     seen_keys: set[str] = set()
+    unique_keys = _UniqueKeyCheck(_properties(pack, binding)[0], binding, properties)
     for row in rows:
         primary_value = row["values"].get(binding.identity.primary_key_column)
         if primary_value is None:
@@ -353,6 +401,7 @@ def materialize_instances(
             # The binding's key column need not be the one the import enforced as unique.
             raise OntologyError("binding primary key is not unique in the snapshot")
         seen_keys.add(key)
+        unique_keys.add(row["values"])
         instances.append({
             "object_type_id": binding.object_type_id,
             "object_type_version": binding.object_type_version,
@@ -451,11 +500,13 @@ def iter_source_object_refs(
     )
     effective_sensitivity = _effective_property_sensitivity(pack, binding, manifest)
     properties = {item.property_id: item for item in pack.property_types}
+    unique_keys = _UniqueKeyCheck(_properties(pack, binding)[0], binding, properties)
     for row in iter_snapshot_rows(project, import_id, batch_size=batch_size):
         primary_value = row["values"].get(binding.identity.primary_key_column)
         if primary_value is None:
             raise OntologyError("primary key value is missing")
         _check_row_values(row["values"], binding, properties)
+        unique_keys.add(row["values"])
         locator = row["source_locator"]
         yield {
             "object_type_id": binding.object_type_id,
@@ -483,7 +534,11 @@ def materialize_source_object(
     policy: PolicyCallable | None = None, audit: Any | None = None,
     purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, Any]:
-    """Read one exact source row after policy and binding validation."""
+    """Read one exact source row after policy and binding validation.
+
+    One row cannot show whether a declared unique key holds. The object store
+    only has references from imports that ``iter_source_object_refs`` accepted.
+    """
     project = Path(project)
     binding, manifest = _authorize_source_snapshot(
         binding if isinstance(binding, DataBinding) else load_binding(binding),

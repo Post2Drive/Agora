@@ -78,10 +78,10 @@ These are real early ontology capabilities, not an integrated ontology platform.
 | Portable schemas, examples, compatibility policy | Published (links above). No third-party use. |
 | Cardinality across imports | Found open in this audit; closed afterwards at library level: cardinality now compares object type and record key, and `verify_integrity` reports earlier conflicting links. Rules and limits (no cross-dataset entity resolution, no enforcement across pack versions, no link retraction): [ONTOLOGY_OBJECT_STORE_DESIGN.md](ONTOLOGY_OBJECT_STORE_DESIGN.md). |
 | Closed later: allowed value types | Pack parsing now refuses an `allowed_values` entry that does not match the property's `data_type`. Rules: [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md) section 2a. |
-| **Open: pack definition checks** | Packs cannot declare uniqueness for non-key properties. |
+| Closed later: pack-declared uniqueness | An object type may declare `unique_keys`, checked within one exact import (not across imports or datasets). Rules: [ONTOLOGY_PORTABLE_SCHEMAS.md](ONTOLOGY_PORTABLE_SCHEMAS.md) section 2b. |
 | Not covered | Rung 2 criteria about scenario, agent and run mapping to ontology instances were not audited. |
 
-The exit test is met at library level by the `civic_in` and `retail_in` pack tests and the compatibility tests. **O0 is not marked complete** while the pack definition checks are open.
+The exit test is met at library level by the `civic_in` and `retail_in` pack tests and the compatibility tests. The gaps this audit found are closed at library level, within the limits in the rows above. This is not a service or production claim, and the item under "Not covered" is still unaudited.
 
 ### O1 — Persistent ontology records and query
 

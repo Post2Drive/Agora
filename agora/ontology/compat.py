@@ -130,6 +130,19 @@ def _field_changes(kind: str, type_id: str, old: Any, new: Any) -> list[Change]:
                     result.append(Change(kind, type_id, "property_removed_from_object", BREAKING))
                 if added or removed:
                     continue
+        elif kind == "ObjectType" and name == "unique_keys":
+            # Property order inside a key does not change what it constrains.
+            old_keys = {tuple(sorted(key)) for key in before[name]}
+            new_keys = {tuple(sorted(key)) for key in after[name]}
+            if old_keys == new_keys:
+                code, level = "unique_keys_reordered", COMPATIBLE
+            else:
+                # Adding refuses data that was accepted; removing withdraws a guarantee.
+                if new_keys - old_keys:
+                    result.append(Change(kind, type_id, "unique_key_added", BREAKING))
+                if old_keys - new_keys:
+                    result.append(Change(kind, type_id, "unique_key_removed", BREAKING))
+                continue
         elif kind == "PropertyType" and name == "allowed_values":
             if _encoded(before[name]) == _encoded(after[name]):
                 code, level = "allowed_values_reordered", COMPATIBLE

@@ -3349,6 +3349,678 @@
      }
     ]
    }
+  },
+  {
+   "id": "unique-keys",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        "demo:Item.id"
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-empty-list",
+   "schema_valid": true,
+   "agora_valid": true,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": []
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-null",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": null
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-flat-list",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       "demo:Item.id"
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-empty-key",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       []
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-blank-member",
+   "schema_valid": false,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        " "
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-not-a-property",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        "demo:Item.other"
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-repeated-member",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        "demo:Item.id",
+        "demo:Item.id"
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-declared-twice",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        "demo:Item.id"
+       ],
+       [
+        " demo:Item.id"
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "identifier",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
+  },
+  {
+   "id": "unique-keys-structured-object",
+   "schema_valid": true,
+   "agora_valid": false,
+   "document": {
+    "pack_id": "conformance-pack",
+    "schema_version": "1.0.0",
+    "object_types": [
+     {
+      "type_id": "demo:Item",
+      "version": "1.0.0",
+      "name": "Item",
+      "description": "Synthetic conformance object.",
+      "properties": [
+       "demo:Item.id"
+      ],
+      "identity_strategy": "record_key",
+      "unique_keys": [
+       [
+        "demo:Item.id"
+       ]
+      ]
+     }
+    ],
+    "property_types": [
+     {
+      "property_id": "demo:Item.id",
+      "version": "1.0.0",
+      "name": "Identifier",
+      "data_type": "structured_object",
+      "required": true,
+      "nullable": false,
+      "sensitivity": "internal"
+     }
+    ],
+    "link_types": [
+     {
+      "link_type_id": "demo:Item.next",
+      "version": "1.0.0",
+      "name": "Next",
+      "source_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "predicate": "next",
+      "cardinality": "one_to_one"
+     }
+    ],
+    "action_types": [
+     {
+      "action_type_id": "demo:Record",
+      "version": "1.0.0",
+      "name": "Record",
+      "actor_type_id": "demo:Item",
+      "target_type_id": "demo:Item",
+      "inputs": [
+       "demo:Item.id"
+      ],
+      "preconditions": [],
+      "effects": [],
+      "permissions": [
+       "synthetic_test_only"
+      ],
+      "simulated_only": true,
+      "execution_mode": "simulation_only",
+      "external_writeback": "prohibited"
+     }
+    ]
+   }
   }
  ],
  "json_text_cases": [
