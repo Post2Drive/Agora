@@ -1,4 +1,6 @@
 """Sensitive action proposals need a second approver; admission needs a signed statement from each."""
+from datetime import timedelta
+
 import pytest
 
 from agora import protection
@@ -89,6 +91,30 @@ def test_the_chain_refuses_a_second_second_approval_that_raced_the_check(two, wo
     with pytest.raises(OntologyError, match="already has a second approval"):
         _co(world, proposal, policy=_as("approver-3"))
     assert len(_events(world, "ontology_action_co_approved")) == 1
+
+
+def test_a_withdrawal_that_lands_after_the_check_still_blocks_the_second_approval(two, world, monkeypatch):
+    proposal = _approved(world)
+    withdraw_approval(world.store, proposal.document, proposal.digest, "stop", policy=APPROVER, audit=world.audit)
+    monkeypatch.setattr(approvals, "_not_ended", lambda writer, digest: None)  # the check ran before it
+    with pytest.raises(OntologyError, match="already ended"):
+        _co(world, proposal)
+    assert _events(world, "ontology_action_co_approved") == []
+    assert world.audit.verify()["valid"]
+
+
+def test_an_approval_that_expires_after_the_check_cannot_be_seconded(two, world, monkeypatch):
+    proposal = _approved(world)
+    start, calls = approvals._now(), []
+
+    def clock_that_jumps():
+        calls.append(1)
+        return start if len(calls) == 1 else start + timedelta(hours=25)
+
+    monkeypatch.setattr(approvals, "_now", clock_that_jumps)
+    with pytest.raises(OntologyError, match="expired"):
+        _co(world, proposal)
+    assert len(calls) == 2 and _events(world, "ontology_action_co_approved") == []
 
 
 @pytest.mark.parametrize("policy,message", [
