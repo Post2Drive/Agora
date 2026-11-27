@@ -100,8 +100,8 @@ Limits: the state comes from the chain only, so `approved` does not mean the pro
 
 A precondition string that starts with `expr:` is machine-checked; others stay free text. The grammar is closed: one to eight clauses joined by ` and `, each `operand OP operand` with `OP` one of `==`, `!=`, `<`, `<=`, `>`, `>=`. An operand is `actor.<property>`, `target.<property>`, `param.<property>` (an input of the action) or a literal (`"text"`, a number, `true`, `false`, `null`). No `or`, arithmetic, functions or other lookups. Example: `expr: target.crm:Customer.status == "open" and param.crm:Request.count >= 1`.
 
-- A pack with an `expr:` that is outside the grammar, names a property the object type or action does not have, mixes kinds (number, text, date, boolean), orders text or booleans, or uses a property of another data type is refused when it is parsed.
-- When a proposal is built, every `expr:` is evaluated against the actor and target values read from their source rows and the parameter values. A false clause refuses the proposal and records nothing; the message names the precondition text, never a value. A missing, null or malformed value makes a clause false (`== null` and `!= null` aside).
+- A pack with an `expr:` that is outside the grammar, names a property the object type or action does not have, mixes kinds (number, text, date, boolean), orders text or booleans, uses a property of another data type, or compares a date with an impossible date literal is refused when it is parsed. So is a precondition that only looks like an expression (a leading space, `Expr:`, `expr :`), which would otherwise be unenforced free text.
+- When a proposal is built, every `expr:` is evaluated against the actor and target values read from their source rows and the parameter values. A false clause refuses the proposal and records nothing; the message names the precondition text, never a value. A property that was never read (for example one the source binding does not map) or a malformed value makes a clause false, whatever the operator. A stored null is unknown: only `== null`, written with the literal `null`, is true for it. Every other comparison with it is false, including `!=`, and two nulls are not equal to each other. So `target.status != "frozen"` does not pass when the status is unknown.
 - The document lists the evaluated texts in `preconditions_met`, and `preconditions_evaluated` is true only when every declared precondition was an `expr:`. A pack with no `expr:` produces the same document as before.
 - Admission rebuilds the proposal from the current objects, so the same expressions are evaluated again and a changed source row is refused there. The rebuild and the audit append are not one transaction, as above.
 
@@ -119,6 +119,17 @@ Limits: evaluation shows only that the stored values satisfied the expression wh
 
 Limits: effects are names, not programs, so nothing is applied to any data and the result shows only that the rebuild passed at the time of the run, not what an effect would have done. The run is not tied to the admission beyond the same identity and the chain's one-outcome rule, and `record_simulation_outcome` with a caller-supplied digest is refused under the protected defaults (`protection.RUNNER_ONLY_OUTCOMES`), which stops accidental use, not code in the same process that calls the private recorder. Verification shows the document matches what the chain recorded; the chain is a local file with the limits above.
 
+## Second approver for sensitive proposals
+
+Under the protected defaults (`protection.TWO_PERSON_SENSITIVE`), a proposal classified `sensitive` needs two approvers who are three different people with the proposer. After the first approval, `co_approve_action_proposal` records the second as `ontology_action_co_approved` under the fixed event ID `ontology-action-coapproval-<digest>`, with the same decision operation and a reason hash. It needs a live first approval (not withdrawn, used, expired or a rejection), is once per proposal, and does not extend the first approval's lifetime.
+
+- `verify_approved_action` and so `admit_approved_action` refuse a sensitive proposal without exactly one well-formed second approval from someone other than the proposer and the first approver, and name `co_approved_by` in their result.
+- Neither approver can admit. With signed statements required, admission takes one statement per approver in order (first, second); each is checked against the approver this chain recorded. The admission event's `approval_statement_hash` is the statement's hash for one approver, or the hash of both statement hashes joined by a newline for two.
+- A rejection by the first decider still ends the proposal; there is no second rejection. Either approver (or any other decider) can withdraw.
+- `action_proposal_state` shows `co_approved_by`, and reports a second approval that is malformed, duplicated or has no approval as `inconsistent`.
+
+Limits: the requirement is set by the proposal's classification and a protection flag, not by the action type, and it is two people, not a configurable quorum. The state view does not know the requirement, so `approved` there does not mean admissible. Two identities are only as distinct as the policy that issues them.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), approval by more than one person, effects that are more than names (a real simulation).
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), a configurable approver quorum, effects that are more than names (a real simulation).
