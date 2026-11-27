@@ -8,13 +8,14 @@ A change is **compatible** only if it is on this list:
 
 - a new object, property, link or action type;
 - a new `name` on any definition, or a new `description` on an object type;
-- the same object `properties` or property `allowed_values` in a different order.
+- the same object `properties`, object `unique_keys` (keys, or the properties inside a key) or property `allowed_values` in a different order.
 
 Every other change is **breaking**. That includes any field added to the registry later, until it is listed here. Some breaking cases are stricter than they may look:
 
 | Change | Why it is breaking |
 |---|---|
 | A property added to an existing object type, even an optional one | A data binding must map exactly the object's properties, so an existing column map stops matching |
+| A `unique_keys` entry added or removed | Adding refuses data that was accepted; removing withdraws a guarantee. A changed key counts as both |
 | `allowed_values` widened | Readers can receive a value they have not seen before |
 | `required` or `nullable` changed in either direction | Either stored records or readers lose a guarantee |
 | Sensitivity raised | Existing consumers can be denied by policy |

@@ -23,6 +23,7 @@ Agora applies these rules that the schemas do not:
 | Object properties, link ends and action actor and target must resolve inside the pack | Pack |
 | One definition per ID in a pack | Pack |
 | An object type lists each property once | Pack |
+| Each `unique_keys` entry names properties of that object type, once each; no two entries name the same set; no `structured_object` property (section 2b) | Pack |
 | `property_sensitivity` keys must be mapped property IDs | Binding |
 | `scale` must not exceed `precision` | Pack |
 | Each `allowed_values` entry must match the property's `data_type` (section 2a) | Pack |
@@ -49,6 +50,17 @@ Pack text fields and fixed values such as `data_type` may have surrounding white
 | `structured_object` | None: the list must be empty or absent |
 
 A `null` entry is accepted only when the property is `nullable`; whether a null source value is allowed is still decided by `nullable` alone. In YAML, quote dates and timestamps, or the loader reads them as non-string values. The check does not apply `precision` or `scale` to decimal entries.
+
+### 2b. Unique keys
+
+An object type may declare `unique_keys`, a list of keys. Each key is a non-empty list of the object type's property IDs; a key with two or more IDs constrains the combination. An empty or absent list declares nothing and gives the same pack fingerprint. The record key identity stays unique whether or not it is listed.
+
+- **Scope:** the rows of one exact import, read through one binding for that object type. It is not enforced across imports, datasets, object types or pack versions, because the same record is restated in later imports and the object store holds no property values.
+- **Comparison:** decimals compare by exact numeric value (`1.5` equals `1.50`); all other values compare exactly as stored, so strings are case- and space-sensitive. Dates and timestamps are already in the stored canonical form.
+- **Nulls:** a row with a null in any property of a key is not compared on that key.
+- **Where it is checked:** `materialize_instances` (and so scenario inputs) and `iter_source_object_refs` (and so `materialize_binding`, which then stores no references from that call). `materialize_source_object` reads one row and cannot check it. A direct consumer of `iter_source_object_refs` receives earlier rows before the refusal, so it must discard them. The error names the key's property IDs, never values.
+- **Cost:** one 32-byte digest per row and key is held in memory while an import is read (plus the language's own overhead). This has not been measured on large imports.
+- **Compatibility:** `unique_keys` is optional, so previously accepted documents are still accepted and the schema major version is unchanged. Older Agora code refuses a pack that declares it. Adding or removing a key is a breaking pack change; reordering is not.
 
 ## 3. Conformance vectors
 

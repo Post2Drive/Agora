@@ -65,6 +65,7 @@ def domain_pack_schema() -> dict[str, Any]:
         "type_id": identifier, "version": version, "name": text, "description": text,
         "properties": texts, "identity_strategy": _padded_enum({"record_key", "assigned"}),
         "source_binding": source,
+        "unique_keys": _array({"type": "array", "minItems": 1, "items": text}),
     }
     property_type = {
         "property_id": identifier, "version": version, "name": text,
@@ -92,7 +93,7 @@ def domain_pack_schema() -> dict[str, Any]:
     root = _object({
         "pack_id": text, "schema_version": version,
         "object_types": _array(_object(
-            object_type, set(object_type) - {"source_binding"},
+            object_type, set(object_type) - {"source_binding", "unique_keys"},
         )),
         "property_types": _array(_object(
             property_type, {"property_id", "version", "name", "data_type", "required", "nullable", "sensitivity"},
