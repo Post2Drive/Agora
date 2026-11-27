@@ -6,9 +6,10 @@ delegate named in the stored project record, who holds the high-assurance approv
 
 Independence fails closed. Two sources count as two only if a person recorded that pair as independent for
 this statement, nobody recorded it as not independent, both have a known owner and a known upstream origin,
-those owners differ, and the supplied citation links and origins show neither a path between them nor a
-common upstream (including the origin of a source that one of them copies). Neither they nor any listed
-source they draw on may have identical content hashes.
+and the supplied citation links and origins show neither a path between them nor a common upstream
+(including the origin of a source that one of them copies). Every listed source they draw on, themselves
+included, must also have a known owner and origin, and the two sides may share no owner and no identical
+content hash.
 
 A promotion is bound to a fingerprint of the evidence judged: the statement wording, each source's
 attributes and content hash, and the judgments. If any of these is added, removed or edited, the old
@@ -197,11 +198,16 @@ def assess_statement(
     upstreams = {i: _upstream(i, by_id) for i in by_id}
     # Identical content among what two sources draw on is a copy, whatever the links and judgments say.
     contents = {i: {by_id[u].content_hash for u in upstreams[i] if u in by_id} for i in by_id}
+    # The same holds for who is behind it: copying an outlet of the other's owner is not independence, and a
+    # listed source with an unknown owner or origin could be anyone's, so it leaves independence unproven.
+    owners = {i: {by_id[u].owner_id for u in upstreams[i] if u in by_id} for i in by_id}
+    traced = {i: all(by_id[u].upstream_origin_id is not None for u in upstreams[i] if u in by_id) for i in by_id}
 
     def independent(a: Source, b: Source) -> bool:
         return (verdicts.get(frozenset((a.source_id, b.source_id))) is True
-                and None not in (a.owner_id, b.owner_id, a.upstream_origin_id, b.upstream_origin_id)
-                and a.owner_id != b.owner_id
+                and traced[a.source_id] and traced[b.source_id]
+                and None not in owners[a.source_id] | owners[b.source_id]
+                and not owners[a.source_id] & owners[b.source_id]
                 and not upstreams[a.source_id] & upstreams[b.source_id]
                 and not contents[a.source_id] & contents[b.source_id])
 

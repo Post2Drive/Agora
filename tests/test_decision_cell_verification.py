@@ -396,3 +396,34 @@ def test_copying_a_source_with_the_others_content_makes_a_pair_dependent():
     middle = Source("m", "owner-m", "origin-m", content_hash=B.content_hash)
     a = replace(A, cites=frozenset({"m"}))
     assert assess_statement("st1", (a, middle, B), (judged(),)).computed_label is Label.CLAIM
+
+
+@pytest.mark.parametrize("side", ["first", "second"])
+@pytest.mark.parametrize("copied", [
+    {"owner_id": "other"},                   # replaced below by the other side's owner
+    {"owner_id": None},
+    {"upstream_origin_id": None},
+])
+def test_a_copied_source_must_have_a_known_origin_and_an_owner_unrelated_to_the_other_side(side, copied):
+    first, second = (A, B) if side == "first" else (B, A)
+    if copied.get("owner_id") == "other":
+        copied = {"owner_id": second.owner_id}
+    middle = replace(Source("m", "owner-m", "origin-m", content_hash=_h("3")), **copied)
+    sources = (replace(first, cites=frozenset({"m"})), middle, second)
+    judgments = (judged(first.source_id, second.source_id),)
+    result = assess_statement("st1", sources, judgments)
+    assert (result.computed_label, result.confirmable_by) == (Label.CLAIM, None)
+
+
+def test_a_copied_source_with_its_own_owner_and_origin_keeps_a_pair_independent():
+    middle = Source("m", "owner-m", "origin-m", content_hash=_h("3"))
+    result = assess_statement("st1", (replace(A, cites=frozenset({"m"})), middle, B), (judged(),))
+    assert result.computed_label is Label.REPORTED_BY_MULTIPLE
+
+
+def test_two_sides_copying_different_outlets_of_one_owner_are_dependent():
+    m = Source("m", "owner-x", "origin-m", content_hash=_h("3"))
+    n = Source("n", "owner-x", "origin-n", content_hash=_h("4"))
+    sources = (replace(A, cites=frozenset({"m"})), replace(B, cites=frozenset({"n"})), m, n)
+    assert assess_statement("st1", sources, (judged(),)).computed_label is Label.CLAIM
+
