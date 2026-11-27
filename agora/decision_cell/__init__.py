@@ -12,6 +12,11 @@ from .response_window import (
     open_response_window, respond_to_item, sweep_response_windows, unreviewed_items,
 )
 
+from .verification import (
+    Assessment, Basis, IndependenceJudgment, Label, PrimaryKind, Source, StatementLabel,
+    VerificationError, assess_statement, confirm_statement, demote_statement, statement_label,
+)
+
 __all__ = [
     "DecisionCellError", "Escalation", "EscalationStatus", "GateResult", "InputGrant", "InputRef",
     "Option", "OptionRequest", "ProjectRecord", "StudyState", "evaluate_option", "request_option",
@@ -20,4 +25,6 @@ __all__ = [
     "ResponseWindow", "ResponseWindowError", "load_response_window", "open_response_window",
     "respond_to_item", "sweep_response_windows",
     "MAX_RECHECK", "UNREVIEWED_EVENT_PENDING", "unreviewed_items",
+    "Assessment", "Basis", "IndependenceJudgment", "Label", "PrimaryKind", "Source", "StatementLabel",
+    "VerificationError", "assess_statement", "confirm_statement", "demote_statement", "statement_label",
 ]
