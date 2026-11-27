@@ -370,16 +370,23 @@ def _import_content_attestation(conn: sqlite3.Connection, import_id: str) -> dic
     return attestation
 
 
-def _require_attested_import(
-    project: Path, import_id: str, audit: Any, pack: OntologyPack, binding: DataBinding,
-    row_ids_sha256: str,
-) -> None:
+def row_ids_digest(row_ids: Any) -> str:
+    """Digest row IDs in the order they were read (source record order)."""
+    digest = hashlib.sha256()
+    for row_id in row_ids:
+        digest.update((_canonical(row_id) + "\n").encode("utf-8"))
+    return digest.hexdigest()
+
+
+def require_attested_import(
+    project: Path, import_id: str, audit: Any, row_ids_sha256: str,
+) -> dict[str, Any]:
     """Require the rows just read to be those recorded in the audit chain at ingest.
 
     One read transaction gives the content digest, the row IDs and the manifest.
-    The digest must have an ingest record in the anchored chain, the row IDs must
-    be the ones being pinned, and the binding must be valid for the recorded
-    manifest, so rows or a manifest swapped in for the indexing read are refused.
+    The digest must have an ingest record in the anchored chain and the row IDs
+    must be the ones the caller read. Returns the recorded manifest, which the
+    caller must check against whatever manifest it relied on.
     """
     try:
         writer = require_anchored(audit)
@@ -389,12 +396,10 @@ def _require_attested_import(
         try:
             conn.execute("BEGIN")
             current = _import_content_attestation(conn, import_id)
-            seen = hashlib.sha256()
-            for (row_id,) in conn.execute(
+            seen = row_ids_digest(row_id for (row_id,) in conn.execute(
                 "SELECT row_id FROM import_rows WHERE import_id=? "
                 "ORDER BY source_record_number, row_id", (import_id,)
-            ):
-                seen.update((_canonical(row_id) + "\n").encode("utf-8"))
+            ))
             manifest_json = conn.execute(
                 "SELECT manifest_json FROM imports WHERE import_id=?", (import_id,)
             ).fetchone()[0]
@@ -409,12 +414,9 @@ def _require_attested_import(
         ):
             raise OntologyError(
                 "snapshot content has no matching ingest record in the audit chain")
-        if seen.hexdigest() != row_ids_sha256:
-            raise OntologyError("snapshot rows changed while they were being indexed")
-        manifest = json.loads(manifest_json)
-        # A binding that is valid for a manifest gets the same effective
-        # sensitivity from any such manifest, so validity is all there is to check.
-        validate_binding(pack, manifest, binding)
+        if seen != row_ids_sha256:
+            raise OntologyError("snapshot rows changed between reading and verification")
+        return json.loads(manifest_json)
     except OntologyError:
         raise
     except (OSError, sqlite3.Error, PermissionError, ValueError, TypeError, KeyError) as exc:
@@ -758,10 +760,11 @@ class OntologyObjectStore:
             if count == 0:
                 raise OntologyError("snapshot contains no materializable rows")
             if _protection.ANCHOR_REQUIRED:
-                _require_attested_import(
-                    self.project, import_id, audit, pack, binding,
-                    pinned.hexdigest(),
-                )
+                recorded = require_attested_import(
+                    self.project, import_id, audit, pinned.hexdigest())
+                # A binding that is valid for a manifest gets the same effective
+                # sensitivity from any such manifest, so validity is all there is to check.
+                validate_binding(pack, recorded, binding)
             conn.commit()
             return count
         except (sqlite3.Error, OntologyError):
