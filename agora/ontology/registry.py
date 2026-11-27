@@ -95,10 +95,23 @@ class ObjectType:
     properties: tuple[str, ...]
     identity_strategy: str
     source_binding: SourceBinding | None = None
+    unique_keys: tuple[tuple[str, ...], ...] = ()
 
     @property
     def fingerprint(self) -> str:
-        return _fingerprint(asdict(self))
+        return _fingerprint(_object_document(self))
+
+
+def _object_document(item: ObjectType) -> dict[str, Any]:
+    """Canonical form of an object type.
+
+    ``unique_keys`` is left out when empty, so definitions written before it
+    existed keep their fingerprints and stored bytes.
+    """
+    document = asdict(item)
+    if not document["unique_keys"]:
+        del document["unique_keys"]
+    return document
 
 
 @dataclass(frozen=True)
@@ -168,7 +181,7 @@ class OntologyPack:
 
     @property
     def fingerprint(self) -> str:
-        return _fingerprint(asdict(self))
+        return _fingerprint(pack_document(self))
 
     def definitions(self) -> tuple[tuple[str, Any], ...]:
         return (
@@ -177,6 +190,13 @@ class OntologyPack:
             *(("LinkType", item) for item in self.link_types),
             *(("ActionType", item) for item in self.action_types),
         )
+
+
+def pack_document(pack: OntologyPack) -> dict[str, Any]:
+    """The canonical document of a pack: what is fingerprinted and stored."""
+    document = asdict(pack)
+    document["object_types"] = [_object_document(item) for item in pack.object_types]
+    return document
 
 
 @dataclass(frozen=True)
@@ -301,6 +321,11 @@ def parse_domain_pack(data: Any) -> OntologyPack:
         missing = sorted(set(item.properties) - property_ids)
         if missing:
             raise OntologyError(f"ObjectType {item.type_id} references unknown properties: {', '.join(missing)}")
+    data_types = {item.property_id: item.data_type for item in properties}
+    for item in objects:
+        for key in item.unique_keys:
+            if any(data_types[property_id] == "structured_object" for property_id in key):
+                raise OntologyError(f"ObjectType {item.type_id} unique key cannot include a structured_object property")
     for item in links:
         if item.source_type_id not in object_ids:
             raise OntologyError(f"LinkType {item.link_type_id} source_type_id does not resolve")
@@ -350,8 +375,9 @@ def _parse_source_binding(value: Any, context: str) -> SourceBinding | None:
 def _parse_object(value: Any, index: int) -> ObjectType:
     context = f"object_types[{index}]"
     row = _mapping(value, context)
-    allowed = {"type_id", "version", "name", "description", "properties", "identity_strategy", "source_binding"}
-    _check_keys(row, allowed, allowed - {"source_binding"}, context)
+    allowed = {"type_id", "version", "name", "description", "properties", "identity_strategy", "source_binding",
+               "unique_keys"}
+    _check_keys(row, allowed, allowed - {"source_binding", "unique_keys"}, context)
     strategy = _required_text(row["identity_strategy"], f"{context}.identity_strategy")
     if strategy not in {"record_key", "assigned"}:
         raise OntologyError(f"{context}.identity_strategy is unsupported")
@@ -363,7 +389,26 @@ def _parse_object(value: Any, index: int) -> ObjectType:
         _required_text(row["name"], f"{context}.name"), _required_text(row["description"], f"{context}.description"),
         properties, strategy,
         _parse_source_binding(row.get("source_binding"), context),
+        _parse_unique_keys(row.get("unique_keys", []), properties, f"{context}.unique_keys"),
     )
+
+
+def _parse_unique_keys(value: Any, properties: tuple[str, ...], context: str) -> tuple[tuple[str, ...], ...]:
+    keys: list[tuple[str, ...]] = []
+    seen: set[frozenset[str]] = set()
+    for position, item in enumerate(_list(value, context)):
+        key = _string_tuple(item, f"{context}[{position}]")
+        if not key:
+            raise OntologyError(f"{context}[{position}] must name at least one property")
+        if len(set(key)) != len(key):
+            raise OntologyError(f"{context}[{position}] must not repeat a property ID")
+        if set(key) - set(properties):
+            raise OntologyError(f"{context}[{position}] names an ID that is not a property of this object type")
+        if frozenset(key) in seen:
+            raise OntologyError(f"{context} declares the same unique key twice")
+        seen.add(frozenset(key))
+        keys.append(key)
+    return tuple(keys)
 
 
 def _parse_property(value: Any, index: int) -> PropertyType:
