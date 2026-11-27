@@ -4,8 +4,9 @@
 objects and sources as they are now (so the preconditions are evaluated again), builds a result document
 from what the rebuild shows, and records its digest as the outcome. If the proposal no longer matches, it
 records a failed outcome with a failure report instead. If the rebuild cannot be completed for any other
-reason, the error is raised, nothing is recorded and the run can be tried again. The caller keeps the result document; the chain
-holds only its digest, so ``verify_simulation_result`` can later show that a document is the one recorded.
+reason, the error is raised, nothing is recorded and the run can be tried again. The caller keeps the result
+document; the chain holds only its digest, so ``verify_simulation_result`` can later show that a document is
+the one recorded.
 
 What the "simulation" is: the action's declared effects are listed as simulated, next to digests of the
 actor and target values and the parameters. The effects are names, not programs, so nothing is applied to
