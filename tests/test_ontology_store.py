@@ -137,7 +137,7 @@ def test_backup_is_project_local_and_passes_integrity(catalog):
     assert report["ok"] is True
     assert report["sqlite_integrity"] == "ok"
     assert report["foreign_keys"] == "ok"
-    assert report["schema_version"] == 3
+    assert report["schema_version"] == 4
 
 
 def test_backup_refuses_existing_or_out_of_project_destination(catalog, tmp_path):
