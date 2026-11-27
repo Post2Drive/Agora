@@ -277,6 +277,14 @@ class SocietyStore:
                       (str(topic).strip().lower(),)).fetchone()
         return int(row[0]) if row else None
 
+    def share_group(self, a: int, b: int) -> bool:
+        """True when both agents belong to at least one group chat."""
+        return self._q(
+            "SELECT 1 FROM society_conversations c "
+            "JOIN society_memberships x ON x.conversation_id=c.conversation_id AND x.agent_id=? "
+            "JOIN society_memberships y ON y.conversation_id=c.conversation_id AND y.agent_id=? "
+            "WHERE c.kind='group' LIMIT 1", (_int(a, "agent"), _int(b, "agent"))).fetchone() is not None
+
     def conversations_of(self, agent: int, kind: str) -> list[dict]:
         """Conversations of one kind the agent belongs to, with member counts, oldest first."""
         return [dict(r) for r in self._q(
