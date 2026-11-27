@@ -1,6 +1,7 @@
 """Verification labels (DECISION_CELL_SPEC 2A). Synthetic sources and principals only."""
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -35,10 +36,16 @@ AD = SyntheticFixtureAdapter({
 OWNER = AD.issue("owner")
 
 H, H2 = "a" * 64, "b" * 64
+
+
+def _h(name):
+    return hashlib.sha256(name.encode()).hexdigest()
+
+
 TEXT = "the port closed on 27 November"
 A = Source("a", "owner-a", "origin-a", published_correction_policy=True, content_hash=H)
-B = Source("b", "owner-b", "origin-b", content_hash=H)
-PRIMARY = Source("gazette", "state", "notice-1", primary_kind=PrimaryKind.OFFICIAL_RECORD, content_hash=H)
+B = Source("b", "owner-b", "origin-b", content_hash=H2)
+PRIMARY = Source("gazette", "state", "notice-1", primary_kind=PrimaryKind.OFFICIAL_RECORD, content_hash="c" * 64)
 
 
 def assess_statement(statement_id, sources, judgments=(), statement_text=TEXT):
@@ -111,13 +118,13 @@ def test_sources_count_as_one_unless_independence_is_established(second, judgmen
 
 
 def test_copying_through_a_third_source_makes_a_pair_dependent():
-    middle = Source("m", "owner-m", "origin-m", cites=frozenset({"a"}), content_hash=H)
+    middle = Source("m", "owner-m", "origin-m", cites=frozenset({"a"}), content_hash=_h("1"))
     b = replace(B, cites=frozenset({"m"}))
     assert assess_statement("st1", (A, middle, b), (judged(),)).computed_label is Label.CLAIM
 
 
 def test_sharing_the_origin_of_a_copied_source_makes_a_pair_dependent():
-    middle = Source("m", "owner-m", "origin-b", content_hash=H)  # A copies m, which comes from B's origin
+    middle = Source("m", "owner-m", "origin-b", content_hash=_h("2"))  # A copies m, which comes from B's origin
     a = replace(A, cites=frozenset({"m"}))
     assert assess_statement("st1", (a, middle, B), (judged(),)).computed_label is Label.CLAIM
 
@@ -129,12 +136,12 @@ def test_a_source_named_as_the_others_origin_makes_a_pair_dependent():
 
 @pytest.mark.parametrize("extra", [
     # a's origin is a listed post that itself comes from b's origin
-    (Source("m", "owner-m", "origin-b", content_hash=H),),
+    (Source("m", "owner-m", "origin-b", content_hash=_h("3")),),
     # a's origin is a listed post that copies b
-    (Source("m", "owner-m", "origin-m", cites=frozenset({"b"}), content_hash=H),),
+    (Source("m", "owner-m", "origin-m", cites=frozenset({"b"}), content_hash=_h("4")),),
     # ... and the same one step further along the chain of origins
-    (Source("m", "owner-m", "n", content_hash=H),
-     Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=H)),
+    (Source("m", "owner-m", "n", content_hash=_h("5")),
+     Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=_h("6"))),
 ])
 def test_a_listed_origin_brings_its_own_upstream_with_it(extra):
     sources = (replace(A, upstream_origin_id="m"), B, *extra)
@@ -143,8 +150,8 @@ def test_a_listed_origin_brings_its_own_upstream_with_it(extra):
 
 
 def test_an_origin_followed_from_a_cited_source_counts():
-    sources = (replace(A, cites=frozenset({"m"})), B, Source("m", "owner-m", "n", content_hash=H),
-               Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=H))
+    sources = (replace(A, cites=frozenset({"m"})), B, Source("m", "owner-m", "n", content_hash=_h("7")),
+               Source("n", "owner-n", "origin-n", cites=frozenset({"b"}), content_hash=_h("8")))
     assert assess_statement("st1", sources, (judged(),)).computed_label is Label.CLAIM
 
 
@@ -165,7 +172,7 @@ def test_the_statement_wording_is_required(text):
 
 @pytest.mark.parametrize("change", [
     {"statement_text": "the port reopened on 27 November"},
-    {"sources": (A, replace(B, content_hash=H2))},
+    {"sources": (A, replace(B, content_hash="e" * 64))},
 ])
 def test_edited_wording_or_source_content_drops_a_confirmation(audit, change):
     confirm(audit)
@@ -192,7 +199,7 @@ def test_a_pair_without_primary_or_correction_policy_cannot_be_confirmed(audit):
 
 def test_a_correction_policy_outside_the_independent_pair_does_not_qualify_it():
     sources = (replace(A, published_correction_policy=False), B,
-               Source("c", published_correction_policy=True, content_hash=H))
+               Source("c", published_correction_policy=True, content_hash=_h("9")))
     assert assess_statement("st1", sources, (judged(),)).confirmable_by is None
 
 
@@ -208,7 +215,7 @@ def test_the_system_never_computes_confirmed(audit):
     ((replace(A, published_correction_policy=1),), ()), ((replace(A, owner_id=""),), ()),
     ((A, B), [judged()]), ((A, B), (judged(b="zz"),)), ((A, B), (judged(b="a"),)),
     ((A, B), (judged(independent=1),)), ((A, B), (judged(who=""),)), ((A, B), (judged(why=" "),)),
-    (tuple(Source(f"s{i}", content_hash=H) for i in range(v.MAX_SOURCES + 1)), ()),
+    (tuple(Source(f"s{i}", content_hash=_h(f"s{i}")) for i in range(v.MAX_SOURCES + 1)), ()),
 ])
 def test_malformed_evidence_is_refused(sources, judgments):
     refused("EVIDENCE_INVALID", lambda: assess_statement("st1", sources, judgments))
@@ -378,3 +385,14 @@ def test_a_history_event_with_the_wrong_revision_number_is_refused(audit):
 def test_an_unanchored_tail_is_not_read(audit):
     audit.chain.append({"event_id": "appended-without-an-anchor"})
     refused("AUDIT_UNANCHORED", lambda: statement_label(**where(audit)))
+
+
+def test_identical_content_is_a_copy_even_when_judged_independent():
+    result = assess_statement("st1", (A, replace(B, content_hash=A.content_hash)), (judged(),))
+    assert (result.computed_label, result.confirmable_by) == (Label.CLAIM, None)
+
+
+def test_copying_a_source_with_the_others_content_makes_a_pair_dependent():
+    middle = Source("m", "owner-m", "origin-m", content_hash=B.content_hash)
+    a = replace(A, cites=frozenset({"m"}))
+    assert assess_statement("st1", (a, middle, B), (judged(),)).computed_label is Label.CLAIM
