@@ -5,6 +5,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..jsonl_journal import append_line, reader_lock, writer_lock
+
 ROLES = {"context", "scenario_input", "calibration", "validation", "sealed_holdout"}
 STABLE_FIELDS = (
     "sha256", "source_url", "publisher", "author", "published_at", "licence",
@@ -39,12 +41,13 @@ def _read_rows(path):
 
 def list_sources(path):
     """Return validated source metadata in append order."""
-    return _read_rows(path)
+    with reader_lock(path):
+        return _read_rows(path)
 
 def get_source(path, source_id):
     """Return one source record, or None when it is not registered."""
     wanted = str(source_id)
-    return next((row for row in _read_rows(path) if row["source_id"] == wanted), None)
+    return next((row for row in list_sources(path) if row["source_id"] == wanted), None)
 
 def register_source(path, *, source_id, content, source_url="", publisher="", author="",
                     acquired_at=None, published_at=None, licence="", geography="", population="",
@@ -69,13 +72,12 @@ def register_source(path, *, source_id, content, source_url="", publisher="", au
         "reviewer": reviewer,
     }
     p = Path(path)
-    rows = _read_rows(p)
-    existing = next((item for item in rows if item.get("source_id") == str(source_id)), None)
-    if existing is not None:
-        if all(existing.get(key) == row.get(key) for key in STABLE_FIELDS):
-            return existing
-        raise ValueError(f"Conflicting source_id already registered: {source_id}")
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(row, sort_keys=True) + "\n")
+    with writer_lock(p):
+        rows = _read_rows(p)
+        existing = next((item for item in rows if item.get("source_id") == str(source_id)), None)
+        if existing is not None:
+            if all(existing.get(key) == row.get(key) for key in STABLE_FIELDS):
+                return existing
+            raise ValueError(f"Conflicting source_id already registered: {source_id}")
+        append_line(p, json.dumps(row, sort_keys=True))
     return row
