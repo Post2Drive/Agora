@@ -81,6 +81,7 @@ An admission records that one simulation may start. Nothing here starts or retri
 - A simulator that raises, or returns something else or a record over 16 MiB, gives a recorded `failed` outcome. Only the kind of failure and the exception's class name are kept, never its message. An interrupt or exit is not caught: the run stays started with no outcome.
 - Both events carry `simulator_id_hash`, a hash of the name the caller gave.
 - A start event under that ID is what separates a digest the runner computed from one a caller reported.
+- The [proposal state reader](#reading-where-a-proposal-stands) does not read the start event: a run that started and has no outcome shows as `admitted`, although it cannot be run again, and runner and reported outcomes look the same.
 
 What the runner does not show: the simulator is caller-supplied Python in the same process, with no sandbox, time limit or network restriction. The ID is a name, not a fingerprint of its code. Nothing shows that it only simulates, that the same inputs give the same output, or that it did nothing else. No simulator ships with it, and it does not call the engine in `agora/sim`. Nothing prevents other code from acting without the runner.
 
@@ -105,6 +106,12 @@ Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`), `admit_app
 
 Limits: the proposal digest and the approver are read from the same local chain the admission writes to, so someone who can rewrite that chain can still forge both; the statement adds a second root of trust (the issuer's key), not protection against a signer whose key is stolen. No issuer service exists; tests sign with a public test key. Nothing yet requires the statement at decision time, only at admission.
 
+## Reading where a proposal stands
+
+`action_proposal_state` (one proposal) and `list_action_proposals` (every proposal in the chain, optionally one state) read the anchored chain once and report: `proposed`, `rejected`, `approved`, `expired`, `withdrawn`, `admitted`, `simulation_succeeded`, `simulation_failed`, or `inconsistent` with a reason (for example two decisions, a self-decision, an outcome without an admission, or an event whose ID or operation is wrong). One inconsistent digest does not hide the others. Reading changes nothing. One proposal is read at its own classification and must name the proposer the chain recorded; the list needs read authority at the highest classification.
+
+Limits: the state comes from the chain only, so `approved` does not mean the proposal would still pass `verify_approved_action` (objects and sources are not re-read, and a signed statement is not checked). The list covers the whole chain, not one project. Expiry uses the process clock and the default 24 hours unless a shorter `max_age_seconds` is passed, so a caller using a shorter limit at admission must pass the same limit here. This is a view over the chain, not a separate stored ledger.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, an isolated runner with registered simulators identified by their code, and anything that enforces that only a simulation follows an admission.
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, an isolated runner with registered simulators identified by their code, and anything that enforces that only a simulation follows an admission.

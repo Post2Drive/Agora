@@ -8,7 +8,8 @@ import pytest
 
 from agora.audit_anchor import AnchorStore
 from agora.ontology import (
-    RUN_START_WINDOW_SECONDS, OntologyError, approvals, run_admitted_simulation, runner,
+    RUN_START_WINDOW_SECONDS, OntologyError, action_proposal_state, approvals,
+    run_admitted_simulation, runner,
 )
 
 from test_ontology_action_admission import RUNNER, _approved
@@ -366,3 +367,22 @@ def test_a_run_that_cannot_start_is_refused_before_the_objects_are_read(
     monkeypatch.setattr(runner, "recheck_action_proposal", unread)
     with pytest.raises(OntologyError, match=message):
         _run(world, proposal, Sim())
+
+
+def _state(w, proposal):
+    return action_proposal_state(w.store, proposal.document, proposal.digest, policy=_allow,
+                                 audit=w.audit)["state"]
+
+
+def test_the_state_reader_on_a_runner_outcome(world):
+    proposal = _admitted(world)
+    _run(world, proposal, Sim())
+    assert _state(world, proposal) == "simulation_succeeded"
+
+
+def test_the_state_reader_does_not_see_a_start_without_an_outcome(world):
+    """Documented limit: it reads as admitted, though no second run is possible."""
+    proposal = _admitted(world)
+    with pytest.raises(KeyboardInterrupt):
+        _run(world, proposal, Sim(error=KeyboardInterrupt()))
+    assert _state(world, proposal) == "admitted"

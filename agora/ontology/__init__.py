@@ -9,6 +9,7 @@ from .approvals import (
 from .binding import DataBinding, IdentityBinding, load_binding, materialize_instances, validate_binding
 from .loader import load_domain_pack
 from .outcomes import record_simulation_outcome
+from .states import action_proposal_state, list_action_proposals
 from .registry import (
     SENSITIVITY_LEVELS,
     ActionType,
@@ -28,6 +29,8 @@ from .store import OntologyObjectStore
 __all__ = [
     "APPROVAL_LIFETIME_SECONDS",
     "RUN_START_WINDOW_SECONDS",
+    "action_proposal_state",
+    "list_action_proposals",
     "SENSITIVITY_LEVELS",
     "ActionProposal",
     "ActionType",
