@@ -118,6 +118,17 @@ Limits: evaluation shows only that the stored values satisfied the expression wh
 
 Limits: effects are names, not programs, so nothing is applied to any data and the result shows only that the rebuild passed at the time of the run, not what an effect would have done. The run is not tied to the admission beyond the same identity and the chain's one-outcome rule, and `record_simulation_outcome` with a caller-supplied digest is refused under the protected defaults (`protection.RUNNER_ONLY_OUTCOMES`), which stops accidental use, not code in the same process that calls the private recorder. Verification shows the document matches what the chain recorded; the chain is a local file with the limits above.
 
+## Second approver for sensitive proposals
+
+Under the protected defaults (`protection.TWO_PERSON_SENSITIVE`), a proposal classified `sensitive` needs two approvers who are three different people with the proposer. After the first approval, `co_approve_action_proposal` records the second as `ontology_action_co_approved` under the fixed event ID `ontology-action-coapproval-<digest>`, with the same decision operation and a reason hash. It needs a live first approval (not withdrawn, used, expired or a rejection), is once per proposal, and does not extend the first approval's lifetime.
+
+- `verify_approved_action` and so `admit_approved_action` refuse a sensitive proposal without exactly one well-formed second approval from someone other than the proposer and the first approver, and name `co_approved_by` in their result.
+- Neither approver can admit. With signed statements required, admission takes one statement per approver in order (first, second); each is checked against the approver this chain recorded. The admission event's `approval_statement_hash` is the statement's hash for one approver, or the hash of both statement hashes joined by a newline for two.
+- A rejection by the first decider still ends the proposal; there is no second rejection. Either approver (or any other decider) can withdraw.
+- `action_proposal_state` shows `co_approved_by`, and reports a second approval that is malformed, duplicated or has no approval as `inconsistent`.
+
+Limits: the requirement is set by the proposal's classification and a protection flag, not by the action type, and it is two people, not a configurable quorum. The state view does not know the requirement, so `approved` there does not mean admissible. Two identities are only as distinct as the policy that issues them.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), approval by more than one person, effects that are more than names (a real simulation).
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), a configurable approver quorum, effects that are more than names (a real simulation).
