@@ -237,11 +237,11 @@ def _forged_outcome(w, proposal, result, **changes):
     w.audit.append(event)
 
 
-def test_a_forged_outcome_that_is_otherwise_right_verifies_only_when_well_formed(world):
+def test_a_forged_outcome_from_the_admitter_after_a_real_admission_verifies(world):
     proposal = _admitted(world)
     result = simulation._result_document(proposal.document, proposal.digest)
     _forged_outcome(world, proposal, result)
-    assert _verify(world, result)["recorded_by"] == "runner-1"  # shape alone is what the chain can show
+    assert _verify(world, result)["recorded_by"] == "runner-1"  # the chain cannot show who wrote an event
 
 
 @pytest.mark.parametrize("changes", [{"operation": "ontology_action_decide"}, {"decision": "deny"},
@@ -290,3 +290,127 @@ def test_the_shipped_default_is_runner_only():
     values = {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign)
               for t in n.targets if isinstance(t, ast.Name) and isinstance(n.value, ast.Constant)}
     assert values["RUNNER_ONLY_OUTCOMES"] is True and values["SIGNED_APPROVAL_REQUIRED"] is True
+
+
+# --- the history behind a recorded outcome ----------------------------------------------------------
+
+def _forged_chain(w, steps):
+    """A proposal that was only proposed, plus hand-written chain events for the later steps."""
+    proposal = _propose(w)
+    result = simulation._result_document(proposal.document, proposal.digest)
+    action = proposal.document["action_type"]
+    resources = [proposal.document["pack_fingerprint"], action["action_type_id"], action["version"],
+                 proposal.digest]
+    suffix = proposal.digest.split(":")[1]
+    shapes = {
+        "approve": ("ontology-action-decision-", "ontology_action_approved", "ontology_action_decide", "approver-1"),
+        "reject": ("ontology-action-decision-", "ontology_action_rejected", "ontology_action_decide", "approver-1"),
+        "co": ("ontology-action-coapproval-", "ontology_action_co_approved", "ontology_action_decide", "approver-2"),
+        "admit": ("ontology-action-final-", "ontology_action_admitted", "ontology_action_admit", "runner-1"),
+        "withdraw": ("ontology-action-final-", "ontology_action_withdrawn", "ontology_action_decide", "approver-1"),
+        "outcome": ("ontology-action-outcome-", "ontology_action_simulation_succeeded", "ontology_action_outcome",
+                    "runner-1"),
+    }
+    for name, changes in steps:
+        prefix, kind, operation, who = shapes[name]
+        event = {"event_id": prefix + suffix, "event_type": kind, "operation": operation, "decision": "allow",
+                 "subject_id": who, "policy_version": "v", "resource_ids": resources, "reason": "policy_allow"}
+        if name == "outcome":
+            event["result_hash"] = proposal_digest(result)
+        event.update(changes)
+        w.audit.append(event)
+    return result
+
+
+def _good(**changes):
+    return [(name, changes.get(name, {})) for name in ("approve", "admit", "outcome")]
+
+
+def test_a_complete_hand_written_history_verifies(world):
+    # the control for the refusals below: the chain is local, so a whole forged history is accepted
+    assert _verify(world, _forged_chain(world, _good()))["recorded_by"] == "runner-1"
+
+
+def test_a_history_with_a_second_approval_verifies(world):
+    result = _forged_chain(world, [("approve", {}), ("co", {}), ("admit", {}), ("outcome", {})])
+    assert _verify(world, result)["recorded_by"] == "runner-1"
+
+
+@pytest.mark.parametrize("steps, why", [
+    ([("outcome", {})], "not exactly one decision"),
+    ([("approve", {}), ("outcome", {})], "not exactly one admission"),
+    ([("admit", {}), ("outcome", {})], "not exactly one decision"),
+    (_good() + [("approve", {"event_id": "second-decision"})], "not exactly one decision"),
+    (_good() + [("withdraw", {"event_id": "second-ending"})], "not exactly one admission"),
+    ([("reject", {}), ("admit", {}), ("outcome", {})], "no approval by someone other"),
+    (_good(approve={"subject_id": "ontology-test-operator"}), "no approval by someone other"),
+    ([("approve", {}), ("withdraw", {}), ("outcome", {})], "the admission is not well formed"),
+    ([("approve", {}), ("withdraw", {"operation": "ontology_action_admit", "subject_id": "runner-1"}),
+      ("outcome", {})], "no admission by someone other"),
+    (_good(admit={"subject_id": "approver-1"}, outcome={"subject_id": "approver-1"}),
+     "no admission by someone other"),
+    (_good(outcome={"subject_id": "mallory"}), "not the admitter's"),
+    ([("approve", {}), ("co", {"subject_id": "approver-1"}), ("admit", {}), ("outcome", {})],
+     "not from a third person"),
+    ([("approve", {}), ("co", {"subject_id": "ontology-test-operator"}), ("admit", {}), ("outcome", {})],
+     "not from a third person"),
+    ([("approve", {}), ("co", {}), ("admit", {"subject_id": "approver-2"}),
+      ("outcome", {"subject_id": "approver-2"})], "no admission by someone other"),
+    ([("approve", {}), ("co", {}), ("co", {"event_id": "another-co"}), ("admit", {}), ("outcome", {})],
+     "not exactly one second approval"),
+    ([("outcome", {}), ("approve", {}), ("admit", {})], "out of order"),
+    ([("approve", {}), ("outcome", {}), ("admit", {})], "out of order"),
+    ([("admit", {}), ("approve", {}), ("outcome", {})], "out of order"),
+    ([("approve", {}), ("admit", {}), ("co", {}), ("outcome", {})], "out of order"),
+    ([("co", {}), ("approve", {}), ("admit", {}), ("outcome", {})], "out of order"),
+])
+def test_an_outcome_without_the_right_history_does_not_verify(world, steps, why):
+    result = _forged_chain(world, steps)
+    with pytest.raises(OntologyError, match=why):
+        _verify(world, result)
+
+
+@pytest.mark.parametrize("name, label", [("approve", "decision"), ("admit", "admission")])
+@pytest.mark.parametrize("changes", [{"event_id": "wrong-id"}, {"operation": "ontology_read"},
+                                     {"decision": "deny"}, {"subject_id": " "}, {"subject_id": "unknown"}])
+def test_a_malformed_step_does_not_verify(world, name, label, changes):
+    result = _forged_chain(world, _good(**{name: changes}))
+    with pytest.raises(OntologyError, match=f"the {label} is not well formed"):
+        _verify(world, result)
+
+
+@pytest.mark.parametrize("name, why", [("approve", "the decision is not well formed"),
+                                       ("admit", "the admission is not well formed"),
+                                       ("outcome", "not the admitter's")])
+def test_a_step_naming_another_action_does_not_verify(world, name, why):
+    digest = _propose(world).digest
+    result = _forged_chain(world, _good(**{name: {"resource_ids": ["other-pack", "other", "1", digest]}}))
+    with pytest.raises(OntologyError, match=why):
+        _verify(world, result)
+
+
+def test_an_outcome_for_a_never_proposed_digest_does_not_verify(world):
+    digest = "sha256:" + "5" * 64
+    result = {"format": simulation.RESULT_FORMAT, "proposal_digest": digest}
+    world.audit.append({
+        "event_id": "ontology-action-outcome-" + "5" * 64,
+        "event_type": "ontology_action_simulation_succeeded", "operation": "ontology_action_outcome",
+        "decision": "allow", "subject_id": "mallory", "policy_version": "v",
+        "resource_ids": ["p", "a", "1", digest], "result_hash": proposal_digest(result),
+        "reason": "policy_allow"})
+    with pytest.raises(OntologyError, match="no recorded proposal"):
+        _verify(world, result)
+
+
+def test_a_repeated_proposal_still_verifies_but_a_disagreeing_one_does_not(world):
+    proposal = _admitted(world)
+    out = _run(world, proposal)
+    assert _propose(world).digest == proposal.digest
+    assert _verify(world, out["result"])["status"] == "succeeded"
+    (original, *_) = _events(world, "ontology_action_proposed")
+    world.audit.append({
+        **{k: original[k] for k in ("event_type", "operation", "decision", "policy_version",
+                                    "resource_ids", "reason")},
+        "event_id": "ontology-other-proposer", "subject_id": "someone-else"})
+    with pytest.raises(OntologyError, match="proposal records disagree"):
+        _verify(world, out["result"])
