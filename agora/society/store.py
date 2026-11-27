@@ -258,10 +258,50 @@ class SocietyStore:
             "SELECT last_read_message_id FROM society_read_cursors WHERE agent_id=?", (agent,)).fetchone()
         floor = int(cursor[0]) if (cursor and unread_only) else 0
         return [dict(r) for r in self._q(
-            "SELECT m.message_id, m.conversation_id, c.kind, m.sender_id, m.round, m.text "
+            "SELECT m.message_id, m.conversation_id, c.kind, c.topic, m.sender_id, m.round, m.text "
             "FROM society_messages m JOIN society_conversations c USING(conversation_id) "
             "JOIN society_memberships ms ON ms.conversation_id=m.conversation_id AND ms.agent_id=? "
             "WHERE m.sender_id<>? AND m.message_id>? ORDER BY m.message_id", (agent, agent, floor))]
+
+    def conversation(self, conversation_id: int) -> dict:
+        row = self._q("SELECT conversation_id, kind, topic, created_round FROM society_conversations "
+                      "WHERE conversation_id=?", (conversation_id,)).fetchone()
+        if row is None:
+            raise SocietyError("unknown conversation")
+        return dict(row)
+
+    def find_open(self, topic: str) -> int | None:
+        """The open discussion on this topic (matched ignoring case and surrounding space), if any."""
+        row = self._q("SELECT conversation_id FROM society_conversations WHERE kind='open' "
+                      "AND lower(trim(topic))=? ORDER BY conversation_id LIMIT 1",
+                      (str(topic).strip().lower(),)).fetchone()
+        return int(row[0]) if row else None
+
+    def conversations_of(self, agent: int, kind: str) -> list[dict]:
+        """Conversations of one kind the agent belongs to, with member counts, oldest first."""
+        return [dict(r) for r in self._q(
+            "SELECT c.conversation_id, c.topic, (SELECT COUNT(*) FROM society_memberships x "
+            "WHERE x.conversation_id=c.conversation_id) AS members, ms.role "
+            "FROM society_conversations c JOIN society_memberships ms "
+            "ON ms.conversation_id=c.conversation_id AND ms.agent_id=? WHERE c.kind=? "
+            "ORDER BY c.conversation_id", (_int(agent, "agent"), kind))]
+
+    def recent_open(self, limit: int = 3) -> list[dict]:
+        """Open discussions, most recently active first (ties by newest)."""
+        return [dict(r) for r in self._q(
+            "SELECT c.conversation_id, c.topic, COALESCE(MAX(m.message_id), 0) AS last_message "
+            "FROM society_conversations c LEFT JOIN society_messages m "
+            "ON m.conversation_id=c.conversation_id WHERE c.kind='open' "
+            "GROUP BY c.conversation_id ORDER BY last_message DESC, c.conversation_id DESC LIMIT ?",
+            (_int(limit, "limit", minimum=1),))]
+
+    def count(self, kind: str, *, owner: int | None = None) -> int:
+        if owner is None:
+            return int(self._q("SELECT COUNT(*) FROM society_conversations WHERE kind=?", (kind,)).fetchone()[0])
+        return int(self._q(
+            "SELECT COUNT(*) FROM society_conversations c JOIN society_memberships ms "
+            "ON ms.conversation_id=c.conversation_id AND ms.agent_id=? AND ms.role='owner' "
+            "WHERE c.kind=?", (owner, kind)).fetchone()[0])
 
     def mark_read(self, agent: int, up_to_message_id: int) -> None:
         agent = _int(agent, "agent")
