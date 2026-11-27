@@ -16,6 +16,8 @@ LEGACY_APPROVE_ENABLED = False
 PRINCIPAL_BOUND_REQUIRED = True
 # Admitting an approved ontology action requires a signed approval statement verified by a receipt gate.
 SIGNED_APPROVAL_REQUIRED = True
+# An ontology action outcome is recorded by run_admitted_simulation, not by a caller-supplied digest.
+RUNNER_ONLY_OUTCOMES = True
 # Governed enforce_policy() rejects any policy callable that is not a
 # BoundPolicy produced from an adapter-issued Principal. Test-only relaxation
 # via tests/conftest.py; no env var or CLI switch.

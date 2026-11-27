@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from .. import protection as _protection
 from ..audit_anchor import AnchorWriteError
 from ..audit_chain import AuditReplayError
 from ..policy_enforcement import PolicyCallable
@@ -51,6 +52,22 @@ def _admission(writer: Any, fields: dict[str, Any], digest: str,
 
 
 def record_simulation_outcome(
+    store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
+    status: str, result_digest: str, *, policy: PolicyCallable | None, audit: Any | None,
+) -> dict[str, str]:
+    """Record a caller-supplied outcome. Refused under the protected defaults: use ``run_admitted_simulation``.
+
+    With ``protection.RUNNER_ONLY_OUTCOMES`` set (the default) the digest must come from the runner, which
+    builds the result document itself, so this entry point raises. When relaxed it behaves as
+    ``_record_outcome`` below. Not a boundary against code in this process, which can call the private
+    function.
+    """
+    if _protection.RUNNER_ONLY_OUTCOMES:
+        raise OntologyError("outcomes are recorded by run_admitted_simulation, not from a supplied digest")
+    return _record_outcome(store, document, expected_digest, status, result_digest, policy=policy, audit=audit)
+
+
+def _record_outcome(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     status: str, result_digest: str, *, policy: PolicyCallable | None, audit: Any | None,
 ) -> dict[str, str]:
