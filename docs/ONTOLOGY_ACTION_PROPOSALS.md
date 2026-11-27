@@ -90,6 +90,12 @@ Under the protected defaults (`protection.SIGNED_APPROVAL_REQUIRED`), `admit_app
 
 Limits: the proposal digest and the approver are read from the same local chain the admission writes to, so someone who can rewrite that chain can still forge both; the statement adds a second root of trust (the issuer's key), not protection against a signer whose key is stolen. No issuer service exists; tests sign with a public test key. Nothing yet requires the statement at decision time, only at admission.
 
+## Reading where a proposal stands
+
+`action_proposal_state` (one proposal) and `list_action_proposals` (every proposal in the chain, optionally one state) read the anchored chain once and report: `proposed`, `rejected`, `approved`, `expired`, `withdrawn`, `admitted`, `simulation_succeeded`, `simulation_failed`, or `inconsistent` with a reason (for example two decisions, a self-decision, an outcome without an admission, or an event whose ID or operation is wrong). One inconsistent digest does not hide the others. Reading changes nothing. One proposal is read at its own classification and must name the proposer the chain recorded; the list needs read authority at the highest classification.
+
+Limits: the state comes from the chain only, so `approved` does not mean the proposal would still pass `verify_approved_action` (objects and sources are not re-read, and a signed statement is not checked). The list covers the whole chain, not one project. Expiry uses the process clock and the default 24 hours unless a shorter `max_age_seconds` is passed, so a caller using a shorter limit at admission must pass the same limit here. This is a view over the chain, not a separate stored ledger.
+
 ## Not yet built (next O2 slices)
 
-A stored copy of proposals with a queryable list of their states (state is only what the chain events show), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
+A stored copy of proposals (states are now readable from the chain, but the proposal documents themselves are not kept), precondition evaluation, approval by more than one person, a validated read of a recorded outcome, and a runner that performs the simulation itself and produces the result digest (until then an outcome is a report, and nothing enforces that only a simulation followed an admission).
