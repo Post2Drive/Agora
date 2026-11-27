@@ -39,6 +39,10 @@ def _bad(digest: str, reason: str, /, **known: Any) -> dict[str, Any]:
     return {"digest": digest, "state": "inconsistent", "reason": reason, **known}
 
 
+def _authorship(event: dict[str, Any]) -> tuple[Any, Any, Any]:
+    return event.get("subject_id"), event.get("policy_version"), event.get("resource_ids")
+
+
 def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: timedelta) -> dict[str, Any]:
     by_type: dict[str, list[dict[str, Any]]] = {}
     for event in events:
@@ -46,9 +50,18 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     proposed = by_type.get(_a._PROPOSED_TYPE, [])
     allowed = [e for e in proposed if e.get("decision") == "allow" and isinstance(e.get("subject_id"), str)
                and e["subject_id"].strip()]
-    if len(allowed) != 1:
-        return _bad(digest, "the proposal is not recorded exactly once")
-    proposer = allowed[0]["subject_id"]
+    if not allowed:
+        return _bad(digest, "the proposal is not recorded")
+    # The same content may be proposed again (same digest), so repeats are normal. They must agree.
+    first = allowed[0]
+    if any(_authorship(e) != _authorship(first) for e in allowed[1:]):
+        return _bad(digest, "the proposal records disagree about who proposed what")
+    proposer = first["subject_id"]
+    recorded = first.get("resource_ids")  # pack, action, version, then the bound objects, then the digest
+    # Every later step names the pack, action, version and digest only.
+    resources = [*recorded[:3], digest]
+    # ``events`` is in chain order. Compare positions: lookups by type say nothing about order.
+    place = {id(e): n for n, e in enumerate(events)}
     entry: dict[str, Any] = {"digest": digest, "proposed_by": proposer}
     decisions = [e for t in _a._OUTCOMES.values() for e in by_type.get(t, [])]
     endings = [e for t in _a._ENDINGS for e in by_type.get(t, [])]
@@ -64,7 +77,8 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     decider = decision.get("subject_id")
     if (decision.get("event_id") != _a._DECISION_PREFIX + suffix or decision.get("operation") != _a._DECIDE
             or decision.get("decision") != "allow" or not isinstance(decider, str) or not decider.strip()
-            or decider == proposer):
+            or decider == proposer or decision.get("resource_ids") != resources
+            or place[id(decision)] < place[id(first)]):
         return _bad(digest, "the decision is not well formed", proposed_by=proposer)
     entry["decided_by"] = decider
     if decision["event_type"] == _a._OUTCOMES["reject"]:
@@ -85,7 +99,8 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     ending = endings[0]
     actor = ending.get("subject_id")
     if (ending.get("event_id") != _a._final_id(digest) or ending.get("decision") != "allow"
-            or not isinstance(actor, str) or not actor.strip()):
+            or not isinstance(actor, str) or not actor.strip()
+            or ending.get("resource_ids") != resources or place[id(ending)] < place[id(decision)]):
         return _bad(digest, "the ending is not well formed", **entry)
     if ending["event_type"] == "ontology_action_withdrawn":
         if results:
@@ -99,10 +114,13 @@ def _derive(digest: str, events: list[dict[str, Any]], now: datetime, lifetime: 
     if len(results) != 1:
         return _bad(digest, "more than one outcome", **entry)
     result = results[0]
+    result_hash = result.get("result_hash")
     if (result.get("event_id") != _o._OUTCOME_PREFIX + suffix or result.get("subject_id") != actor
-            or result.get("decision") != "allow"):
+            or result.get("decision") != "allow" or result.get("operation") != _o._OUTCOME
+            or result.get("resource_ids") != resources or place[id(result)] < place[id(ending)]
+            or not isinstance(result_hash, str) or not _a._DIGEST.fullmatch(result_hash)):
         return _bad(digest, "the outcome is not well formed", **entry)
-    return {**entry, "state": _STATUS_STATES[result["event_type"]], "result_hash": result.get("result_hash")}
+    return {**entry, "state": _STATUS_STATES[result["event_type"]], "result_hash": result_hash}
 
 
 def _read(writer: Any, digest: str | None) -> dict[str, list[dict[str, Any]]]:

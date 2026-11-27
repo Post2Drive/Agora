@@ -42,6 +42,19 @@ def test_each_step_moves_the_state_and_names_who_did_it(world):
     assert done["state"] == "simulation_succeeded" and done["result_hash"] == RESULT
 
 
+def test_proposing_the_same_content_again_does_not_change_the_state(world):
+    proposal = _propose(world)
+    assert _propose(world).digest == proposal.digest
+    assert _state(world, proposal)["state"] == "proposed"
+    _decide(world, proposal)
+    _admit(world, proposal)
+    assert _propose(world).digest == proposal.digest  # also after the admission
+    assert _state(world, proposal)["state"] == "admitted"
+    _outcome(world, proposal)
+    assert _state(world, proposal)["state"] == "simulation_succeeded"
+    assert [(e["digest"], e["state"]) for e in _list(world)] == [(proposal.digest, "simulation_succeeded")]
+
+
 def test_a_failed_outcome_is_its_own_state(world):
     proposal = _approved(world)
     _admit(world, proposal)
@@ -151,7 +164,8 @@ def test_a_chain_that_is_not_anchored_is_refused(world):
 
 
 def _ev(event_type, subject="x", **extra):
-    return {"event_type": event_type, "subject_id": subject, "decision": "allow", **extra}
+    return {"event_type": event_type, "subject_id": subject, "decision": "allow",
+            "resource_ids": ["pack", "action", "1", DIGEST], **extra}
 
 
 DIGEST = "sha256:" + "c" * 64
@@ -164,8 +178,9 @@ def _derive(events):
     return states._derive(DIGEST, events, datetime(2026, 11, 27, 1, tzinfo=timezone.utc), timedelta(hours=24))
 
 
-def _proposed():
-    return _ev("ontology_action_proposed", "p")
+def _proposed(subject="p", **extra):
+    bound = ["pack", "action", "1", "an-object", DIGEST]  # a proposal also names the objects it binds
+    return _ev("ontology_action_proposed", subject, **{"policy_version": "v1", "resource_ids": bound, **extra})
 
 
 def _decided(kind="approved", subject="a", **extra):
@@ -179,14 +194,26 @@ def _ending(kind="admitted", subject="r", **extra):
 
 
 def _result(subject="r", kind="succeeded", **extra):
-    return {**_ev("ontology_action_simulation_" + kind, subject, event_id="ontology-action-outcome-" + HEX), **extra}
+    return {**_ev("ontology_action_simulation_" + kind, subject, event_id="ontology-action-outcome-" + HEX,
+                  operation="ontology_action_outcome", result_hash=RESULT), **extra}
 
 
 @pytest.mark.parametrize("events,fragment", [
-    ([], "exactly once"),
-    ([_proposed(), _proposed()], "exactly once"),
-    ([{**_proposed(), "decision": "deny"}], "exactly once"),
-    ([{**_proposed(), "subject_id": " "}], "exactly once"),
+    ([], "not recorded"),
+    ([_proposed(), _proposed("q")], "records disagree"),
+    ([_proposed(), _proposed(policy_version="v2")], "records disagree"),
+    ([_proposed(), _proposed(resource_ids=["other", "action", "1", DIGEST])], "records disagree"),
+    ([_decided(), _proposed()], "decision is not well formed"),
+    ([_proposed(), _decided(resource_ids=["x", DIGEST])], "decision is not well formed"),
+    ([_proposed(), _ending(), _decided()], "ending is not well formed"),
+    ([_proposed(), _decided(), _ending(resource_ids=["x", DIGEST])], "ending is not well formed"),
+    ([_proposed(), _decided(), _result(), _ending()], "outcome is not well formed"),
+    ([_proposed(), _decided(), _ending(), _result(operation="other")], "outcome is not well formed"),
+    ([_proposed(), _decided(), _ending(), _result(resource_ids=["x", DIGEST])], "outcome is not well formed"),
+    ([_proposed(), _decided(), _ending(), _result(result_hash=None)], "outcome is not well formed"),
+    ([_proposed(), _decided(), _ending(), _result(result_hash="nonsense")], "outcome is not well formed"),
+    ([{**_proposed(), "decision": "deny"}], "not recorded"),
+    ([{**_proposed(), "subject_id": " "}], "not recorded"),
     ([_proposed(), _decided(), _decided()], "more than one decision"),
     ([_proposed(), _ending()], "no decision"),
     ([_proposed(), _result()], "no decision"),
