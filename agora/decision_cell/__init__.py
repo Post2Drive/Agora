@@ -15,6 +15,9 @@ from .response_window import (
     open_response_window, respond_to_item, sweep_response_windows, unreviewed_items,
 )
 
+from .statements import (
+    ItemStatements, StatementSetError, load_item_statements, register_item_statements,
+)
 from .verification import (
     Assessment, Basis, IndependenceJudgment, Label, PrimaryKind, Source, StatementLabel,
     VerificationError, assess_statement, confirm_statement, demote_statement, statement_label,
@@ -30,5 +33,6 @@ __all__ = [
     "MAX_RECHECK", "UNREVIEWED_EVENT_PENDING", "unreviewed_items",
     "Assessment", "Basis", "IndependenceJudgment", "Label", "PrimaryKind", "Source", "StatementLabel",
     "VerificationError", "assess_statement", "confirm_statement", "demote_statement", "statement_label",
+    "ItemStatements", "StatementSetError", "load_item_statements", "register_item_statements",
     "ItemEvidence", "LabelledGateResult", "StatementEvidence", "item_evidence", "request_labelled_option",
 ]

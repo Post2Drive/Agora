@@ -37,7 +37,10 @@ from typing import Any
 from agora.audit_anchor import AnchoredAuditChain, AnchorWriteError, verify_anchored
 from agora.audit_chain import AuditReplayError
 from agora.decision_cell.evidence import StatementEvidence, require_unchanged, request_labelled_option
-from agora.decision_cell.options import DecisionCellError, GateResult, Option, OptionRequest, StudyState
+from agora.decision_cell.options import (
+    EVIDENCE_DECIDING_OPTIONS, DecisionCellError, GateResult, Option, OptionRequest, StudyState,
+    statement_set_event_id,
+)
 from agora.decision_cell.project_store import (
     _canonical, _hash, _identifier, _writer, load_project_record, request_project_option,
 )
@@ -450,8 +453,11 @@ def respond_to_item(
         reason = _AFTER_RECHECK if late else _BEFORE_RECHECK
 
     def alert_state_unchanged(db: sqlite3.Connection) -> None:
-        if view is not None and request.option is not Option.HOLD:
-            require_unchanged(db, view)
+        if request.option in EVIDENCE_DECIDING_OPTIONS:
+            if view is not None:
+                require_unchanged(db, view)
+            elif _exists(db, statement_set_event_id(tenant_id, project_id, study.study_id, request.event_id, 1)):
+                raise ResponseWindowError("WINDOW_CHANGED", "the item gained a statement list; submit again")
         if _exists(db, alert_id) is not late:
             raise ResponseWindowError("WINDOW_CHANGED", "the hold state changed; submit the choice again")
 

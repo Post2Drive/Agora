@@ -13,10 +13,12 @@
 
 A label never allows or forbids an option by itself: the spec lets a human act on unconfirmed items.
 
-Limits. Which statements an item has, their wording, sources and judgments are trusted service-layer
-inputs; a statement the service leaves out is not seen here. ``request_option`` and
-``request_project_option`` still judge a choice without any labels, so a service must call this path for the
-binding to hold. Nothing here shows a view to anyone, so a matching hash does not prove a person read it.
+The item must have a recorded statement list (``statements``), and exactly those statements, as worded,
+must be given. Once it has one, the other gate calls block every choice that decides on the evidence.
+
+Limits. Sources and judgments are trusted service-layer inputs, and so is the statement list: nothing checks
+it against any content. ``request_option`` and ``request_project_option`` still judge a choice about an item
+that was never registered. Nothing here shows a view to anyone, so a matching hash does not prove a person read it.
 The labels cover CHANGE_INPUTS evidence only as far as the service lists it. A result is not an
 authorization token.
 """
@@ -31,12 +33,13 @@ from agora.decision_cell.options import GateResult, OptionRequest, ProjectRecord
 from agora.decision_cell.project_store import (
     ProjectRecordError, _canonical, _event_id as _record_event_id, _hash, _identifier, load_project_record,
 )
+from agora.decision_cell.statements import (
+    MAX_STATEMENTS, ItemStatements, load_item_statements, require_no_newer_list, wording_hash,
+)
 from agora.decision_cell.verification import (
     IndependenceJudgment, Source, StatementLabel, VerificationError, _key, _label_event_id, statement_label,
 )
 from agora.principal import Principal
-
-MAX_STATEMENTS = 100
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class ItemEvidence:
     # (statement id, label in force), ordered by statement id.
     statements: tuple[tuple[str, StatementLabel], ...]
     evidence_hash: str
+    # The item's recorded statement list these labels were read against.
+    listed: ItemStatements
 
     @property
     def primary_source_exception_ids(self) -> tuple[str, ...]:
@@ -83,6 +88,14 @@ def item_evidence(
         raise VerificationError("EVIDENCE_INVALID", f"statements must be a tuple of 1 to {MAX_STATEMENTS}")
     if len({s.statement_id for s in statements}) != len(statements):
         raise VerificationError("EVIDENCE_INVALID", "every statement needs its own exact id")
+    listed = load_item_statements(
+        tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id, audit=audit)
+    if listed is None:
+        raise VerificationError("STATEMENTS_NOT_REGISTERED", "record the item's statement list first")
+    # A non-string wording is left for the label read below to refuse as malformed evidence.
+    if all(isinstance(s.statement_text, str) for s in statements) and dict(listed.statements) != {
+            s.statement_id: wording_hash(s.statement_text) for s in statements}:
+        raise VerificationError("STATEMENTS_MISMATCH", "give exactly the listed statements, as worded")
     labels = tuple(
         (s.statement_id, statement_label(
             tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id,
@@ -93,11 +106,12 @@ def item_evidence(
         [statement_id, s.label.value, s.basis.value if s.basis else None, s.primary_source_id,
          s.confirmed_by_subject_id, s.stale_confirmation, s.revision, s.assessment.evidence_fingerprint]
         for statement_id, s in labels]]
-    return ItemEvidence(tenant_id, project_id, study_id, item_id, labels, _hash(_canonical(body)))
+    return ItemEvidence(tenant_id, project_id, study_id, item_id, labels, _hash(_canonical(body)), listed)
 
 
 def require_unchanged(db: sqlite3.Connection, evidence: ItemEvidence) -> None:
-    """Inside an append transaction: refuse if any statement gained a promotion or demotion since the read."""
+    """Inside an append transaction: refuse if a statement was added, promoted or demoted since the read."""
+    require_no_newer_list(db, evidence.listed)
     for statement_id, label in evidence.statements:
         key = _key(evidence.tenant_id, evidence.project_id, evidence.study_id, evidence.item_id, statement_id)
         if db.execute("SELECT 1 FROM audit_events WHERE event_id=?",
