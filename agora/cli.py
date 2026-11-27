@@ -46,6 +46,11 @@ def cmd_hardware(args) -> int:
     return 0
 
 
+def _print_contact_warnings(sc) -> None:
+    for w in scenario_mod.contact_warnings(sc):
+        print(f"Warning: {w}", file=sys.stderr)
+
+
 _NATIVE_DEFAULTS = (("communication", "native"), ("contact", "relationship"), ("contact_budget", 1))
 
 
@@ -61,7 +66,7 @@ def _add_native_defaults(path: Path) -> None:
     text += "\n\n# Defaults for new projects (use `agora new --platform` for platform-only messaging)\n"
     text += "".join(f"{k}: {v}\n" for k, v in missing)
     path.write_text(text, encoding="utf-8")
-    scenario_mod.load(path)                    # the result must still be a valid scenario
+    _print_contact_warnings(scenario_mod.load(path))   # the result must still be a valid scenario
 
 
 def cmd_new(args) -> int:
@@ -89,6 +94,7 @@ def cmd_new(args) -> int:
 def cmd_check(args) -> int:
     proj = Path(args.project)
     sc = scenario_mod.load(proj / SCENARIO_FILE)
+    _print_contact_warnings(sc)
     print(f"Scenario OK: {sc.name} - {len(sc.segments)} segments, {len(sc.accounts)} accounts, "
           f"{len(sc.spaces)} groups/communities, {len(sc.events)} events, "
           f"{len(sc.conversions)} conversions")

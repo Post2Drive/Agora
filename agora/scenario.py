@@ -272,6 +272,17 @@ def load(path: str | Path) -> Scenario:
         return from_dict(yaml.safe_load(f))
 
 
+def contact_warnings(sc: Scenario) -> list[str]:
+    """Settings that are valid but would leave crowd word of mouth silent. Warnings only; nothing is changed.
+
+    Crowd people start with no relationships, so ``relationship`` and ``group_only`` allow contact only through
+    shared spaces (or groups the model-driven people create, which crowd people are not put into)."""
+    if sc.communication == "platform" or not sc.contact_budget or sc.contact == "open" or sc.spaces:
+        return []
+    return [f"contact is '{sc.contact}' but this scenario has no groups or communities, and crowd people start "
+            "with no relationships, so no crowd word of mouth will happen. Add groups, or set contact: open."]
+
+
 def validate(sc: Scenario) -> None:
     if sc.communication not in ("platform", "native", "both"):
         raise ScenarioError("communication must be platform, native or both")
