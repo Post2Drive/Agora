@@ -23,7 +23,7 @@ from typing import Any
 
 from .actions import proposal_digest, recheck_action_proposal
 from .approvals import _DIGEST, _anchored, _events, _fields
-from .outcomes import _OUTCOME_PREFIX, _STATUSES, record_simulation_outcome
+from .outcomes import _OUTCOME_PREFIX, _STATUSES, _record_outcome
 from .registry import ProposalMismatchError
 from .store import OntologyError, OntologyObjectStore
 
@@ -75,7 +75,7 @@ def run_admitted_simulation(
     except ProposalMismatchError:
         # Only a positive finding is recorded. A refusal, an outage or an unverifiable read propagates.
         status, report = "failed", _failure_document(expected_digest)
-    recorded = record_simulation_outcome(
+    recorded = _record_outcome(
         store, document, expected_digest, status, proposal_digest(report), policy=policy, audit=writer)
     return {"status": status, "result": report, "result_digest": recorded["result_digest"],
             "recorded_by": recorded["recorded_by"]}
