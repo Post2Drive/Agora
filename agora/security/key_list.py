@@ -26,7 +26,8 @@ a fresh list. List versions only go up, so a compromised active root that issues
 that store with no version for recovery, and it must be re-provisioned. The standby root can revoke the active
 root by itself: whoever holds it can take over every store that pins it.
 
-Test keys only. NOT wired into the engine. Not built: list distribution, re-provisioning, a recovery drill,
+Test keys only. Reached by the engine only through ``Simulation(signed_input=...)`` (a signed start).
+Not built: list distribution, re-provisioning, a recovery drill,
 a trusted time source (the caller passes ``clock`` and ``monotonic``). Not a boundary against code in the same
 process (which can append events or call ``admit_receipt`` with its own keys) or an owner of both the audit
 database and the anchor.

@@ -2,7 +2,7 @@
 
 Design: docs/PRODUCT_BOUNDARY_AND_INTEGRITY_DESIGN.md sections 3, 3A and 3B.
 
-This module is NOT wired into the engine and holds NO production key. It defines the receipt format and a
+This module holds NO production key; the engine reaches it only through ``Simulation(signed_input=...)``. It defines the receipt format and a
 verifier that refuses forged, tampered, expired, replayed, wrong-scope and test-keyed receipts. Production
 signing is done by a KMS-held key in a service we operate (later phase); the pure-Python Ed25519 here exists so
 the verifier has no new dependency and so test keys can sign vectors. It is not constant-time: never use
