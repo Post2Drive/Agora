@@ -29,6 +29,7 @@ _BY_TYPE = {event_type: status for status, event_type in _STATUSES.items()}
 def read_simulation_outcome(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Return the one recorded outcome of a proposal, or raise. Writes only the read decision.
 
@@ -46,7 +47,8 @@ def read_simulation_outcome(
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     # Decided before the chain is read, so a denied caller learns nothing about what happened.
     _principal(store._authorize(
-        _READ, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"]))
+        _READ, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention)))
     admitter = _admission(writer, fields, expected_digest, resource_ids)
     approver, _ = _approval(writer, fields, expected_digest)
     co_approver = None

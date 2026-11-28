@@ -77,7 +77,8 @@ def run_admitted_simulation(
         # Only a positive finding is recorded. A refusal, an outage or an unverifiable read propagates.
         status, report = "failed", _failure_document(expected_digest)
     recorded = _record_outcome(
-        store, document, expected_digest, status, proposal_digest(report), policy=policy, audit=writer)
+        store, document, expected_digest, status, proposal_digest(report), policy=policy, audit=writer,
+        purpose=purpose, retention=retention)
     return {"status": status, "result": report, "result_digest": recorded["result_digest"],
             "recorded_by": recorded["recorded_by"]}
 
