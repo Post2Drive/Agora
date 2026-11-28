@@ -45,7 +45,7 @@ Labels used below, from weakest to strongest claim:
 | Rule | Documented | Implemented | Verified | Enforced |
 |---|---|---|---|---|
 | Validated mode cannot be switched on by configuration | Yes | Yes (`agora/report/writer.py`) | Tests mention it (`tests/test_governed_pipeline_e2e.py`, `tests/test_election_harness.py` among others); exact assertions **Not checked** | Yes for report generation. The flag is a constant, so changing it needs a code change. |
-| Sealed holdout cannot be used for calibration | Yes (`docs/GOVERNANCE_HOLDOUT_PROTOCOL.md`) | In the holdout harness: `agora/validation/holdout.py` with source roles per record | `tests/test_g3_holdout_protocol.py` includes leak cases | **Partly.** No check was found in `agora/calibrate/` refusing a file registered as `sealed_holdout`; the calibrator registers its own input with role `calibration` (`agora/calibrate/project.py` line 74). A caller could point it at holdout data. |
+| Sealed holdout cannot be used for calibration | Yes (`docs/GOVERNANCE_HOLDOUT_PROTOCOL.md`) | Yes. Calibration and ordinary backtests read their data only through `require_registered_source` (`agora/governance.py` lines 128 to 146, called from `agora/calibrate/project.py` line 35), which matches the file's hash against the project's source registry and refuses if any matching record is `sealed_holdout`, or has any role other than `calibration`. The holdout harness separates records by source role (`agora/validation/holdout.py`). | `tests/test_governance.py`, `tests/test_g3_holdout_protocol.py` (leak cases and line 219) | Yes, for data whose bytes are in the project's own source registry. Limit: recognition is by file hash against that project's registry, so holdout data never registered in this project is not recognised. |
 | Data source roles recorded | Yes | Yes (`record_source`) | **Not checked** | Role vocabulary enforced on registration (`ValueError` on an unknown role). |
 | Publication cutoff | Yes | Yes (`agora/cutoff.py`) | Yes (`tests/test_cutoff.py`) | Where callers use `check`. |
 | Governed entry points need policy, anchor and principal | Yes | Yes (`agora/protection.py`) | Yes (`tests/test_protected_defaults.py`) | Yes for the listed entry points; module flags relaxed only by the test fixture. |
@@ -84,10 +84,10 @@ The platform component names used in earlier planning conversations (nine system
 
 | # | Item | Prerequisite | Verification | Approval needed |
 |---|---|---|---|---|
-| 1 | Make the calibrator refuse any source registered as `sealed_holdout` or `validation`, with a test | None | New test plus mutation check | Owner (touches validation boundary) |
+| 1 | ~~Make the calibrator refuse sealed holdout data~~ Withdrawn: already enforced (see section 3 and Corrections). | None | `tests/test_governance.py`, `tests/test_g3_holdout_protocol.py` | None |
 | 2 | Per-statement labels in reports (observed, assumption, model-generated, estimate, simulated, validated) | Decide label vocabulary | Report tests | No |
 | 3 | Persist a study lifecycle state and show it in the web UI | Decide the state list | State machine tests | No |
-| 4 | Say "any of" in the demo comment and add `requires_any` (keep `requires` working) | None | Scenario and engine tests | Owner (changes a shipped demo and the schema) |
+| 4 | Say "any of" in the demo comment and add `requires_any` (keep `requires` working). Approved 28 Nov 2026. | None | Scenario and engine tests | Owner (changes a shipped demo and the schema) |
 | 5 | Record eligibility, trigger and occurrence separately for conversions | Item 4 | Engine tests, report change | No |
 | 6 | Update ROADMAP and docs index for the native layer | None | Doc check | No |
 | 7 | Release manifest format and running-release attestation | Hosting provider decision | Test vectors | Owner |
@@ -96,3 +96,8 @@ The platform component names used in earlier planning conversations (nine system
 | 10 | Seeding phase 3 (apply ontology links to a run) | Owner answers on seeding | Engine tests | No |
 
 Unknowns in this pass are listed in the matrix. A second pass should check ingestion provenance tests, graph edge basis, calibration and sensitivity, and the knowledge-transfer module.
+
+## Corrections
+
+- 28 Nov 2026: the first version of this document said no check in `agora/calibrate/` refused a source registered as `sealed_holdout`. That was wrong. The check lives in `agora/governance.py` (`require_registered_source`) and the calibrator calls it for every data file it reads. The first version searched only `agora/calibrate/` for the word "sealed" and did not follow the call. Section 3 and plan item 1 are corrected.
+- The same pass recorded "no release-manifest format found". That stands, with one precision: the name `release_manifest` appears in `tests/test_receipt_key_list.py` and `tests/vectors/key_list_vectors.json` only as a key-list type that is rejected.
