@@ -33,6 +33,7 @@ import numpy as np
 
 from .. import scenario as scenario_mod
 from ..llm import LLMConfig, LLMError, make_backend, parse_json
+from ..llm.base import is_private_host
 from ..store import Store
 from ..settings import safe_study_llm
 from . import llm_agent, opinion, population
@@ -455,6 +456,28 @@ class Simulation:
         self.memory = WorldMemory.load(self.sc, self.world, self.store)
         return self.world
 
+    def llm_snapshot(self) -> dict:
+        """Which provider and model this process is using. Host only: never the key or a full URL."""
+        from urllib.parse import urlparse
+        c = self.llm_cfg
+        host = "" if c.backend == "mock" else (urlparse(c.url).hostname or "")
+        return {"backend": c.backend, "model": c.model, "host": host,
+                "private_host": True if c.backend == "mock" else is_private_host(c.url)}
+
+    def _record_llm_segment(self, start_round: int) -> None:
+        """Append the provider and model to the run record when they differ from the last segment.
+
+        A run can be stopped and resumed with another model, so the record is a list of
+        segments, each saying from which round it applies.
+        """
+        snap = self.llm_snapshot()
+        segs = self.store.get_meta("llm_segments") or []
+        if segs and all(segs[-1].get(k) == v for k, v in snap.items()):
+            return
+        segs.append({"from_round": start_round, **snap})
+        self.store.set_meta("llm_segments", segs)
+        self.store.db.commit()
+
     # ---------------------------------------------------------------- running
     def run(self, rounds: int | None = None, progress: Callable[[dict], None] | None = None,
             force: bool = False, should_stop: Callable[[], bool] | None = None) -> int:
@@ -464,6 +487,7 @@ class Simulation:
             self._signed_started = True
         w = self.world or self.prepare(force=force)
         start = self.store.last_round() + 1
+        self._record_llm_segment(start)
         end = self.sc.rounds if rounds is None else min(self.sc.rounds, start + rounds)
         for r in range(start, end):
             if should_stop and should_stop():
