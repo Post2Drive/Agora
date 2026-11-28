@@ -18,8 +18,8 @@ Rules chosen here:
 
 Limits. Nothing checks that the new item really retracts or corrects anything; that is the approver's claim.
 The chain keeps a hash of the reason, not the text. A result is stamped only if whoever shows it calls
-``retraction_stamps`` with every item it rests on: nothing here knows that set, and no report, result store
-or screen calls it. ``allowed_run_attempts`` lists gate passes recorded with this item's labels. A pass is
+``retraction_stamps`` with every item it rests on. This module does not know that set (``run_results``
+records it for results the service reports), and no report or screen calls either. ``allowed_run_attempts`` lists gate passes recorded with this item's labels. A pass is
 not proof that anything ran. It does not list attempts made before the item had a statement list, or on
 another item that took this one as a CHANGE_INPUTS input (the chain keeps only hashes of inputs).
 ``tenant_id`` and ``audit`` come from the service's configuration. Reads perform no caller permission check.
