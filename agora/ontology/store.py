@@ -1122,10 +1122,10 @@ class OntologyObjectStore:
         return max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
 
     @staticmethod
-    def _link_read_privacy(
+    def _record_privacy(
         sensitivity: str, purpose: str | None, retention: str | None,
     ) -> dict[str, tuple[str | None, str | None]]:
-        """Records at personal or higher are read for the caller's purpose, not the catalog's."""
+        """Records at personal or higher are handled for the caller's purpose, not the catalog's."""
         if sensitivity in {"personal", "sensitive"}:
             return {"privacy": (purpose, retention)}
         return {}
@@ -1136,6 +1136,7 @@ class OntologyObjectStore:
         valid_to: str | datetime | None, reason: str, provenance: Mapping[str, Any],
         *, policy: PolicyCallable | None, audit: Any | None, supersedes_link_id: str | None = None,
         superseded_keys: tuple[tuple, ...] = (),
+        purpose: str | None = None, retention: str | None = None,
     ) -> str:
         src = self._canonical_endpoint(source, self.project_id, pack_fingerprint)
         dst = self._canonical_endpoint(target, self.project_id, pack_fingerprint)
@@ -1168,6 +1169,7 @@ class OntologyObjectStore:
             metadata_conn.close()
         decision = self._authorize(
             "ontology_write", resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
+            **self._record_privacy(sensitivity, purpose, retention),
         )
         if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
             raise OntologyError("link writes require a principal-bound actor identity")
@@ -1243,22 +1245,31 @@ class OntologyObjectStore:
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
         valid_to: str | datetime | None, reason: str, provenance: Mapping[str, Any],
         *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> str:
-        """Create an immutable relationship between exact imported objects."""
+        """Create an immutable relationship between exact imported objects.
+
+        If an end is personal or sensitive, the policy is asked about the
+        caller's ``purpose`` and ``retention``; none are assumed.
+        """
         return self._write_link(
             pack_fingerprint, link_type_id, link_type_version, source, target,
             valid_from, valid_to, reason, provenance, policy=policy, audit=audit,
+            purpose=purpose, retention=retention,
         )
 
     def supersede_link(
         self, pack_fingerprint: str, link_id: str, source: Mapping[str, Any],
         target: Mapping[str, Any], valid_from: str | datetime, valid_to: str | datetime | None,
         reason: str, provenance: Mapping[str, Any], *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> str:
         """Append a correction and retain the original link unchanged.
 
         The caller needs write authority over the replaced link's endpoints as
-        well as the new ones, because the replaced link stops being active.
+        well as the new ones, because the replaced link stops being active. If
+        any of those ends is personal or sensitive, the policy is asked about the
+        caller's ``purpose`` and ``retention``; none are assumed.
         """
         _, source_refs = self._parse_assertion(reason, provenance)
         self._check_link_id(link_id)
@@ -1281,7 +1292,7 @@ class OntologyObjectStore:
         return self._write_link(
             pack_fingerprint, link_type_id, version, source, target, valid_from, valid_to,
             reason, provenance, policy=policy, audit=audit, supersedes_link_id=link_id,
-            superseded_keys=keys,
+            superseded_keys=keys, purpose=purpose, retention=retention,
         )
 
     @staticmethod
@@ -1299,13 +1310,16 @@ class OntologyObjectStore:
     def retract_link(
         self, pack_fingerprint: str, link_id: str, reason: str, provenance: Mapping[str, Any],
         *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> None:
         """Withdraw an active link without asserting anything in its place.
 
         Use ``supersede_link`` when there is a truthful replacement, including
         the same relationship over a shorter valid time. A retraction cannot be
         undone: asserting the relationship again is a new link. Retracting a
-        successor does not bring back the link it superseded.
+        successor does not bring back the link it superseded. If an end of the
+        link is personal or sensitive, the policy is asked about the caller's
+        ``purpose`` and ``retention``; none are assumed.
         """
         provenance_json, source_refs = self._parse_assertion(reason, provenance)
         self._check_link_id(link_id)
@@ -1329,6 +1343,7 @@ class OntologyObjectStore:
             metadata_conn.close()
         decision = self._authorize(
             "ontology_write", resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
+            **self._record_privacy(sensitivity, purpose, retention),
         )
         if not isinstance(decision, Mapping) or not isinstance(decision.get("subject_id"), str) or not decision["subject_id"].strip() or decision["subject_id"] == "unknown":
             raise OntologyError("link writes require a principal-bound actor identity")
@@ -1427,7 +1442,7 @@ class OntologyObjectStore:
             self._authorize(
                 "ontology_read", [pack_fingerprint, link_type_id, link_type_version],
                 policy=policy, audit=audit, sensitivity=sensitivity,
-                **self._link_read_privacy(sensitivity, purpose, retention),
+                **self._record_privacy(sensitivity, purpose, retention),
             )
             return [{
                 "link_id": row["link_id"], "pack_fingerprint": pack_fingerprint,
@@ -1728,7 +1743,7 @@ class OntologyObjectStore:
             self._authorize(
                 "ontology_read", [pack_fingerprint, link_type_id, link_type_version, *self._link_key(ref)],
                 policy=policy, audit=audit, sensitivity=sensitivity,
-                **self._link_read_privacy(sensitivity, purpose, retention),
+                **self._record_privacy(sensitivity, purpose, retention),
             )
             next_cursor = None
             if len(rows) > page_size and page:

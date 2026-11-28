@@ -96,7 +96,7 @@ def test_catalog_checks_keep_the_catalog_purpose(linked):
     ("public", False), ("internal", False), ("personal", True), ("sensitive", True),
 ])
 def test_which_levels_use_the_callers_purpose(level, needs_caller):
-    result = OntologyObjectStore._link_read_privacy(level, "case-review", "7d")
+    result = OntologyObjectStore._record_privacy(level, "case-review", "7d")
     assert result == ({"privacy": ("case-review", "7d")} if needs_caller else {})
 
 
