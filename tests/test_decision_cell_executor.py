@@ -288,10 +288,10 @@ def test_nothing_is_released_if_the_stamps_cannot_be_read(audit, source, tmp_pat
 def test_a_failing_branch_releases_nothing(audit, source, tmp_path, monkeypatch):
     real = ex._run_branch
 
-    def second_fails(project, kill_switch_on):
+    def second_fails(project, kill_switch_on, keep):
         if project.name == ex.WITHOUT_EVENT:
             raise KeyboardInterrupt
-        return real(project, kill_switch_on)
+        return real(project, kill_switch_on, keep)
 
     monkeypatch.setattr(ex, "_run_branch", second_fails)
     with pytest.raises(KeyboardInterrupt):

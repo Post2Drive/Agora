@@ -33,10 +33,16 @@ Rules chosen here:
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
   It runs one branch with no baseline, so it shows no difference the item made and claims none.
-* Events a source already holds go into the run too. Each must be traced to a recorded statement of an
-  item in a named parent's basis (``SOURCE_EVENT_UNTRACED`` otherwise), and from ``personal`` up needs its
-  data owner's grant again (see ``held``). They are read from a restore of the snapshot, and each branch is
-  checked to carry the same ones before it runs.
+* Events a source already holds go into the run too. First, the snapshot being restored must be one that a
+  named parent recorded for one of its branches (``SOURCE_NOT_PARENT_OUTPUT`` otherwise): the parent's
+  ``result.json`` under the same ``out_dir`` must match the recorded result hash and list that snapshot's
+  digest. Then each event must be traced to a recorded statement of an item in such a parent's basis
+  (``SOURCE_EVENT_UNTRACED`` otherwise), and from ``personal`` up needs its data owner's grant again (see
+  ``held``). They are read from a restore of the snapshot, and each branch is checked to start from that
+  snapshot and carry the same events before it runs.
+* ``keep_snapshots`` names rounds of the output branches to snapshot, so that a later run can start from
+  this result. It changes no state. For a fork or continuation each must be after the start round; each must
+  be before the last round. Their digests go in the manifest. None are kept unless asked for.
 * A run needs the data owner's grant for every statement it will add that is rated ``personal`` or higher,
   and is blocked if one is unrated. The gate takes ratings from the recorded statement list. A grant names
   the statement by ``statement_input_id``. A rating raised while a run is in progress does not stop it.
@@ -68,7 +74,10 @@ Rules chosen here:
 
 Limits. Library only: no service, command or screen calls it. ``source``, ``out_dir``, ``study``, the kill
 switch, the statements' sources and judgments and the other basis ids are trusted service-layer inputs; nothing
-here proves that ``source`` is the project of that study. Mock backend only, so the output is a rehearsal of
+here proves that ``source`` is the project of that study. The parent check above runs only when the start
+snapshot carries added events (never for a rerun). It shows that the snapshot restores the same state as one
+the parent recorded, not which directory the files were copied from. A source with no added events can still
+be one a result produced, and then the caller must name that parent. Mock backend only, so the output is a rehearsal of
 the machinery and not a forecast. A process that dies mid-run leaves the staging directory, which blocks that
 result id until an operator removes it. Anyone who can write ``out_dir`` can change the files afterwards;
 the read calls detect a changed manifest or branch database, not a changed reply cache or other file.
@@ -209,14 +218,55 @@ def _added_events(project: Path, through_round: int) -> tuple[tuple[int, str], .
         conn.close()
 
 
-def _carried_events(source: Path, start_round: int) -> tuple[tuple[int, str], ...]:
-    """What a restore of the snapshot at ``start_round`` carries over. A real restore, thrown away."""
+def _carried_events(source: Path, start_round: int) -> tuple[tuple[tuple[int, str], ...], str]:
+    """What a restore of the snapshot at ``start_round`` carries over, and that snapshot's digest.
+
+    A real restore, thrown away.
+    """
     from agora.sim.engine import Simulation
 
     with tempfile.TemporaryDirectory() as scratch:
         probe = Path(scratch) / "probe"
         Simulation.fork_from(source, start_round, probe)
-        return _added_events(probe, start_round)
+        forked = json.loads((probe / "fork.json").read_text(encoding="utf-8"))
+        return _added_events(probe, start_round), forked["snapshot_meta_digest"]
+
+
+def _producers(out_dir: Path, parent_ids: tuple[str, ...], snapshot_round: int, snapshot_digest: str,
+               audit: AnchoredAuditChain, tenant_id: str, project_id: str,
+               study_id: str) -> tuple[tuple[str, str], ...]:
+    """(parent result id, branch) for each named parent that recorded this snapshot for that branch.
+
+    Only a manifest whose bytes hash to the recorded result hash counts. A parent whose output is missing,
+    changed or not an executor manifest simply does not count.
+    """
+    found = []
+    for parent_id in sorted(set(parent_ids)):
+        basis = load_run_result(result_id=parent_id, audit=audit, tenant_id=tenant_id,
+                                project_id=project_id, study_id=study_id)
+        if basis is None:
+            continue
+        try:
+            raw = (_result_dir(out_dir, tenant_id, project_id, study_id, parent_id) / RESULT_FILE).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != basis.result_hash:
+                continue
+            for name, facts in sorted(json.loads(raw)["branches"].items()):
+                if facts.get("snapshots", {}).get(str(snapshot_round)) == snapshot_digest:
+                    found.append((parent_id, name))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return tuple(found)
+
+
+def _discard(staging: Path) -> None:
+    """Remove a staging directory. Snapshot files are read-only, which on Windows would stop the removal."""
+    for path in staging.rglob("*"):
+        if path.is_file() and not path.is_symlink():
+            try:
+                path.chmod(0o644)
+            except OSError:
+                pass
+    shutil.rmtree(staging, ignore_errors=True)
 
 
 def fork_branch_cost(source: str | Path, event_round: int) -> int:
@@ -293,11 +343,11 @@ def _new_rerun_project(source: Path, project: Path, added: list[dict]) -> dict:
             "events_sha256": hashlib.sha256(canon(added).encode("utf-8")).hexdigest()}
 
 
-def _run_branch(project: Path, kill_switch_on: Callable[[], bool]) -> str:
-    """Run one forked project to its last round and return the digest of its final state."""
-    from agora.sim.engine import Simulation
+def _run_branch(project: Path, kill_switch_on: Callable[[], bool], keep: tuple[int, ...] = ()) -> dict:
+    """Run one forked project to its last round; return the digests of its final state and kept snapshots."""
+    from agora.sim.engine import SNAPSHOT_DIR, Simulation
 
-    sim = Simulation(project)
+    sim = Simulation(project, snapshot_rounds=keep)
     try:
         if not sim.replay_is_deterministic:
             raise ExecutionError("BACKEND_NOT_DETERMINISTIC", "only the mock backend may run a fork")
@@ -305,9 +355,14 @@ def _run_branch(project: Path, kill_switch_on: Callable[[], bool]) -> str:
         end = sim.run(should_stop=lambda: _stopped(kill_switch_on))
         if end != sim.sc.rounds or sim.store.last_round() != sim.sc.rounds - 1:
             raise ExecutionError("STOPPED_BY_KILL_SWITCH", "the run was stopped; nothing is released")
-        return sim.state_digest()
+        made = {"final_state_digest": sim.state_digest()}
     finally:
         sim.close()
+    if keep:
+        made["snapshots"] = {
+            str(r): json.loads((project / SNAPSHOT_DIR / f"round-{r:05d}.json").read_text(
+                encoding="utf-8"))["meta_digest"] for r in keep}
+    return made
 
 
 def execute_event_fork(
@@ -316,7 +371,7 @@ def execute_event_fork(
     out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
-    now: datetime | None = None,
+    now: datetime | None = None, keep_snapshots: tuple[int, ...] = (),
 ) -> ExecutionResult:
     """Gate, fork, run and record one FORK_FROM_EVENT. Raises; no output is released unless it returns.
 
@@ -327,7 +382,8 @@ def execute_event_fork(
     return _execute(Option.FORK_FROM_EVENT, SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
-                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now,
+                    keep_snapshots=keep_snapshots)
 
 
 def execute_earlier_fork(
@@ -336,7 +392,7 @@ def execute_earlier_fork(
     out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
-    now: datetime | None = None,
+    now: datetime | None = None, keep_snapshots: tuple[int, ...] = (),
 ) -> ExecutionResult:
     """Gate, fork, run and record one FORK_FROM_EARLIER. Same refusals and release rule as ``execute_event_fork``.
 
@@ -348,7 +404,8 @@ def execute_earlier_fork(
     return _execute(Option.FORK_FROM_EARLIER, EARLIER_FORK_SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
-                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now,
+                    keep_snapshots=keep_snapshots)
 
 
 def execute_rerun(
@@ -357,7 +414,7 @@ def execute_rerun(
     out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
-    now: datetime | None = None,
+    now: datetime | None = None, keep_snapshots: tuple[int, ...] = (),
 ) -> ExecutionResult:
     """Gate, run and record one RERUN_FROM_START. Same release rule as ``execute_event_fork``.
 
@@ -367,7 +424,8 @@ def execute_rerun(
     return _execute(Option.RERUN_FROM_START, RERUN_SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
-                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now,
+                    keep_snapshots=keep_snapshots)
 
 
 def execute_changed_inputs_fork(
@@ -376,7 +434,7 @@ def execute_changed_inputs_fork(
     out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
-    now: datetime | None = None,
+    now: datetime | None = None, keep_snapshots: tuple[int, ...] = (),
 ) -> ExecutionResult:
     """Gate, fork, run and record one CHANGE_INPUTS over FORK_FROM_EVENT, with some statements left out.
 
@@ -388,7 +446,8 @@ def execute_changed_inputs_fork(
     return _execute(Option.CHANGE_INPUTS, CHANGED_INPUTS_SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
-                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now,
+                    keep_snapshots=keep_snapshots)
 
 
 def execute_continuation(
@@ -397,7 +456,7 @@ def execute_continuation(
     out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
-    now: datetime | None = None,
+    now: datetime | None = None, keep_snapshots: tuple[int, ...] = (),
 ) -> ExecutionResult:
     """Gate, run and record one CONTINUE. Same refusals and release rule as ``execute_event_fork``.
 
@@ -407,12 +466,13 @@ def execute_continuation(
     return _execute(Option.CONTINUE, CONTINUATION_SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
-                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now,
+                    keep_snapshots=keep_snapshots)
 
 
 def _execute(option, schema, principal, request, *, statements, tenant_id, project_id, study, result_id, source,
              out_dir, kill_switch_on, audit, escalation, grants, parent_result_ids, other_item_ids,
-             now) -> ExecutionResult:
+             now, keep_snapshots) -> ExecutionResult:
     from agora.sim.engine import Simulation
 
     writer = _writer(audit)
@@ -457,6 +517,12 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     elif last_added > start_round:
         raise ExecutionError("SOURCE_HAS_LATER_EVENTS", "a fork would drop events added after its start round")
     rounds_to_run = rounds if rerunning else max(rounds - 1 - start_round, 0)
+    # A snapshot at the last round leaves no round to add anything to, so it is not offered.
+    first_kept = 0 if rerunning else start_round + 1
+    if not (isinstance(keep_snapshots, tuple)
+            and all(type(r) is int and first_kept <= r < rounds - 1 for r in keep_snapshots)):
+        raise ExecutionError("INPUT_INVALID", "keep snapshots of rounds this run makes, before the last one")
+    keep = tuple(sorted(set(keep_snapshots)))
     if out_dir.resolve().is_relative_to(source.resolve()):
         raise ExecutionError("OUTPUT_INSIDE_SOURCE", "the source study is never written")
     # Checked before the gate so that a run is not spent on a record that must be refused.
@@ -466,14 +532,21 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     # Judged on the restored snapshot, not the live source: that is what goes into the run. A rerun carries
     # nothing. If the restore fails, the gate blocks the choice as having no verified snapshot.
     carried: tuple[tuple[int, str], ...] | None = ()
+    start_digest = None
     if not rerunning:
         try:
-            carried = _carried_events(source, start_round)
+            carried, start_digest = _carried_events(source, start_round)
         except Exception:
             carried = None
-    held = None
+    held, producers = None, ()
     if carried:
-        held = trace_held_statements(added_events=carried, parent_result_ids=parent_result_ids,
+        producers = _producers(out_dir, parent_result_ids, start_round, start_digest, writer, **key)
+        if not producers:
+            raise ExecutionError("SOURCE_NOT_PARENT_OUTPUT",
+                                 "no named parent recorded the snapshot that carries these events")
+        # Only the producers' bases count: a parent that merely rests on an item added nothing here.
+        held = trace_held_statements(added_events=carried,
+                                     parent_result_ids=tuple(sorted({p for p, _ in producers})),
                                      audit=writer, **key)
         if held is None:
             raise ExecutionError("SOURCE_EVENT_UNTRACED",
@@ -495,8 +568,8 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             raise ExecutionError("OUTPUT_EXISTS", "output for this result id already exists")
 
         def snapshot_verifies(_study_id: str, snapshot_round: int) -> bool:
-            # Not verified unless it still carries exactly the events whose statements the gate judges.
-            return carried is not None and _carried_events(source, snapshot_round) == carried
+            # Not verified unless it is still the snapshot, with the events, whose statements the gate judges.
+            return carried is not None and _carried_events(source, snapshot_round) == (carried, start_digest)
 
         decided = request_labelled_option(
             principal, request, statements=statements, tenant_id=tenant_id, project_id=project_id,
@@ -518,17 +591,17 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
                 made = _new_rerun_project(source, project, added)
                 if made["scenario_hash"] != started_with:  # judged on the copy that is about to run
                     raise ExecutionError("SOURCE_CHANGED", "the scenario changed while the rerun was being built")
-                branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on), **made}
+                branches[name] = {**_run_branch(project, kill_switch_on, keep), **made}
                 continue
             Simulation.fork_from(source, start_round, project, events=[] if name == WITHOUT_EVENT else added)
             if _added_events(project, start_round) != carried:  # judged on the copy that is about to run
                 raise ExecutionError("SOURCE_CHANGED", "the snapshot's added events changed after the gate")
             forked = json.loads((project / "fork.json").read_text(encoding="utf-8"))
-            branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on),
+            if forked["snapshot_meta_digest"] != start_digest:
+                raise ExecutionError("SOURCE_CHANGED", "a branch did not start from the snapshot the gate judged")
+            branches[name] = {**_run_branch(project, kill_switch_on, keep),
                               "snapshot_meta_digest": forked["snapshot_meta_digest"],
                               "events_sha256": forked["events_sha256"]}
-        if not rerunning and len({branch["snapshot_meta_digest"] for branch in branches.values()}) != 1:
-            raise ExecutionError("SOURCE_CHANGED", "the two branches did not start from the same snapshot")
 
         manifest = {
             "schema": schema, **key, "result_id": result_id, "item_id": request.event_id,
@@ -546,7 +619,8 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             **({"event_round": request.event_round, "forked_from_round": start_round,
                 "event_placement": "hypothetical-earlier"} if earlier else
                {("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round}),
-            **({"held_statement_ids": [i.input_id for i in held.inputs]} if held else {}),
+            **({"held_statement_ids": [i.input_id for i in held.inputs],
+                "source_produced_by": [{"result_id": p, "branch": b} for p, b in producers]} if held else {}),
             "added_in_round": start_round + 1, "cost_units": gate.cost_units,
             "llm_backend": "mock", "validated_prediction_enabled": False, "branches": branches,
         }
@@ -561,7 +635,7 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
         stamps = run_result_stamps(result_id=result_id, audit=writer, **key)
         staging.rename(final)
     except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
+        _discard(staging)
         raise
     return ExecutionResult(final, json.loads(raw), basis, stamps)
 
