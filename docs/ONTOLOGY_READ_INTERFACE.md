@@ -41,7 +41,7 @@ A `Link` has `link_id`, link type and version, `source` and `target` (`ObjectRef
 - **Errors.** A shape mismatch raises `OntologyError`, naming the property and carrying no value (with `error_sink`, the caller gets the redacted error instead).
 - **Redacted failures (opt-in).** See section 4.
 
-It adds no access: policy checks, audit entries and, under the protected defaults, the ingest-record check on objects are the store's. The reader passes its `purpose` and `retention` to all four calls. For a page of links with a `personal` or `sensitive` end, the store asks the policy about those two values (see section 5), so a reader built without them is refused such a page by the product's policy rules.
+It adds no access: policy checks, audit entries and, under the protected defaults, the ingest-record check on objects are the store's. The reader passes its `purpose` and `retention` to all four calls. For a page of links with a `personal` or `sensitive` end, the store asks the policy about those two values (rule: [ONTOLOGY_OBJECT_STORE_DESIGN.md](ONTOLOGY_OBJECT_STORE_DESIGN.md)), so a reader built without them is refused such a page by the product's policy rules.
 
 ## 4. Error detail
 
