@@ -14,6 +14,7 @@ import pytest
 from agora.audit_anchor import AnchorStore, AnchoredAuditChain, bootstrap_anchor
 from agora.audit_chain import AuditChainStore
 from agora.ontology import OntologyError, OntologyObjectStore
+from agora.ontology import store as store_module
 from agora.policy import decide
 from test_ontology_store import _allow, _binding, _import, _pack
 
@@ -226,3 +227,78 @@ def test_a_missing_table_counts_as_sensitive():
         assert OntologyObjectStore._stored_sensitivity(conn) == "sensitive"
     finally:
         conn.close()
+
+
+@pytest.fixture
+def discards(monkeypatch):
+    """Record, at each discard of a staged copy, whether SQLite still had that file open.
+
+    Windows cannot delete an open file, so a discard before the close leaves the copy behind
+    there while passing on Linux. This makes the ordering visible on every platform.
+    """
+    opened, seen = [], []
+    real_connect, real_discard = sqlite3.connect, store_module._discard_staged_copy
+
+    def _connect(database, *args, **kwargs):
+        conn = real_connect(database, *args, **kwargs)
+        opened.append((str(database), conn))
+        return conn
+
+    def _is_open(conn):
+        try:
+            conn.total_changes
+            conn.execute("SELECT 1")
+        except sqlite3.ProgrammingError:
+            return False
+        return True
+
+    def _discard(path):
+        still_open = any(path.name in name and _is_open(conn) for name, conn in opened)
+        seen.append((path.name, still_open))
+        real_discard(path)
+
+    monkeypatch.setattr(sqlite3, "connect", _connect)
+    monkeypatch.setattr(store_module, "_discard_staged_copy", _discard)
+    return seen
+
+
+def _staged_operations(env):
+    """Each operation that works on a staged copy, with the folder the copy is made in."""
+    backup, manifest, target, copy = _made(env)
+    source = env["project"] / "data"
+    return {
+        "backup": (source, lambda policy: env["store"].backup(
+            source / "refused.sqlite3", policy=policy, audit=env["audit"])),
+        "manifest": (source, lambda policy: env["store"].backup_dependency_manifest(
+            backup, policy=policy, audit=env["audit"])),
+        "restore": (target.path.parent, lambda policy: target.restore(
+            copy, dependency_manifest=manifest,
+            expected_manifest_sha256=manifest["manifest_sha256"],
+            policy=policy, audit=env["audit"])),
+    }
+
+
+@pytest.mark.parametrize("operation", ["backup", "manifest", "restore"])
+def test_a_refused_copy_is_closed_before_it_is_discarded(env, discards, operation):
+    folder, call = _staged_operations(env)[operation]
+    discards.clear()
+    with pytest.raises(OntologyError, match="policy denied"):
+        call(env["rules"])  # no purpose or retention
+    assert discards and [still_open for _, still_open in discards] == [False] * len(discards)
+    assert _leftovers(folder) == []
+
+
+@pytest.mark.parametrize("operation", ["backup", "manifest", "restore"])
+@pytest.mark.parametrize("failure", [RuntimeError, KeyboardInterrupt])
+def test_an_unlisted_failure_leaves_no_staged_copy(env, discards, monkeypatch, operation, failure):
+    folder, call = _staged_operations(env)[operation]
+    discards.clear()
+
+    def _fail(conn):
+        raise failure("stopped while the copy was staged")
+
+    monkeypatch.setattr(OntologyObjectStore, "_verify_connection_integrity", staticmethod(_fail))
+    with pytest.raises(failure):
+        call(_allow)
+    assert discards and [still_open for _, still_open in discards] == [False] * len(discards)
+    assert _leftovers(folder) == []

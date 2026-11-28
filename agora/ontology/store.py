@@ -2026,8 +2026,6 @@ class OntologyObjectStore:
             require_safe_path(destination)
             return destination
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
-            if created_temporary:
-                _discard_staged_copy(temporary)
             if isinstance(exc, OntologyError):
                 raise
             raise OntologyError("ontology store backup failed or did not pass verification") from exc
@@ -2036,6 +2034,10 @@ class OntologyObjectStore:
                 backup_conn.close()
             if source_conn is not None:
                 source_conn.close()
+            # Only after the close: Windows cannot delete a file that is still open.
+            # In ``finally``, so an exception not listed above removes the copy too.
+            if created_temporary:
+                _discard_staged_copy(temporary)
 
 
     def _verify_source_snapshot_dependencies(
