@@ -134,13 +134,14 @@ async function home(){const ps=await api('projects');
   const card=p=>{const r=p.run,j=p.job;let st='<span class="pill">Setup ready</span>';
     if(j&&j.state==='running')st=`<span class="pill run">${j.kind==='create'?'Building…':'Simulating…'}</span>`;
     else if(j&&j.state==='error')st='<span class="pill bad">Needs attention</span>';
-    else if(r.started&&r.rounds_done>=r.rounds_total)st='<span class="pill ok">Complete</span>';
-    else if(r.started)st=`<span class="pill">${r.rounds_done}/${r.rounds_total} rounds</span>`;
-    else if(!p.has_scenario)st='<span class="pill">Not set up</span>';
+    else if(p.state==='archived')st='<span class="pill">Archived</span>';
+    else if(p.state==='complete')st='<span class="pill ok">Complete</span>';
+    else if(p.state==='paused')st=`<span class="pill">Paused · ${r.rounds_done}/${r.rounds_total} rounds</span>`;
+    else if(p.state==='draft')st='<span class="pill">Not set up</span>';
     return `<a class="card" style="text-decoration:none;display:block" href="#/p/${p.id}/"><div class="row"><h3 style="margin:0">${esc(p.title)}</h3><span class="spacer"></span>${st}</div>
       <p class="muted small" style="margin:8px 0 0">${esc(p.prompt||'')}</p></a>`};
   await newStudy(true);
-  if(ps.length)$('#view').insertAdjacentHTML('beforeend',`<div class="row" style="margin:34px 0 12px"><h2 style="margin:0">Your studies</h2><span class="spacer"></span>${ps.filter(p=>p.run.started).length>1?'<a class="btn" href="#/compare">Compare studies</a>':''}</div><div class="grid g3">${ps.map(card).join('')}</div>`);
+  if(ps.length)$('#view').insertAdjacentHTML('beforeend',`<div class="row" style="margin:34px 0 12px"><h2 style="margin:0">Your studies</h2><span class="spacer"></span>${ps.filter(p=>p.run.started).length>1?'<a class="btn" href="#/compare">Compare studies</a>':''}</div><div class="grid g3">${ps.filter(p=>p.state!=='archived').map(card).join('')}</div>${ps.some(p=>p.state==='archived')?`<details style="margin-top:24px"><summary class="muted">Archived (${ps.filter(p=>p.state==='archived').length})</summary><div class="grid g3" style="margin-top:12px">${ps.filter(p=>p.state==='archived').map(card).join('')}</div></details>`:''}`);
   if(ps.some(p=>p.job&&p.job.state==='running'))timer=setInterval(()=>{if((location.hash===''||location.hash==='#/')&&!document.activeElement?.matches('input,textarea'))home()},4000)}
 
 /* ------------------------------------------------------------ new study */
