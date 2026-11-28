@@ -230,6 +230,21 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_archive(args) -> int:
+    from . import lifecycle
+    proj = Path(args.project)
+    try:
+        if args.undo:
+            lifecycle.unarchive(proj)
+        else:
+            lifecycle.archive(proj)
+    except lifecycle.LifecycleError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{proj.name}: {lifecycle.study_state(proj)}")
+    return 0
+
+
 def cmd_feed(args) -> int:
     proj = Path(args.project)
     store = Store(proj / DB_FILE)
@@ -839,6 +854,11 @@ def main(argv=None) -> int:
     p.add_argument("--shift", action="append", default=[],
                    help="opinion shift as name=value, e.g. stance=-0.1 or 'Candidate A=-0.15'")
     p.set_defaults(f=cmd_shock)
+
+    p = sub.add_parser("archive", help="hide a study from the active list without deleting anything")
+    p.add_argument("project")
+    p.add_argument("--undo", action="store_true", help="bring an archived study back")
+    p.set_defaults(f=cmd_archive)
 
     p = sub.add_parser("fork", help="copy a study's setup into a new project to try a variation")
     p.add_argument("project")

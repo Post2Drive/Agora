@@ -14,7 +14,7 @@ Labels used below, from weakest to strongest claim:
 
 | Area | Status | Evidence | Gap |
 |---|---|---|---|
-| Study registry (projects) | Implemented | Web routes for list, create, open, delete, fork, compare: `agora/web/server.py` (routes `projects`, `fork`, `compare`) | No persisted lifecycle state (draft, ready, running, completed, validated) was found. A run's progress is reported by the `live` route only. |
+| Study registry (projects) | Implemented | Web routes for list, create, open, delete, fork, compare: `agora/web/server.py` (routes `projects`, `fork`, `compare`) | Each study now has a state (draft, ready, running, paused, complete, archived) in the list and project routes, read from what is on disk plus the running job; only `archived` is stored (`agora/lifecycle.py`, `agora archive`). No state means validated: validation is stated separately. |
 | Structured study creation | Partial | `agora create` and the New Study page take name, question, documents and model settings (`agora/pipeline.py`, ROADMAP phase 2) | No fields for scope, geography, time bounds, intended use, or evidence role at creation. |
 | Model providers | Implemented | `agora/llm/` (Ollama, OpenAI-compatible, Anthropic, mock, reply cache), settings and key routes in `agora/web/server.py` | End-to-end behaviour of each provider **Not checked**. |
 | Settings kept apart from studies | Implemented | `agora/settings.py`, `/settings` routes | Each run now records the provider, model and host (never the key or full address) per stretch of rounds in its run metadata (`llm_segments`); a resume with another model adds a new stretch. |
@@ -86,7 +86,7 @@ The platform component names used in earlier planning conversations (nine system
 |---|---|---|---|---|
 | 1 | ~~Make the calibrator refuse sealed holdout data~~ Withdrawn: already enforced (see section 3 and Corrections). | None | `tests/test_governance.py`, `tests/test_g3_holdout_protocol.py` | None |
 | 2 | Labels in reports. Done at section level on 28 Nov 2026 (computed, simulated, model-written, assumption, estimate). Sentence-level labels would need the writer to tag each claim: not done. | Decide label vocabulary | `tests/test_report_basis.py` | No |
-| 3 | Persist a study lifecycle state and show it in the web UI | Decide the state list | State machine tests | No |
+| 3 | Persist a study lifecycle state and show it in the web UI | Decide the state list | State machine tests | Done (`tests/test_lifecycle.py`); the page itself still needs to show the field |
 | 4 | Say "any of" in the demo comment and add `requires_any` (keep `requires` working). Approved 28 Nov 2026. | None | Scenario and engine tests | Owner (changes a shipped demo and the schema) |
 | 5 | Record eligibility, trigger and occurrence separately for conversions | Item 4 | Engine tests, report change | No |
 | 6 | Update ROADMAP and docs index for the native layer | None | Doc check | No |
