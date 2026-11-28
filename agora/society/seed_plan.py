@@ -32,6 +32,7 @@ class SeedEdge:
     trust: float
     familiarity: float
     link_ids: tuple[str, ...]          # every link that gave this directed pair, in sorted order
+    link_refs: tuple[tuple[str, str, str], ...] = ()   # (link_id, link_type_id, version) for those links, same order
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ def plan_seed_edges(store: Any, seed: RelationshipSeed, *, policy: Any, audit: A
     """Read the active links for every declared link type and build the edge plan."""
     pack = store.get_pack(seed.pack_fingerprint, policy=policy, audit=audit)
     agent_of = dict(seed.records)
-    best: dict[tuple[int, int], list] = {}      # (source, target) -> [trust, familiarity, {link_id}]
+    best: dict[tuple[int, int], list] = {}      # (source, target) -> [trust, familiarity, {(link_id, type, version)}]
     read = used = other_import = not_mapped = same_agent = not_active = 0
 
     for rule in seed.link_types:
@@ -98,9 +99,10 @@ def plan_seed_edges(store: Any, seed: RelationshipSeed, *, policy: Any, audit: A
                 entry = best.setdefault(pair, [0.0, 0.0, set()])
                 entry[0] = max(entry[0], rule.trust)
                 entry[1] = max(entry[1], rule.familiarity)
-                entry[2].add(link["link_id"])
+                entry[2].add((link["link_id"], rule.link_type_id, version))
 
-    edges = tuple(SeedEdge(s, t, e[0], e[1], tuple(sorted(e[2]))) for (s, t), e in sorted(best.items()))
+    edges = tuple(SeedEdge(s, t, e[0], e[1], tuple(sorted(r[0] for r in e[2])), tuple(sorted(e[2])))
+                  for (s, t), e in sorted(best.items()))
     return SeedPlan(seed.seed_hash, seed.pack_fingerprint, edges,
                     SeedCounts(read, used, other_import, not_mapped, same_agent, not_active))
 

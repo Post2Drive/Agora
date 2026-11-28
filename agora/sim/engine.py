@@ -456,6 +456,35 @@ class Simulation:
         self.memory = WorldMemory.load(self.sc, self.world, self.store)
         return self.world
 
+    def seed_relationships(self, plan) -> bool:
+        """Create the starting relationships from a seed plan, once, before the first round.
+
+        Returns True when edges were written, False when this run was already seeded from the same seed
+        (a resume never re-seeds). A different seed, or a run that has already started, is an error.
+        The seed hash, pack fingerprint and counts are kept in the run record.
+        """
+        from ..society import apply_seed_plan
+        if self.society is None:
+            raise ValueError("seeding relationships needs communication: native")
+        if self.governed is not None:
+            raise ValueError("native communication is not supported for governed runs")
+        self.world or self.prepare()
+        done = self.store.get_meta("relationship_seed")
+        if done is not None:
+            if done.get("seed_hash") == plan.seed_hash:
+                return False
+            raise ValueError("this run was already seeded from a different relationship seed")
+        if self.store.last_round() >= 0:
+            raise ValueError("relationships can only be seeded before the first round")
+        n = apply_seed_plan(self.society, plan, round=0)
+        c = plan.counts
+        self.store.set_meta("relationship_seed", {
+            "seed_hash": plan.seed_hash, "pack_fingerprint": plan.pack_fingerprint, "edges": n,
+            "counts": {"links_read": c.links_read, "links_used": c.links_used, "other_import": c.other_import,
+                       "not_mapped": c.not_mapped, "same_agent": c.same_agent, "not_active": c.not_active}})
+        self.store.db.commit()
+        return True
+
     def llm_snapshot(self) -> dict:
         """Which provider and model this process is using. Host only: never the key or a full URL."""
         from urllib.parse import urlparse
