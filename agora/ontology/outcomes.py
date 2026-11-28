@@ -57,6 +57,7 @@ def _admission(writer: Any, fields: dict[str, Any], digest: str,
 def record_simulation_outcome(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     status: str, result_digest: str, *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Record a caller-supplied outcome. Refused under the protected defaults: use ``run_admitted_simulation``.
 
@@ -67,12 +68,14 @@ def record_simulation_outcome(
     """
     if _protection.RUNNER_ONLY_OUTCOMES:
         raise OntologyError("outcomes are recorded by run_admitted_simulation, not from a supplied digest")
-    return _record_outcome(store, document, expected_digest, status, result_digest, policy=policy, audit=audit)
+    return _record_outcome(store, document, expected_digest, status, result_digest, policy=policy,
+                           audit=audit, purpose=purpose, retention=retention)
 
 
 def _record_outcome(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     status: str, result_digest: str, *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Record, once, how the simulation allowed by an admission ended. Runs nothing.
 
@@ -90,7 +93,8 @@ def _record_outcome(
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     # Decided before the chain is read, at the proposal's own classification.
     decision = store._authorize(
-        _OUTCOME, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+        _OUTCOME, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention))
     subject = _principal(decision)
     if subject != _admission(writer, fields, expected_digest, resource_ids):
         raise OntologyError("only the identity that admitted the action can record its outcome")

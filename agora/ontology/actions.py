@@ -194,7 +194,8 @@ def _compose(
     sensitivity = max([stored, *(x.sensitivity for x in inputs.values())],
                       key=_SENSITIVITY_RANK.__getitem__)
     decision = store._authorize(
-        operation, resource_ids, policy=policy, audit=audit, sensitivity=sensitivity)
+        operation, resource_ids, policy=policy, audit=audit, sensitivity=sensitivity,
+        **store._record_privacy(sensitivity, purpose, retention))
     subject = decision.get("subject_id") if isinstance(decision, Mapping) else None
     version = decision.get("policy_version") if isinstance(decision, Mapping) else None
     if not isinstance(subject, str) or not subject.strip() or subject == "unknown":

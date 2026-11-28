@@ -256,6 +256,7 @@ def _end_event(
 def decide_action_proposal(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     outcome: str, reason: str, *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Approve or reject one proposal, once, as someone other than its proposer.
 
@@ -271,7 +272,8 @@ def decide_action_proposal(
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     # Decided before the chain is read, so a denied caller learns nothing about what was proposed.
     decision = store._authorize(
-        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention))
     subject = _principal(decision)
     if subject == fields["proposed_by"]:
         raise OntologyError("a proposal must be decided by someone other than its proposer")
@@ -301,6 +303,7 @@ def co_approve_action_proposal(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     reason: str, *, policy: PolicyCallable | None, audit: Any | None,
     max_age_seconds: int | None = None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Add the second approval, once, from someone other than the proposer and the first approver.
 
@@ -315,7 +318,8 @@ def co_approve_action_proposal(
     writer = _anchored(audit)
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     decision = store._authorize(
-        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention))
     subject = _principal(decision)
     if subject == fields["proposed_by"]:
         raise OntologyError("a proposal must be approved by someone other than its proposer")
@@ -385,6 +389,7 @@ def verify_approved_action(
 def withdraw_approval(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     reason: str, *, policy: PolicyCallable | None, audit: Any | None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, str]:
     """Withdraw an approval that has not been used. Permanent.
 
@@ -397,7 +402,8 @@ def withdraw_approval(
     writer = _anchored(audit)
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     decision = store._authorize(
-        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+        _DECIDE, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention))
     subject = _principal(decision)
     if subject == fields["proposed_by"]:
         raise OntologyError("an approval must be withdrawn by someone other than the proposer")
@@ -469,7 +475,8 @@ def admit_approved_action(
     resource_ids = [fields["pack"], fields["action"], fields["version"], expected_digest]
     # Decided before anything is read, at the proposal's own classification.
     decision = store._authorize(
-        _ADMIT, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+        _ADMIT, resource_ids, policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+        **store._record_privacy(fields["sensitivity"], purpose, retention))
     subject = _principal(decision)
     live = verify_approved_action(
         store, document, expected_digest, policy=policy, audit=writer, purpose=purpose,

@@ -190,11 +190,13 @@ def _read(writer: Any, digest: str | None) -> dict[str, list[dict[str, Any]]]:
 def list_action_proposals(
     store: OntologyObjectStore, *, policy: Any, audit: Any | None, state: str | None = None,
     max_age_seconds: int | None = None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> list[dict[str, Any]]:
     """Every proposal in the chain with its state, in the order proposed, optionally one state only."""
     lifetime = _a._lifetime(max_age_seconds)
     writer = _a._anchored(audit)
-    store._authorize(_READ, ["action_proposal_states"], policy=policy, audit=writer, sensitivity="sensitive")
+    store._authorize(_READ, ["action_proposal_states"], policy=policy, audit=writer, sensitivity="sensitive",
+                     **store._record_privacy("sensitive", purpose, retention))
     grouped = _read(writer, None)
     now = _a._now()
     entries = [_derive(d, events, now, lifetime) for d, events in grouped.items()]
@@ -204,13 +206,15 @@ def list_action_proposals(
 def action_proposal_state(
     store: OntologyObjectStore, document: Mapping[str, Any], expected_digest: str,
     *, policy: Any, audit: Any | None, max_age_seconds: int | None = None,
+    purpose: str | None = None, retention: str | None = None,
 ) -> dict[str, Any]:
     """The state of one proposal document, read at the proposal's own classification."""
     lifetime = _a._lifetime(max_age_seconds)
     fields = _a._fields(store, document, expected_digest)
     writer = _a._anchored(audit)
     store._authorize(_READ, [fields["pack"], fields["action"], fields["version"], expected_digest],
-                     policy=policy, audit=writer, sensitivity=fields["sensitivity"])
+                     policy=policy, audit=writer, sensitivity=fields["sensitivity"],
+                     **store._record_privacy(fields["sensitivity"], purpose, retention))
     events = _read(writer, expected_digest).get(expected_digest)
     if not events:
         return _bad(expected_digest, "the proposal is not recorded in this chain")
