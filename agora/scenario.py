@@ -102,7 +102,7 @@ class Conversion:
     label: str
     open_round: int = 0
     close_round: int = 10**9
-    requires: list[str] = field(default_factory=list)  # any one of these must come first
+    requires: list[str] = field(default_factory=list)  # ANY ONE of these must come first (not all); also spelled requires_any
     when: dict[str, Any] = field(default_factory=dict)  # {poll: name, result: yes}; or {any: [...]}
     base: float = -4.0                # crowd logistic: base log-odds per active round
     stance_weight: float = 3.0
@@ -250,9 +250,13 @@ def from_dict(d: dict) -> Scenario:
     convs = []
     for c in d.pop("conversions", []):
         c = dict(c)
-        if isinstance(c.get("requires"), str):
-            c["requires"] = [c["requires"]] if c["requires"] else []
-        convs.append(Conversion(**_pick(c, Conversion)))
+        if "requires" in c and "requires_any" in c:
+            raise ScenarioError(f"Conversion {c.get('name')}: give requires_any or requires, not both "
+                                "(they mean the same: any one of the listed conversions must come first)")
+        for key in ("requires", "requires_any"):
+            if isinstance(c.get(key), str):
+                c[key] = [c[key]] if c[key] else []
+        convs.append(Conversion(**_pick(c, Conversion, {"requires_any": "requires"})))
     ch = d.pop("choice", None)
     if ch:
         ch = Choice(**_pick(ch, Choice))

@@ -192,7 +192,7 @@ shows every feature:
 | `accounts` | Named agents: a brand, committee members, journalists |
 | `spaces` | WhatsApp groups and Reddit communities, with who joins them (`exclusive` = one home per person) |
 | `events` | `news`, `post` and `poll` at given rounds, optionally only `when` a poll passed |
-| `conversions` | Real-world actions to predict, with an open window, prerequisites, eligibility, crowd odds and an optional `experience` (e.g. trying the product shifts opinion) |
+| `conversions` | Real-world actions to predict, with an open window, prerequisites (`requires_any`, or the older `requires`: any one of the listed conversions must come first, not all of them), eligibility, crowd odds and an optional `experience` (e.g. trying the product shifts opinion) |
 | `voices` | Optional individual personas for LLM voices (drafted by `create`) |
 | `llm` | Backend, model, URL, parallel requests |
 
