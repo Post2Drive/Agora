@@ -117,12 +117,31 @@ A run started from a snapshot carries every event added up to that round. Before
 | Is it bound to approval and commit? | The held input ids and ratings are in the action fingerprint and the gate's audit entry (`held:<input id>`). Any statement list recorded or changed in the study between the read and the commit stops the entry (`STATEMENTS_CHANGED`). An action with nothing held keeps its old fingerprint. | A second approval must lapse when what it covered changes. |
 | Does the result say so? | The manifest lists `held_statement_ids` when there are any. | A reader should see what was carried in. |
 
-Limits. Only added events are traced: data that reached a source through its scenario, population or knowledge graph is not seen. Nothing proves the source was produced by the named parent, and a parent need only rest on the item, whether or not it added that wording. Held statements get no verification labels or primary-source exception flags in the new result. `request_labelled_option` checks held statements only when it is given them; the executor always does. Someone who can rewrite a source's snapshot and its recorded digests can remove an event from both.
+Limits. Only added events are traced: data that reached a source through its scenario, population or knowledge graph is not seen. Which result a source came from is covered by the next section. Held statements get no verification labels or primary-source exception flags in the new result. `request_labelled_option` checks held statements only when it is given them; the executor always does. Someone who can rewrite a source's snapshot and its recorded digests can remove an event from both; for a source with added events the rewritten digest would then no longer be one a parent recorded.
+
+## Which result a source came from
+
+Before this, a caller could name any parent that rested on the item whose wording an added event matched. The lineage, and with it the retraction stamps, rested on the service's word. Executed results also kept no snapshot, so none of them could in fact be forked again.
+
+| Question | Decision | Reason |
+|---|---|---|
+| What is compared? | The digest of the snapshot being restored, against the snapshot digests a named parent's manifest lists for its branches, at the same round. The manifest's bytes must hash to the `result_hash` in the anchored record. | The snapshot is what goes into the run. Its digest covers the state (added events included), reply cache, graph, scenario hash, seed, engine and model identity. |
+| Why not compare the source database with the parent's final state digest (the first suggestion)? | A fork starts from a snapshot of an earlier round, and a finished result has no round left. The final state says nothing about that snapshot. | A check on the live database would not judge what runs. |
+| How can a result be built on, then? | `keep_snapshots` on each execute call names rounds of the output branches to snapshot. For a fork or continuation each is after the start round; each is before the last round. The digests go in `branches.<name>.snapshots`. None by default. | Keeping a snapshot changes no state (a test compares digests), costs disk, and is only useful if someone will build on it. The gate does not price the disk. |
+| When is the check required? | When the start snapshot carries added events. A parent that qualifies must be among `parent_result_ids`, or the run is refused before the gate (`SOURCE_NOT_PARENT_OUTPUT`). | Those events are what a retraction must follow. |
+| Which parents trace the held events? | Only the ones that recorded the snapshot. Their basis already includes their own parents' items. | A bystander that merely rests on the item added nothing to this source. |
+| Where are parent manifests read? | Under the same `out_dir` as the new result. A missing, changed or unreadable one does not count. | One results directory per service; fail closed. |
+| What is rechecked? | The gate's snapshot probe and every branch must report the same snapshot digest as the first read. | A snapshot swapped between the check and the run is not run. |
+| What does the new result say? | `source_produced_by` lists each qualifying parent and branch, next to `held_statement_ids`. | A reader can follow the chain. |
+
+**Behaviour change:** a source holding added events that no executed result kept as a snapshot can no longer be run from, whatever parents are named. That includes events a service wrote into a study itself, and every result executed before this change.
+
+Limits. The match is of snapshot content, not of a directory: a copy of a parent's branch counts, and so would an identical snapshot built another way. A source with no added events can still be a result's output (a without-event branch, say), and then only the caller can say so. A result recorded by calling `record_run_result` directly is as trustworthy as that caller. A parent's current retraction stamps do not block the run; they carry over to the new result. Snapshots are tied to the exact Agora code, Python and library versions, so after any upgrade a kept snapshot can no longer be restored and the gate blocks the run (`snapshot_unavailable`).
 
 ## Limits
 
 - `source`, `out_dir`, the study state, the kill-switch probe, statement sources and judgments, and any extra basis items or parent results are trusted service inputs. Nothing proves that `source` is the project of that study.
-- If `source` was itself produced from a recorded result, the service must name it as a parent, or retractions behind it are not carried over.
+- If `source` was itself produced from a recorded result, the service must name it as a parent, or retractions behind it are not carried over. This is checked only for a source whose start snapshot carries added events.
 - A process that dies mid-run leaves a `.executing` directory that blocks that result id until an operator removes it.
 - The read check covers the manifest and the branch databases, not the reply caches or other files. Someone who can write the output directory can still copy files from it without using this call, and so without stamps.
 - Reads perform no permission check. There is no service boundary, command, screen or report; adding a network service needs a separate security review.

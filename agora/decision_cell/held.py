@@ -16,7 +16,8 @@ Rules chosen here:
 
 Limits. Matching is by exact wording. An event reworded after it was added is refused as untraced, but
 nothing here sees data that reached the source any other way (its scenario, population or knowledge graph),
-and nothing proves the source was produced by the named parent.
+and this module does not check which result produced the source: ``executor`` does that first and passes only
+the producing parents.
 """
 from __future__ import annotations
 
