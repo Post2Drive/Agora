@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 
 import pytest
@@ -67,7 +66,8 @@ def first_round_run(project):
 
 
 def test_a_rerun_runs_every_round_in_a_new_project_and_leaves_the_source(audit, source, tmp_path):
-    shutil.rmtree(source / "snapshots")  # a rerun needs none
+    # A rerun needs no snapshot. Moved aside, not deleted: the files are read-only, which Windows will not delete.
+    (source / "snapshots").rename(tmp_path / "snapshots-aside")
     before = files(source)
     done = rerun(audit, source, tmp_path / "out")
     assert files(source) == before
