@@ -268,7 +268,8 @@ conversions:
     label: buy Nutrivance on the website at Rs 69 per sachet after trying the sample
     open_round: 48
     close_round: 72
-    requires: [register_lakeview, register_palmgrove]
+    # A resident can buy after registering for ANY ONE of these; each registration is open to one apartment only.
+    requires_any: [register_lakeview, register_palmgrove]
     base: -6.5
     stance_weight: 3.5
     exposure_weight: 0.4
