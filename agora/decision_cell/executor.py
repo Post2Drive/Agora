@@ -1,23 +1,31 @@
-"""Run FORK_FROM_EVENT, CONTINUE or RERUN_FROM_START and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
+"""Run FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE or RERUN_FROM_START and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
 
 ``execute_event_fork`` forks the study twice from the verified snapshot at the event round (with the item's
-statements added, and without them). ``execute_continuation`` forks it once from the verified snapshot at the
+statements added, and without them). ``execute_earlier_fork`` does the same from a snapshot before the event round, with the
+statements added in the round after that earlier one. ``execute_continuation`` forks it once from the verified snapshot at the
 last committed round, with the statements added at the next round. ``execute_rerun`` runs the study again from
 the start in a new project, with the statements added in the round after the event round the request names.
-All three ask the gate immediately before acting,
+All four ask the gate immediately before acting,
 run on the mock backend, record the result with ``record_run_result`` and only then make the output visible.
-``read_event_fork``, ``read_continuation`` and ``read_rerun`` return a recorded result together with its stamps.
+``read_event_fork``, ``read_earlier_fork``, ``read_continuation`` and ``read_rerun`` return a recorded result together with its stamps.
 
 Rules chosen here:
 
-* Only FORK_FROM_EVENT, CONTINUE and RERUN_FROM_START, each through its own call. Every other option is refused before the gate.
+* Only FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE and RERUN_FROM_START, each through its own call. Every other option is refused before the gate.
+* FORK_FROM_EARLIER places the item EARLIER than it happened: both branches start from the snapshot at
+  ``request.from_round`` and the with-event branch gets the statements in the round after it. This is a
+  what-if about timing ("what if this had reached people sooner"), and the manifest says so
+  (``event_placement``). Adding them after the event round instead would, on a deterministic backend, only
+  repeat FORK_FROM_EVENT. Nothing models a different response; only the item's arrival moves. The event
+  round may not be later than the last committed round, and a source holding added events after the earlier
+  round is refused.
 * CONTINUE never writes the source: "keep the agents' state" means the same state, restored into a new project
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
   It runs one branch with no baseline, so it shows no difference the item made and claims none.
 * What is added is not chosen by the caller: every listed statement of the item becomes one news event, in
-  its recorded wording, in the round after the start round (the event round, or for CONTINUE the last committed
-  round), with no opinion shift. The gate has checked the
+  its recorded wording, in the round after the start round (the event round, the chosen earlier round, or for CONTINUE the
+  last committed round), with no opinion shift. The gate has checked the
   wording against the recorded list and hashed the labels into the action fingerprint, so a second approval
   covers what runs. Leaving a statement out is a CHANGE_INPUTS matter and is not built.
 * The cost (remaining rounds times agents, per branch) and the snapshot probe are worked out here from the
@@ -84,12 +92,14 @@ RESULT_FILE = "result.json"
 SCHEMA = "agora.decision-cell.event-fork/1"
 CONTINUATION_SCHEMA = "agora.decision-cell.continuation/1"
 RERUN_SCHEMA = "agora.decision-cell.rerun/1"
+EARLIER_FORK_SCHEMA = "agora.decision-cell.earlier-fork/1"
 WITH_EVENT = "with-event"
 WITHOUT_EVENT = "without-event"
 CONTINUED = "continued"
 RERUN = "rerun"
 # schema -> the branch directories a result of that kind holds. Code, not the manifest, says what is verified.
-_KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), CONTINUATION_SCHEMA: (CONTINUED,), RERUN_SCHEMA: (RERUN,)}
+_KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), EARLIER_FORK_SCHEMA: (WITH_EVENT, WITHOUT_EVENT),
+          CONTINUATION_SCHEMA: (CONTINUED,), RERUN_SCHEMA: (RERUN,)}
 _STAGING_SUFFIX = ".executing"
 
 
@@ -152,7 +162,10 @@ def _source_facts(source: Path) -> tuple[int, int, int, int]:
 
 
 def fork_branch_cost(source: str | Path, event_round: int) -> int:
-    """Agent-rounds one branch will run. The gate prices a fork as two of these; use it to show the cost."""
+    """Agent-rounds one branch forked after ``event_round`` will run (for an earlier fork, pass its from-round).
+
+    The gate prices a fork as two of these; use it to show the cost.
+    """
     rounds, _, agents, _ = _source_facts(Path(source))
     return max(rounds - 1 - event_round, 0) * agents
 
@@ -259,6 +272,27 @@ def execute_event_fork(
                     grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
 
 
+def execute_earlier_fork(
+    principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
+    tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
+    out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
+    escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
+    parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
+    now: datetime | None = None,
+) -> ExecutionResult:
+    """Gate, fork, run and record one FORK_FROM_EARLIER. Same refusals and release rule as ``execute_event_fork``.
+
+    ``request.from_round`` and ``request.event_round`` are both required, the first earlier than the second.
+    Both branches start from the snapshot at ``from_round``; the with-event branch gets the statements in the
+    round after it, so the item arrives earlier than it did. Use ``fork_branch_cost(source, from_round)``
+    for the cost of one branch.
+    """
+    return _execute(Option.FORK_FROM_EARLIER, EARLIER_FORK_SCHEMA, principal, request, statements=statements,
+                    tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
+                    out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+
+
 def execute_rerun(
     principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
     tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
@@ -312,9 +346,13 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     if not isinstance(parent_result_ids, tuple) or not isinstance(other_item_ids, tuple):
         raise ExecutionError("INPUT_INVALID", "give parent results and other items as tuples")
     forking, rerunning = option is Option.FORK_FROM_EVENT, option is Option.RERUN_FROM_START
-    if (forking or rerunning) and (type(request.event_round) is not int or request.event_round < 0):
+    earlier = option is Option.FORK_FROM_EARLIER
+    placed = forking or earlier or rerunning  # the options for which the person names the event round
+    if placed and (type(request.event_round) is not int or request.event_round < 0):
         raise ExecutionError("INPUT_INVALID", "a fork or a rerun needs the event round")
-    if not (forking or rerunning) and request.event_round is not None:
+    if earlier and (type(request.from_round) is not int or request.from_round < 0):
+        raise ExecutionError("INPUT_INVALID", "an earlier fork needs the round to fork from")
+    if not placed and request.event_round is not None:
         raise ExecutionError("INPUT_INVALID", "a continuation adds at the next round; give no event round")
     source, out_dir = Path(source), Path(out_dir)
     key = dict(tenant_id=tenant_id, project_id=project_id, study_id=study.study_id)
@@ -323,8 +361,8 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     if study.current_round != last_round:
         raise ExecutionError("STUDY_ROUND_MISMATCH", "the study state does not match the source's last round")
     # The statements are added in the round after this one. A fork or continuation also starts from its snapshot.
-    start_round = request.event_round if forking or rerunning else last_round
-    if rerunning and start_round > last_round:
+    start_round = (request.from_round if earlier else request.event_round) if placed else last_round
+    if (rerunning or earlier) and request.event_round > last_round:
         raise ExecutionError("EVENT_ROUND_NOT_REACHED", "the event round is later than the study has reached")
     if start_round + 1 >= rounds:
         raise ExecutionError("NO_ROUND_LEFT", "there is no round left to add the item to")
@@ -396,7 +434,9 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             # Labels as the gate judged them: shown beside the result, not updated afterwards.
             "statement_labels": {i: s.label.value for i, s in evidence.statements},
             "primary_source_exception_ids": list(evidence.primary_source_exception_ids),
-            ("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round,
+            **({"event_round": request.event_round, "forked_from_round": start_round,
+                "event_placement": "hypothetical-earlier"} if earlier else
+               {("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round}),
             "added_in_round": start_round + 1, "cost_units": gate.cost_units,
             "llm_backend": "mock", "validated_prediction_enabled": False, "branches": branches,
         }
@@ -424,6 +464,13 @@ def read_event_fork(*, tenant_id: str, project_id: str, study_id: str, result_id
     what was recorded.
     """
     return _read(SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
+                 result_id=result_id, out_dir=out_dir, audit=audit)
+
+
+def read_earlier_fork(*, tenant_id: str, project_id: str, study_id: str, result_id: str,
+                      out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
+    """A recorded earlier fork with its current stamps; the same refusals as ``read_event_fork``."""
+    return _read(EARLIER_FORK_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
                  result_id=result_id, out_dir=out_dir, audit=audit)
 
 
@@ -475,5 +522,6 @@ def _read(schema, *, tenant_id, project_id, study_id, result_id, out_dir, audit)
                            run_result_stamps(result_id=result_id, audit=audit, **key))
 
 
-__all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_continuation", "execute_event_fork",
-           "execute_rerun", "fork_branch_cost", "read_continuation", "read_event_fork", "read_rerun", "rerun_cost"]
+__all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_continuation", "execute_earlier_fork",
+           "execute_event_fork", "execute_rerun", "fork_branch_cost", "read_continuation", "read_earlier_fork",
+           "read_event_fork", "read_rerun", "rerun_cost"]
