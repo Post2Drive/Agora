@@ -9,9 +9,10 @@ access of its own. It is not a network service.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from .registry import OntologyError
 from .store import OntologyObjectStore
@@ -20,6 +21,19 @@ from .typed import GENERATOR_VERSION
 
 READ_API_VERSION = "1"
 _LINK_STATUSES = frozenset({"active", "superseded", "retracted"})
+_Result = TypeVar("_Result")
+
+
+class OntologyReadError(OntologyError):
+    """A read failed in a reader built with ``error_sink``.
+
+    The message is the same for every cause. ``reference`` is random and matches
+    the one the sink received with the original error.
+    """
+
+    def __init__(self, reference: str):
+        super().__init__(f"ontology read failed (reference {reference})")
+        self.reference = reference
 
 
 @dataclass(frozen=True)
@@ -83,6 +97,7 @@ class OntologyReader:
     def __init__(
         self, store: OntologyObjectStore, types: Any, *, api_version: str,
         policy: Any, audit: Any, purpose: str | None = None, retention: str | None = None,
+        error_sink: Callable[[str, Exception], None] | None = None,
     ):
         if api_version != READ_API_VERSION:
             raise OntologyError("unsupported read interface version")
@@ -97,6 +112,9 @@ class OntologyReader:
             or not (isinstance(error, type) and issubclass(error, ValueError))
         ):
             raise OntologyError("not a generated type module")
+        if error_sink is not None and not callable(error_sink):
+            raise OntologyError("error_sink must be callable")
+        self._error_sink = error_sink
         self._store = store
         self._pack_fingerprint = fingerprint
         # Copied, so a later change to the module does not change this reader.
@@ -115,6 +133,24 @@ class OntologyReader:
         if not any(candidate is cls for candidate in self._classes.values()):
             raise OntologyError("the class is not an object type of this reader's type module")
 
+    def _guarded(self, read: Callable[[], _Result]) -> _Result:
+        """Run one read. With a sink, no detail of a failure reaches the caller."""
+        sink = self._error_sink
+        if sink is None:
+            return read()
+        try:
+            return read()
+        except Exception as exc:
+            reference = uuid.uuid4().hex
+            try:
+                sink(reference, exc)
+            except Exception:
+                # A failing sink must not put the detail back in front of the caller.
+                pass
+        # Raised outside the handler, so neither __cause__ nor __context__ holds
+        # the original. ``from None`` alone would keep it in __context__.
+        raise OntologyReadError(reference)
+
     def _typed(self, cls: Any, instance: Mapping[str, Any]) -> Any:
         try:
             return cls.from_instance(instance)
@@ -125,11 +161,10 @@ class OntologyReader:
     def get(self, cls: Any, record_key: str, import_id: str) -> Any:
         """Return one object of ``cls`` from an exact import."""
         self._require_class(cls)
-        instance = self._store.get_object(
+        return self._guarded(lambda: self._typed(cls, self._store.get_object(
             self._pack_fingerprint, cls.TYPE_ID, cls.TYPE_VERSION, record_key, import_id,
             **self._access, **self._privacy,
-        )
-        return self._typed(cls, instance)
+        )))
 
     def query(
         self, cls: Any, import_id: str, filters: Mapping[str, Any] | None = None, *,
@@ -140,6 +175,13 @@ class OntologyReader:
         If any object of the page does not fit the type, no part of it is returned.
         """
         self._require_class(cls)
+        return self._guarded(
+            lambda: self._query_page(cls, import_id, filters, page_size, cursor))
+
+    def _query_page(
+        self, cls: Any, import_id: str, filters: Mapping[str, Any] | None,
+        page_size: int, cursor: str | None,
+    ) -> ObjectPage:
         page = self._store.query_objects(
             self._pack_fingerprint, cls.TYPE_ID, cls.TYPE_VERSION, import_id,
             {} if filters is None else filters, page_size, cursor,
@@ -159,6 +201,13 @@ class OntologyReader:
         The page includes superseded and retracted links.
         """
         self._require_class(type(obj))
+        return self._guarded(lambda: self._link_page(
+            link_type_id, link_type_version, obj, direction, page_size, cursor))
+
+    def _link_page(
+        self, link_type_id: str, link_type_version: str, obj: Any,
+        direction: str, page_size: int, cursor: str | None,
+    ) -> LinkPage:
         endpoint = {
             "project_id": self._store.project_id, "pack_fingerprint": self._pack_fingerprint,
             "type_id": obj.TYPE_ID, "type_version": obj.TYPE_VERSION,
