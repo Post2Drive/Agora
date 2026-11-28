@@ -550,6 +550,19 @@ def _discard_staged_copy(path: Path) -> None:
             pass
 
 
+def _privacy_evidence(privacy: tuple[str | None, str | None]) -> dict[str, str]:
+    """Digests of the purpose and retention a policy check was handed, for its audit event.
+
+    Both are caller-supplied free text, so the chain keeps SHA-256 digests of the exact
+    UTF-8 bytes, not the text. A value that was not a string leaves no field.
+    """
+    return {
+        field: hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()
+        for field, value in zip(("purpose_hash", "retention_hash"), privacy)
+        if isinstance(value, str)
+    }
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -647,6 +660,7 @@ class OntologyObjectStore:
                 "policy_version": str(decision.get("policy_version", "unknown")) if decision else "unknown",
                 "resource_ids": resource_ids,
                 "reason": "policy_allow",
+                **_privacy_evidence(privacy),
             })
             return decision
         except PolicyEnforcementError as exc:
