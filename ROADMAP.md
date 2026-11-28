@@ -57,7 +57,7 @@ LLM swarms lack.
 - [x] Agents communicate directly inside Agora (direct, group and open conversations) with no platform account required; a message log that records the reason for every message, inboxes, and directed relationships with a change log
 - [x] Contact permissions (`open`, `relationship`, `group_only`) and a scored word-of-mouth model for crowd people; `agora new` makes native messaging with relationship-gated contact the default for new projects
 - [x] A read-only report of who communicated, what moved and what followed (`society_report`), tied to the store digest
-- [ ] Not built: platform adapters (phase 5), broadcast channels, leaving a group, invitation consent, seeding starting relationships from ontology links (designed: [docs/NATIVE_RELATIONSHIP_SEEDING_DESIGN.md](docs/NATIVE_RELATIONSHIP_SEEDING_DESIGN.md); the declaration parser and edge plan exist, applying them to a run does not). Native messaging is not supported for governed runs. Design: [docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md](docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md)
+- [ ] Not built: platform adapters (phase 5), broadcast channels, leaving a group, invitation consent, seeding starting relationships from ontology links (designed: [docs/NATIVE_RELATIONSHIP_SEEDING_DESIGN.md](docs/NATIVE_RELATIONSHIP_SEEDING_DESIGN.md); the declaration parser, edge plan and the apply step exist; no command wires them to the ontology yet). Native messaging is not supported for governed runs. Design: [docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md](docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md)
 
 ## Phase 5: Product
 - Web UI polish: PDF export button, guided tour, saved interview sets

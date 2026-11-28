@@ -93,7 +93,7 @@ The platform component names used in earlier planning conversations (nine system
 | 7 | Release manifest format and running-release attestation | Hosting provider decision | Test vectors | Owner |
 | 8 | Cross-tenant access tests | Tenant store design | Failing-by-design tests | No |
 | 9 | Record provider and model snapshot per run | None | Run metadata test | Done (`tests/test_run_llm_record.py`) |
-| 10 | Seeding phase 3 (apply ontology links to a run) | Owner answers on seeding | Engine tests | No |
+| 10 | Seeding phase 3 (apply ontology links to a run) | Owner answers on seeding | Engine tests | Apply step done (`tests/test_native_seed_apply.py`); no command yet |
 
 Unknowns in this pass are listed in the matrix. A second pass should check ingestion provenance tests, graph edge basis, calibration and sensitivity, and the knowledge-transfer module.
 
