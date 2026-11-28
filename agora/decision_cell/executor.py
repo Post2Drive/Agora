@@ -33,6 +33,10 @@ Rules chosen here:
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
   It runs one branch with no baseline, so it shows no difference the item made and claims none.
+* A run needs the data owner's grant for every statement it will add that is rated ``personal`` or higher,
+  and is blocked if one is unrated. The gate takes ratings from the recorded statement list. A grant names
+  the statement by ``statement_input_id``. A rating raised while a run is in progress does not stop it, and
+  statements the source already holds from earlier runs are not checked again.
 * Except under CHANGE_INPUTS, what is added is not chosen by the caller: every listed statement of the item
   becomes one news event, in
   its recorded wording, in the round after the start round (the event round, the chosen earlier round, or for CONTINUE the
@@ -81,6 +85,7 @@ from pathlib import Path
 
 from agora.audit_anchor import AnchoredAuditChain
 from agora.decision_cell.evidence import StatementEvidence, request_labelled_option
+from agora.decision_cell.statements import statement_input_id
 from agora.decision_cell.options import (
     DecisionCellError,
     Escalation,
@@ -135,13 +140,6 @@ class ExecutionResult:
 
 
 EventForkResult = ExecutionResult           # the name the first executor shipped with
-
-
-def statement_input_id(item_id: str, statement_id: str) -> str:
-    """The ``InputRef.input_id`` of one statement of one item, for CHANGE_INPUTS and data-owner grants."""
-    if not (_identifier(item_id) and _identifier(statement_id)):
-        raise ExecutionError("INPUT_INVALID", "ids must be exact non-empty strings")
-    return "statement:" + _canonical([item_id, statement_id])
 
 
 def _chosen_statements(request: OptionRequest, statements: tuple[StatementEvidence, ...]) -> set[str]:
@@ -359,8 +357,8 @@ def execute_changed_inputs_fork(
     """Gate, fork, run and record one CHANGE_INPUTS over FORK_FROM_EVENT, with some statements left out.
 
     ``statements`` is still the item's whole list, as the gate requires. ``request.inputs`` names the chosen
-    ones by ``statement_input_id``; the service, not the person, must supply each one's sensitivity and data
-    owner. The with-event branch gets only the chosen statements. Refusals and release rule as for
+    ones by ``statement_input_id``, each with its recorded sensitivity and data owner (any other value is
+    blocked). The with-event branch gets only the chosen statements. Refusals and release rule as for
     ``execute_event_fork``.
     """
     return _execute(Option.CHANGE_INPUTS, CHANGED_INPUTS_SCHEMA, principal, request, statements=statements,

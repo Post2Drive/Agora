@@ -3,7 +3,7 @@
 The gate answers one question: may THIS person run THIS option, for THIS request,
 now? It runs nothing, calls no model, reads no feed and changes no study.
 
-Trust boundary. ``ProjectRecord``, ``StudyState``, ``Escalation``, grants, input
+Trust boundary. ``ProjectRecord``, ``StudyState``, ``Escalation``, grants, statement ratings, input
 sensitivity, the cost estimate, the snapshot probe and the evidence hash come from the trusted
 service layer, never from request input; the gate cannot authenticate them. Only
 ``OptionRequest`` is the person's request. Identity comes from an adapter-issued
@@ -208,6 +208,7 @@ def evaluate_option(
     now: datetime | None = None,
     evidence_hash: str | None = None,
     labels_required: bool = False,
+    item_statements: tuple[InputRef, ...] | None = None,
 ) -> GateResult:
     """Evaluate every check and return all failures. Pure apart from calling the snapshot probe."""
     if not isinstance(request, OptionRequest) or not isinstance(request.option, Option):
@@ -231,7 +232,8 @@ def evaluate_option(
 
     # -- evidence view --------------------------------------------------------
     viewed = request.viewed_evidence_hash
-    if labels_required and evidence_hash is None and request.option in EVIDENCE_DECIDING_OPTIONS:
+    if labels_required and (evidence_hash is None or item_statements is None) \
+            and request.option in EVIDENCE_DECIDING_OPTIONS:
         fail("item_labels_required")
     if evidence_hash is None:
         if viewed is not None:
@@ -311,20 +313,40 @@ def evaluate_option(
         fail("kill_switch_on")
 
     # -- sensitive inputs ----------------------------------------------------
+    # ``item_statements`` holds the item's recorded ratings. They, not the request, decide what needs a grant.
+    recorded = {s.input_id: s for s in item_statements or ()}
+
+    def require_grant(item: InputRef) -> None:
+        if SENSITIVITY_RANK[item.sensitivity] < SENSITIVITY_RANK["personal"]:
+            return
+        owner = item.data_owner_subject_id
+        if not _text(owner) or InputGrant(
+                record.project_id, study.study_id, item.input_id, subject, owner) not in grants:
+            fail(f"data_owner_grant_missing:{item.input_id}")
+
+    def require_statement(known: InputRef) -> None:
+        if known.sensitivity not in SENSITIVITY_RANK:
+            fail(f"statement_unrated:{known.input_id}")
+        else:
+            require_grant(known)
+
     if request.option is Option.CHANGE_INPUTS:
         ids = [i.input_id for i in request.inputs]
         if len(ids) != len(set(ids)):
             fail("duplicate_input")
         for item in request.inputs:
-            if not _text(item.input_id) or item.sensitivity not in SENSITIVITY_RANK:
+            known = recorded.get(item.input_id) if isinstance(item.input_id, str) else None
+            if known is not None:
+                if known.sensitivity in SENSITIVITY_RANK and item != known:
+                    fail(f"input_rating_mismatch:{item.input_id}")
+                require_statement(known)
+            elif not _text(item.input_id) or item.sensitivity not in SENSITIVITY_RANK:
                 fail("input_sensitivity_unknown")
-                continue
-            if SENSITIVITY_RANK[item.sensitivity] < SENSITIVITY_RANK["personal"]:
-                continue
-            owner = item.data_owner_subject_id
-            if not _text(owner) or InputGrant(
-                    record.project_id, study.study_id, item.input_id, subject, owner) not in grants:
-                fail(f"data_owner_grant_missing:{item.input_id}")
+            else:
+                require_grant(item)
+    elif request.option in RUN_OPTIONS:  # a run adds every listed statement
+        for known in recorded.values():
+            require_statement(known)
 
     # -- snapshot ------------------------------------------------------------
     cost = 0
@@ -407,7 +429,8 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
     # An item with a recorded statement list may be decided only on its labels.
     db = getattr(getattr(audit, "chain", audit), "db", None)
     record, study = context.get("record"), context.get("study")
-    unlabelled = (db is not None and context.get("evidence_hash") is None
+    unlabelled = (db is not None
+                  and (context.get("evidence_hash") is None or context.get("item_statements") is None)
                   and isinstance(request, OptionRequest) and request.option in EVIDENCE_DECIDING_OPTIONS
                   and isinstance(record, ProjectRecord) and isinstance(study, StudyState))
     labels_required = False

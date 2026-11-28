@@ -13,7 +13,8 @@
 * a recorded retraction or correction of the item (``retractions``) is part of the view in the same way: it
   changes the hash, is recorded with the attempt, and blocks the commit if it arrives after the read.
 
-A label never allows or forbids an option by itself: the spec lets a human act on unconfirmed items.
+A label never allows or forbids an option by itself: the spec lets a human act on unconfirmed items. A
+statement's recorded rating does: a run that would add it needs its data owner's grant (see ``statements``).
 
 The item must have a recorded statement list (``statements``), and exactly those statements, as worded,
 must be given. Once it has one, the other gate calls block every choice that decides on the evidence.
@@ -31,7 +32,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from agora.audit_anchor import AnchoredAuditChain
-from agora.decision_cell.options import GateResult, OptionRequest, ProjectRecord, request_option
+from agora.decision_cell.options import (
+    GateResult, InputRef, OptionRequest, ProjectRecord, request_option,
+)
 from agora.decision_cell.project_store import (
     ProjectRecordError, _canonical, _event_id as _record_event_id, _hash, _identifier, load_project_record,
 )
@@ -39,7 +42,8 @@ from agora.decision_cell.retractions import (
     BASED_ON_RETRACTED_ITEM, CorrectionKind, ItemCorrection, load_item_corrections, require_no_newer_correction,
 )
 from agora.decision_cell.statements import (
-    MAX_STATEMENTS, ItemStatements, load_item_statements, require_no_newer_list, wording_hash,
+    MAX_STATEMENTS, ItemStatements, load_item_statements, require_no_newer_list, statement_input_id,
+    wording_hash,
 )
 from agora.decision_cell.verification import (
     IndependenceJudgment, Source, StatementLabel, VerificationError, _key, _label_event_id, statement_label,
@@ -123,6 +127,8 @@ def item_evidence(
         tenant_id=tenant_id, project_id=project_id, study_id=study_id, item_id=item_id, audit=audit)
     if corrections:  # added only when present, so other views keep their hash
         body.append([[c.kind.value, c.correcting_item_id] for c in corrections])
+    if listed.ratings:  # so a second approval lapses when a rating is raised; unrated lists keep their hash
+        body.append(["ratings", [[i, r.sensitivity, r.data_owner_subject_id] for i, r in listed.ratings]])
     return ItemEvidence(tenant_id, project_id, study_id, item_id, labels, _hash(_canonical(body)), listed,
                         corrections)
 
@@ -150,6 +156,15 @@ def _flags(evidence: ItemEvidence) -> tuple[str, ...]:
     return tuple(flags)
 
 
+def _recorded_inputs(listed: ItemStatements) -> tuple[InputRef, ...]:
+    """Every listed statement as the gate judges it. An unrated one gets an empty sensitivity, which blocks."""
+    ratings = dict(listed.ratings)
+    return tuple(InputRef(statement_input_id(listed.item_id, statement_id),
+                          ratings[statement_id].sensitivity if statement_id in ratings else "",
+                          ratings[statement_id].data_owner_subject_id if statement_id in ratings else None)
+                 for statement_id, _ in listed.statements)
+
+
 def request_labelled_option(
     principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
     tenant_id: str, project_id: str, audit: AnchoredAuditChain, **context: Any,
@@ -159,7 +174,8 @@ def request_labelled_option(
     The item is ``request.event_id``. An untrustworthy store or malformed evidence raises before the gate
     is reached; a blocked choice is returned and audited like any other.
     """
-    if {"record", "record_hash", "evidence_hash", "audit_flags", "in_transaction"} & set(context):
+    if {"record", "record_hash", "evidence_hash", "item_statements", "audit_flags",
+            "in_transaction"} & set(context):
         raise ProjectRecordError("RECORD_INVALID", "stored inputs cannot be supplied by the caller")
     if not isinstance(request, OptionRequest) or context.get("study") is None:
         raise VerificationError("REQUEST_INVALID", "an OptionRequest and a StudyState are required")
@@ -179,6 +195,7 @@ def request_labelled_option(
     gate = request_option(
         principal, request, record=record, audit=audit,
         record_hash=stored.record_hash if stored else None, evidence_hash=evidence.evidence_hash,
+        item_statements=_recorded_inputs(evidence.listed),
         audit_flags=_flags(evidence), in_transaction=inputs_unchanged, **context)
     return LabelledGateResult(gate, evidence)
 
