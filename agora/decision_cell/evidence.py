@@ -13,6 +13,9 @@
 * a recorded retraction or correction of the item (``retractions``) is part of the view in the same way: it
   changes the hash, is recorded with the attempt, and blocks the commit if it arrives after the read.
 
+``held`` (``held.trace_held_statements``) adds the statements the run's source already holds to the grant
+check; the executor always gives it. A caller of this path that leaves it out gets no such check.
+
 A label never allows or forbids an option by itself: the spec lets a human act on unconfirmed items. A
 statement's recorded rating does: a run that would add it needs its data owner's grant (see ``statements``).
 
@@ -32,6 +35,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agora.audit_anchor import AnchoredAuditChain
+from agora.decision_cell.held import HeldStatements, require_no_newer_lists
 from agora.decision_cell.options import (
     GateResult, InputRef, OptionRequest, ProjectRecord, request_option,
 )
@@ -167,22 +171,27 @@ def _recorded_inputs(listed: ItemStatements) -> tuple[InputRef, ...]:
 
 def request_labelled_option(
     principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
-    tenant_id: str, project_id: str, audit: AnchoredAuditChain, **context: Any,
+    tenant_id: str, project_id: str, audit: AnchoredAuditChain, held: HeldStatements | None = None,
+    **context: Any,
 ) -> LabelledGateResult:
     """``request_project_option`` with the item's labels read here and bound into the attempt.
 
     The item is ``request.event_id``. An untrustworthy store or malformed evidence raises before the gate
     is reached; a blocked choice is returned and audited like any other.
     """
-    if {"record", "record_hash", "evidence_hash", "item_statements", "audit_flags",
+    if {"record", "record_hash", "evidence_hash", "item_statements", "held_statements", "audit_flags",
             "in_transaction"} & set(context):
         raise ProjectRecordError("RECORD_INVALID", "stored inputs cannot be supplied by the caller")
     if not isinstance(request, OptionRequest) or context.get("study") is None:
         raise VerificationError("REQUEST_INVALID", "an OptionRequest and a StudyState are required")
+    if held is not None and (held.tenant_id, held.project_id, held.study_id) != (
+            tenant_id, project_id, context["study"].study_id):
+        raise VerificationError("REQUEST_INVALID", "the held statements are another study's")
     stored = load_project_record(tenant_id=tenant_id, project_id=project_id, audit=audit)
     evidence = item_evidence(
         tenant_id=tenant_id, project_id=project_id, study_id=context["study"].study_id,
         item_id=request.event_id, statements=statements, audit=audit)
+    held_inputs = held.inputs if held is not None else ()
     record = stored.record if stored else ProjectRecord(project_id, tenant_id, "")
     next_version = (stored.version if stored else 0) + 1
 
@@ -191,12 +200,16 @@ def request_labelled_option(
                       (_record_event_id(tenant_id, project_id, next_version),)).fetchone():
             raise VerificationError("RECORD_CHANGED", "the project record changed; submit again")
         require_unchanged(db, evidence)
+        if held is not None:
+            require_no_newer_lists(db, held)
 
     gate = request_option(
         principal, request, record=record, audit=audit,
         record_hash=stored.record_hash if stored else None, evidence_hash=evidence.evidence_hash,
         item_statements=_recorded_inputs(evidence.listed),
-        audit_flags=_flags(evidence), in_transaction=inputs_unchanged, **context)
+        held_statements=held_inputs,
+        audit_flags=_flags(evidence) + tuple(f"held:{i.input_id}" for i in held_inputs),
+        in_transaction=inputs_unchanged, **context)
     return LabelledGateResult(gate, evidence)
 
 

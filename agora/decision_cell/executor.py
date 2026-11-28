@@ -33,10 +33,13 @@ Rules chosen here:
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
   It runs one branch with no baseline, so it shows no difference the item made and claims none.
+* Events a source already holds go into the run too. Each must be traced to a recorded statement of an
+  item in a named parent's basis (``SOURCE_EVENT_UNTRACED`` otherwise), and from ``personal`` up needs its
+  data owner's grant again (see ``held``). They are read from a restore of the snapshot, and each branch is
+  checked to carry the same ones before it runs.
 * A run needs the data owner's grant for every statement it will add that is rated ``personal`` or higher,
   and is blocked if one is unrated. The gate takes ratings from the recorded statement list. A grant names
-  the statement by ``statement_input_id``. A rating raised while a run is in progress does not stop it, and
-  statements the source already holds from earlier runs are not checked again.
+  the statement by ``statement_input_id``. A rating raised while a run is in progress does not stop it.
 * Except under CHANGE_INPUTS, what is added is not chosen by the caller: every listed statement of the item
   becomes one news event, in
   its recorded wording, in the round after the start round (the event round, the chosen earlier round, or for CONTINUE the
@@ -85,6 +88,7 @@ from pathlib import Path
 
 from agora.audit_anchor import AnchoredAuditChain
 from agora.decision_cell.evidence import StatementEvidence, request_labelled_option
+from agora.decision_cell.held import trace_held_statements
 from agora.decision_cell.statements import statement_input_id
 from agora.decision_cell.options import (
     DecisionCellError,
@@ -193,6 +197,26 @@ def _source_facts(source: Path) -> tuple[int, int, int, int]:
     if last is None or not agents:
         raise ExecutionError("SOURCE_NOT_RUN", "the source study has no committed round")
     return rounds, int(last), int(agents), -1 if added is None else int(added)
+
+
+def _added_events(project: Path, through_round: int) -> tuple[tuple[int, str], ...]:
+    """The events added up to a round, in the order the engine applies them."""
+    conn = _read_only(project / "agora.db")
+    try:
+        return tuple((row[0], row[1]) for row in conn.execute(
+            "SELECT round, event FROM injected WHERE round <= ? ORDER BY round, id", (through_round,)))
+    finally:
+        conn.close()
+
+
+def _carried_events(source: Path, start_round: int) -> tuple[tuple[int, str], ...]:
+    """What a restore of the snapshot at ``start_round`` carries over. A real restore, thrown away."""
+    from agora.sim.engine import Simulation
+
+    with tempfile.TemporaryDirectory() as scratch:
+        probe = Path(scratch) / "probe"
+        Simulation.fork_from(source, start_round, probe)
+        return _added_events(probe, start_round)
 
 
 def fork_branch_cost(source: str | Path, event_round: int) -> int:
@@ -439,6 +463,21 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     for parent_id in parent_result_ids:
         if load_run_result(result_id=parent_id, audit=writer, **key) is None:
             raise ExecutionError("PARENT_NOT_RECORDED", "record the parent result first")
+    # Judged on the restored snapshot, not the live source: that is what goes into the run. A rerun carries
+    # nothing. If the restore fails, the gate blocks the choice as having no verified snapshot.
+    carried: tuple[tuple[int, str], ...] | None = ()
+    if not rerunning:
+        try:
+            carried = _carried_events(source, start_round)
+        except Exception:
+            carried = None
+    held = None
+    if carried:
+        held = trace_held_statements(added_events=carried, parent_result_ids=parent_result_ids,
+                                     audit=writer, **key)
+        if held is None:
+            raise ExecutionError("SOURCE_EVENT_UNTRACED",
+                                 "an event the source holds is not a recorded statement of a named parent")
     final = _result_dir(out_dir, tenant_id, project_id, study.study_id, result_id)
     if load_run_result(result_id=result_id, audit=writer, **key) is not None:
         raise ExecutionError("RESULT_ALREADY_RECORDED", "a result id is used once")
@@ -456,13 +495,12 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             raise ExecutionError("OUTPUT_EXISTS", "output for this result id already exists")
 
         def snapshot_verifies(_study_id: str, snapshot_round: int) -> bool:
-            with tempfile.TemporaryDirectory() as scratch:
-                Simulation.fork_from(source, snapshot_round, Path(scratch) / "probe")
-            return True
+            # Not verified unless it still carries exactly the events whose statements the gate judges.
+            return carried is not None and _carried_events(source, snapshot_round) == carried
 
         decided = request_labelled_option(
             principal, request, statements=statements, tenant_id=tenant_id, project_id=project_id,
-            audit=writer, study=study, branch_cost_units=rounds_to_run * agents,
+            audit=writer, held=held, study=study, branch_cost_units=rounds_to_run * agents,
             snapshot_verifies=snapshot_verifies, escalation=escalation, grants=grants, now=now)
         gate, evidence = decided.gate, decided.evidence
         if not gate.executable:
@@ -483,6 +521,8 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
                 branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on), **made}
                 continue
             Simulation.fork_from(source, start_round, project, events=[] if name == WITHOUT_EVENT else added)
+            if _added_events(project, start_round) != carried:  # judged on the copy that is about to run
+                raise ExecutionError("SOURCE_CHANGED", "the snapshot's added events changed after the gate")
             forked = json.loads((project / "fork.json").read_text(encoding="utf-8"))
             branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on),
                               "snapshot_meta_digest": forked["snapshot_meta_digest"],
@@ -506,6 +546,7 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             **({"event_round": request.event_round, "forked_from_round": start_round,
                 "event_placement": "hypothetical-earlier"} if earlier else
                {("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round}),
+            **({"held_statement_ids": [i.input_id for i in held.inputs]} if held else {}),
             "added_in_round": start_round + 1, "cost_units": gate.cost_units,
             "llm_backend": "mock", "validated_prediction_enabled": False, "branches": branches,
         }
