@@ -1,24 +1,30 @@
-"""Run FORK_FROM_EVENT and record what it rests on, as one call (DECISION_CELL_SPEC sections 3, 3A and 5).
+"""Run FORK_FROM_EVENT or CONTINUE and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
 
-``execute_event_fork`` asks the gate immediately before acting, forks the study twice from the verified
-snapshot at the event round (with the item's statements added, and without them), runs both branches on the
-mock backend, records the comparison with ``record_run_result`` and only then makes the output visible.
-``read_event_fork`` returns a recorded comparison together with its stamps.
+``execute_event_fork`` forks the study twice from the verified snapshot at the event round (with the item's
+statements added, and without them). ``execute_continuation`` forks it once from the verified snapshot at the
+last committed round, with the statements added at the next round. Both ask the gate immediately before acting,
+run on the mock backend, record the result with ``record_run_result`` and only then make the output visible.
+``read_event_fork`` and ``read_continuation`` return a recorded result together with its stamps.
 
 Rules chosen here:
 
-* Only FORK_FROM_EVENT. Every other option is refused before the gate.
+* Only FORK_FROM_EVENT and CONTINUE, each through its own call. Every other option is refused before the gate.
+* CONTINUE never writes the source: "keep the agents' state" means the same state, restored into a new project
+  from the snapshot at the last committed round. A request that names an event round is refused, because a
+  continuation always adds at the next round and an unused value would still enter the action fingerprint.
+  It runs one branch with no baseline, so it shows no difference the item made and claims none.
 * What is added is not chosen by the caller: every listed statement of the item becomes one news event, in
-  its recorded wording, in the round after the event round, with no opinion shift. The gate has checked the
+  its recorded wording, in the round after the start round (the event round, or for CONTINUE the last committed
+  round), with no opinion shift. The gate has checked the
   wording against the recorded list and hashed the labels into the action fingerprint, so a second approval
   covers what runs. Leaving a statement out is a CHANGE_INPUTS matter and is not built.
 * The cost (remaining rounds times agents, per branch) and the snapshot probe are worked out here from the
   source project, not taken from the caller. The probe is a real ``fork_from`` into a throwaway directory.
 * The study's current round must equal the source's last committed round. A source holding added events
   after the event round is refused, because a fork would silently drop them from both branches.
-* The two branches are ONE result: the comparison. It rests on the item, so a retraction stamps it. The
+* A fork's two branches are ONE result: the comparison. It rests on the item, so a retraction stamps it. The
   without-event branch is not recorded or offered as a result of its own: a stamp on it alone would be false.
-* Output is built in a staging directory. It reaches its final place only after both branches finished, the
+* Output is built in a staging directory. It reaches its final place only after every branch finished, the
   result was recorded and its stamps were read. On any failure the staging directory this call created is
   removed. If recording succeeded and a later step failed, the record stays, no output is released, and that
   result id cannot be used again.
@@ -30,7 +36,7 @@ switch, the statements' sources and judgments and the other basis ids are truste
 here proves that ``source`` is the project of that study. Mock backend only, so the output is a rehearsal of
 the machinery and not a forecast. A process that dies mid-run leaves the staging directory, which blocks that
 result id until an operator removes it. Anyone who can write ``out_dir`` can change the files afterwards;
-``read_event_fork`` detects a changed manifest or branch database, not a changed reply cache or other file.
+the read calls detect a changed manifest or branch database, not a changed reply cache or other file.
 Reads perform no caller permission check.
 """
 from __future__ import annotations
@@ -67,9 +73,12 @@ from agora.principal import Principal
 
 RESULT_FILE = "result.json"
 SCHEMA = "agora.decision-cell.event-fork/1"
+CONTINUATION_SCHEMA = "agora.decision-cell.continuation/1"
 WITH_EVENT = "with-event"
 WITHOUT_EVENT = "without-event"
-_BRANCHES = (WITH_EVENT, WITHOUT_EVENT)
+CONTINUED = "continued"
+# schema -> the branch directories a result of that kind holds. Code, not the manifest, says what is verified.
+_KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), CONTINUATION_SCHEMA: (CONTINUED,)}
 _STAGING_SUFFIX = ".executing"
 
 
@@ -83,11 +92,14 @@ class ExecutionError(DecisionCellError):
 
 
 @dataclass(frozen=True)
-class EventForkResult:
-    path: Path                              # holds result.json and the two branch projects
+class ExecutionResult:
+    path: Path                              # holds result.json and the branch projects
     manifest: dict                          # the parsed result.json; its SHA-256 is basis.result_hash
     basis: RunResultBasis
-    stamps: tuple[tuple[str, str], ...]     # as read now; whoever shows the comparison must show these
+    stamps: tuple[tuple[str, str], ...]     # as read now; whoever shows the result must show these
+
+
+EventForkResult = ExecutionResult           # the name the first executor shipped with
 
 
 def _result_dir(out_dir: Path, tenant_id: str, project_id: str, study_id: str, result_id: str) -> Path:
@@ -158,37 +170,69 @@ def execute_event_fork(
     escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
     parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
     now: datetime | None = None,
-) -> EventForkResult:
+) -> ExecutionResult:
     """Gate, fork, run and record one FORK_FROM_EVENT. Raises; no output is released unless it returns.
 
     A blocked choice raises ``ExecutionError("GATE_BLOCKED")`` with the gate's result; the gate has audited
     it. The item is ``request.event_id``. ``parent_result_ids`` must name any recorded result that ``source``
     was itself produced from, or a retraction behind it is not carried into this one.
     """
+    return _execute(Option.FORK_FROM_EVENT, SCHEMA, principal, request, statements=statements,
+                    tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
+                    out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+
+
+def execute_continuation(
+    principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
+    tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
+    out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
+    escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
+    parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
+    now: datetime | None = None,
+) -> ExecutionResult:
+    """Gate, run and record one CONTINUE. Same refusals and release rule as ``execute_event_fork``.
+
+    The statements are added in the round after the last committed one, in a new project; the source is
+    only read. ``request.event_round`` must be None.
+    """
+    return _execute(Option.CONTINUE, CONTINUATION_SCHEMA, principal, request, statements=statements,
+                    tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
+                    out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+
+
+def _execute(option, schema, principal, request, *, statements, tenant_id, project_id, study, result_id, source,
+             out_dir, kill_switch_on, audit, escalation, grants, parent_result_ids, other_item_ids,
+             now) -> ExecutionResult:
     from agora.sim.engine import Simulation
 
     writer = _writer(audit)
-    if not isinstance(request, OptionRequest) or request.option is not Option.FORK_FROM_EVENT:
-        raise ExecutionError("OPTION_NOT_EXECUTABLE", "only FORK_FROM_EVENT can be executed")
+    if not isinstance(request, OptionRequest) or request.option is not option:
+        raise ExecutionError("OPTION_NOT_EXECUTABLE", f"this call executes only {option.value}")
     if not isinstance(study, StudyState) or not callable(kill_switch_on):
         raise ExecutionError("INPUT_INVALID", "a StudyState and a kill-switch probe are required")
     if not all(_identifier(v) for v in (tenant_id, project_id, study.study_id, result_id)):
         raise ExecutionError("INPUT_INVALID", "ids must be exact non-empty strings")
     if not isinstance(parent_result_ids, tuple) or not isinstance(other_item_ids, tuple):
         raise ExecutionError("INPUT_INVALID", "give parent results and other items as tuples")
-    event_round = request.event_round
-    if type(event_round) is not int or event_round < 0:
+    forking = option is Option.FORK_FROM_EVENT
+    if forking and (type(request.event_round) is not int or request.event_round < 0):
         raise ExecutionError("INPUT_INVALID", "a fork needs the event round")
+    if not forking and request.event_round is not None:
+        raise ExecutionError("INPUT_INVALID", "a continuation adds at the next round; give no event round")
     source, out_dir = Path(source), Path(out_dir)
     key = dict(tenant_id=tenant_id, project_id=project_id, study_id=study.study_id)
 
     rounds, last_round, agents, last_added = _source_facts(source)
     if study.current_round != last_round:
         raise ExecutionError("STUDY_ROUND_MISMATCH", "the study state does not match the source's last round")
-    if event_round + 1 >= rounds:
-        raise ExecutionError("NO_ROUND_LEFT", "there is no round after the event round to add it to")
-    if last_added > event_round:
-        raise ExecutionError("SOURCE_HAS_LATER_EVENTS", "a fork would drop events added after the event round")
+    # The round whose snapshot the branches start from; the statements are added in the one after it.
+    start_round = request.event_round if forking else last_round
+    if start_round + 1 >= rounds:
+        raise ExecutionError("NO_ROUND_LEFT", "there is no round left to add the item to")
+    if last_added > start_round:
+        raise ExecutionError("SOURCE_HAS_LATER_EVENTS", "a fork would drop events added after its start round")
     if out_dir.resolve().is_relative_to(source.resolve()):
         raise ExecutionError("OUTPUT_INSIDE_SOURCE", "the source study is never written")
     # Checked before the gate so that a run is not spent on a record that must be refused.
@@ -218,33 +262,34 @@ def execute_event_fork(
 
         decided = request_labelled_option(
             principal, request, statements=statements, tenant_id=tenant_id, project_id=project_id,
-            audit=writer, study=study, branch_cost_units=max(rounds - 1 - event_round, 0) * agents,
+            audit=writer, study=study, branch_cost_units=max(rounds - 1 - start_round, 0) * agents,
             snapshot_verifies=snapshot_verifies, escalation=escalation, grants=grants, now=now)
         gate, evidence = decided.gate, decided.evidence
         if not gate.executable:
             raise ExecutionError("GATE_BLOCKED", ",".join(gate.failures), gate)
 
-        added = [{"type": "news", "text": s.statement_text, "round": event_round + 1}
+        added = [{"type": "news", "text": s.statement_text, "round": start_round + 1}
                  for s in sorted(statements, key=lambda s: s.statement_id)]
         branches = {}
-        for name, events in ((WITH_EVENT, added), (WITHOUT_EVENT, [])):
+        for name in _KINDS[schema]:
             project = staging / name
-            Simulation.fork_from(source, event_round, project, events=events)
+            Simulation.fork_from(source, start_round, project, events=[] if name == WITHOUT_EVENT else added)
             forked = json.loads((project / "fork.json").read_text(encoding="utf-8"))
             branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on),
                               "snapshot_meta_digest": forked["snapshot_meta_digest"],
                               "events_sha256": forked["events_sha256"]}
-        if branches[WITH_EVENT]["snapshot_meta_digest"] != branches[WITHOUT_EVENT]["snapshot_meta_digest"]:
+        if len({branch["snapshot_meta_digest"] for branch in branches.values()}) != 1:
             raise ExecutionError("SOURCE_CHANGED", "the two branches did not start from the same snapshot")
 
         manifest = {
-            "schema": SCHEMA, **key, "result_id": result_id, "item_id": request.event_id,
+            "schema": schema, **key, "result_id": result_id, "item_id": request.event_id,
             "gate_event_id": gate.audit_event_id, "action_fingerprint": gate.action_fingerprint,
             "evidence_hash": evidence.evidence_hash,
             # Labels as the gate judged them: shown beside the result, not updated afterwards.
             "statement_labels": {i: s.label.value for i, s in evidence.statements},
             "primary_source_exception_ids": list(evidence.primary_source_exception_ids),
-            "event_round": event_round, "added_in_round": event_round + 1, "cost_units": gate.cost_units,
+            ("event_round" if forking else "continued_from_round"): start_round,
+            "added_in_round": start_round + 1, "cost_units": gate.cost_units,
             "llm_backend": "mock", "validated_prediction_enabled": False, "branches": branches,
         }
         raw = _canonical(manifest).encode("utf-8")
@@ -260,15 +305,28 @@ def execute_event_fork(
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    return EventForkResult(final, json.loads(raw), basis, stamps)
+    return ExecutionResult(final, json.loads(raw), basis, stamps)
 
 
 def read_event_fork(*, tenant_id: str, project_id: str, study_id: str, result_id: str,
-                    out_dir: str | Path, audit: AnchoredAuditChain) -> EventForkResult:
+                    out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
     """A recorded comparison with its current stamps. A trusted service-side read.
 
-    Refuses an unrecorded result, and one whose manifest or branch databases differ from what was recorded.
+    Refuses an unrecorded result, one of another kind, and one whose manifest or branch databases differ from
+    what was recorded.
     """
+    return _read(SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
+                 result_id=result_id, out_dir=out_dir, audit=audit)
+
+
+def read_continuation(*, tenant_id: str, project_id: str, study_id: str, result_id: str,
+                      out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
+    """A recorded continuation with its current stamps; the same refusals as ``read_event_fork``."""
+    return _read(CONTINUATION_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
+                 result_id=result_id, out_dir=out_dir, audit=audit)
+
+
+def _read(schema, *, tenant_id, project_id, study_id, result_id, out_dir, audit) -> ExecutionResult:
     from agora.sim.engine import DB_FILE, _state_digest
 
     key = dict(tenant_id=tenant_id, project_id=project_id, study_id=study_id)
@@ -284,7 +342,9 @@ def read_event_fork(*, tenant_id: str, project_id: str, study_id: str, result_id
         raise ExecutionError("OUTPUT_CHANGED", "the manifest is not the one recorded")
     try:
         manifest = json.loads(raw)
-        for name in _BRANCHES:
+        if manifest["schema"] != schema:
+            raise ExecutionError("WRONG_RESULT_KIND", "this result was not made by the call that pairs with this read")
+        for name in _KINDS[schema]:
             conn = _read_only(path / name / DB_FILE)  # not "immutable": that would skip the write-ahead log
             try:
                 digest = _state_digest(conn)
@@ -296,8 +356,9 @@ def read_event_fork(*, tenant_id: str, project_id: str, study_id: str, result_id
         raise
     except Exception as exc:
         raise ExecutionError("OUTPUT_CHANGED", "the recorded output could not be verified") from exc
-    return EventForkResult(path, manifest, basis,
+    return ExecutionResult(path, manifest, basis,
                            run_result_stamps(result_id=result_id, audit=audit, **key))
 
 
-__all__ = ["ExecutionError", "EventForkResult", "execute_event_fork", "fork_branch_cost", "read_event_fork"]
+__all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_continuation", "execute_event_fork",
+           "fork_branch_cost", "read_continuation", "read_event_fork"]
