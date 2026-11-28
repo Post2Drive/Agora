@@ -618,6 +618,7 @@ class OntologyObjectStore:
         self, operation: str, resource_ids: list[str], *,
         policy: PolicyCallable | None, audit: Any | None,
         sensitivity: str = "internal",
+        privacy: tuple[str | None, str | None] = ("ontology_catalog", "project_lifetime"),
     ) -> Mapping[str, Any] | None:
         try:
             decision = enforce_policy(
@@ -629,8 +630,8 @@ class OntologyObjectStore:
                     "resource_ids": resource_ids,
                     "source_sensitivity": sensitivity,
                     "target_sensitivity": sensitivity,
-                    "purpose": "ontology_catalog",
-                    "retention": "project_lifetime",
+                    "purpose": privacy[0],
+                    "retention": privacy[1],
                 },
                 audit=audit,
             )
@@ -1120,6 +1121,15 @@ class OntologyObjectStore:
         rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
         return max((v for v in sensitivities if v in rank), key=rank.__getitem__, default="internal")
 
+    @staticmethod
+    def _link_read_privacy(
+        sensitivity: str, purpose: str | None, retention: str | None,
+    ) -> dict[str, tuple[str | None, str | None]]:
+        """Records at personal or higher are read for the caller's purpose, not the catalog's."""
+        if sensitivity in {"personal", "sensitive"}:
+            return {"privacy": (purpose, retention)}
+        return {}
+
     def _write_link(
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
@@ -1366,11 +1376,14 @@ class OntologyObjectStore:
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str, *,
         source: Mapping[str, Any] | None = None, target: Mapping[str, Any] | None = None,
         include_superseded: bool = False, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> list[dict[str, Any]]:
         """List link records for one exact pack and link-type version.
 
         Only active links are returned unless ``include_superseded`` is set, which
         also returns retracted ones. Each record says which it is in ``status``.
+        If a returned link has a personal or sensitive end, the policy is asked
+        about the caller's ``purpose`` and ``retention``; none are assumed.
         """
         pack = self.get_pack(pack_fingerprint, policy=policy, audit=audit)
         self._link_type(pack, link_type_id, link_type_version)
@@ -1414,6 +1427,7 @@ class OntologyObjectStore:
             self._authorize(
                 "ontology_read", [pack_fingerprint, link_type_id, link_type_version],
                 policy=policy, audit=audit, sensitivity=sensitivity,
+                **self._link_read_privacy(sensitivity, purpose, retention),
             )
             return [{
                 "link_id": row["link_id"], "pack_fingerprint": pack_fingerprint,
@@ -1631,11 +1645,14 @@ class OntologyObjectStore:
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
         endpoint: Mapping[str, Any], import_id: str, page_size: int, cursor: str | None, *,
         direction: str = "both", policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> dict[str, Any]:
         """Return a bounded adjacent-link page for one exact endpoint import.
 
         The page includes superseded and retracted links. Callers must read
         ``status``, which is given as of the time the first page was requested.
+        If a link on the page has a personal or sensitive end, the policy is asked
+        about the caller's ``purpose`` and ``retention``; none are assumed.
         """
         self._check_page_size(page_size)
         if direction not in {"out", "in", "both"}:
@@ -1711,6 +1728,7 @@ class OntologyObjectStore:
             self._authorize(
                 "ontology_read", [pack_fingerprint, link_type_id, link_type_version, *self._link_key(ref)],
                 policy=policy, audit=audit, sensitivity=sensitivity,
+                **self._link_read_privacy(sensitivity, purpose, retention),
             )
             next_cursor = None
             if len(rows) > page_size and page:

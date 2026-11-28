@@ -216,6 +216,7 @@ class OntologyReader:
         page = self._store.traverse_links(
             self._pack_fingerprint, link_type_id, link_type_version, endpoint,
             obj.provenance.import_id, page_size, cursor, direction=direction, **self._access,
+            **self._privacy,
         )
         result = []
         for item in page["links"]:
