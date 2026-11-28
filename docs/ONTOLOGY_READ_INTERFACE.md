@@ -41,7 +41,7 @@ A `Link` has `link_id`, link type and version, `source` and `target` (`ObjectRef
 - **Errors.** A shape mismatch raises `OntologyError`, naming the property and carrying no value (with `error_sink`, the caller gets the redacted error instead).
 - **Redacted failures (opt-in).** See section 4.
 
-It adds no access: policy checks, audit entries and, under the protected defaults, the ingest-record check on objects are the store's.
+It adds no access: policy checks, audit entries and, under the protected defaults, the ingest-record check on objects are the store's. The reader passes its `purpose` and `retention` to all four calls. For a page of links with a `personal` or `sensitive` end, the store asks the policy about those two values (see section 5), so a reader built without them is refused such a page by the product's policy rules.
 
 ## 4. Error detail
 
@@ -62,7 +62,7 @@ reader = OntologyReader(store, retail_types, api_version="1", policy=policy,
 
 **What this does not hide:**
 
-- Whether a call succeeded. A policy that lets a caller read some objects and not others shows that difference. So can `links`: its second check uses the sensitivity of the objects on the page, so a caller without that grant can see an empty page succeed and a non-empty one fail.
+- Whether a call succeeded. A policy that lets a caller read some objects and not others shows that difference. So can `links`: its second check uses the sensitivity of the objects on the page, so a caller without that grant (or, for personal or sensitive ends, without a purpose and retention) can see an empty page succeed and a non-empty one fail.
 - How long a call took. Timing has not been measured or evened out.
 - Anything from code in the same process. Tracebacks keep their frames, and the caller can hold the store. A service boundary must send only the fixed message and reference.
 - Errors from the store, actions or writes called directly.
