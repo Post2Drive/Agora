@@ -111,11 +111,11 @@ def test_an_internal_held_statement_needs_no_grant(audit, source, tmp_path):
     assert done.manifest["held_statement_ids"] == [KEY]
 
 
-def test_a_continuation_asks_for_the_held_grant_too(audit, source, tmp_path):
+def test_a_continuation_asks_for_the_held_grant_too(audit, tmp_path):
     register(audit)
     parents = parent(audit)
-    shutil.rmtree(source)
-    project = make_project(tmp_path, "source", rounds=6, population={"llm_agents": 2, "crowd_agents": 20})
+    # Its own project: a continuation needs a source stopped part-way, with a snapshot at its last round.
+    project = make_project(tmp_path, "unfinished", rounds=6, population={"llm_agents": 2, "crowd_agents": 20})
     sim = Simulation(project, snapshot_rounds=(2,))
     try:
         sim.prepare()
