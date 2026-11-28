@@ -19,6 +19,10 @@ from .retractions import (
     BASED_ON_RETRACTED_ITEM, CorrectionError, CorrectionKind, ItemCorrection, RunAttempt,
     allowed_run_attempts, load_item_corrections, record_item_correction, retraction_stamps,
 )
+from .run_results import (
+    RunResultBasis, RunResultError, load_run_result, record_run_result, run_result_stamps,
+    run_results_resting_on,
+)
 from .statements import (
     ItemStatements, StatementSetError, load_item_statements, register_item_statements,
 )
@@ -40,5 +44,7 @@ __all__ = [
     "ItemStatements", "StatementSetError", "load_item_statements", "register_item_statements",
     "BASED_ON_RETRACTED_ITEM", "CorrectionError", "CorrectionKind", "ItemCorrection", "RunAttempt",
     "allowed_run_attempts", "load_item_corrections", "record_item_correction", "retraction_stamps",
+    "RunResultBasis", "RunResultError", "load_run_result", "record_run_result", "run_result_stamps",
+    "run_results_resting_on",
     "ItemEvidence", "LabelledGateResult", "StatementEvidence", "item_evidence", "request_labelled_option",
 ]
