@@ -1,4 +1,4 @@
-"""Root rollover and root revocation between two pinned roots (test keys only)."""
+"""Planned root rollover between two pinned roots (test keys only)."""
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -71,7 +71,7 @@ def config(tmp_path, paths):
     return write(tmp_path, settings(paths))
 
 
-@pytest.mark.parametrize("make", [rollover, revocation], ids=["rollover", "revocation"])
+@pytest.mark.parametrize("make", [rollover], ids=["rollover"])
 def test_a_root_change_is_one_event_and_the_new_root_admits(config, make):
     with opened(config) as gate:
         gate.refresh_key_list(list_for("A", 1))
@@ -86,7 +86,7 @@ def test_a_root_change_is_one_event_and_the_new_root_admits(config, make):
         assert gate.admit(wire, request=request) and consumed(gate) == 1
 
 
-@pytest.mark.parametrize("make", [rollover, revocation], ids=["rollover", "revocation"])
+@pytest.mark.parametrize("make", [rollover], ids=["rollover"])
 def test_the_old_root_is_refused_for_good_and_the_change_survives_a_restart(config, make):
     new_list = list_for("B", 2)
     with opened(config) as gate:
@@ -97,7 +97,7 @@ def test_the_old_root_is_refused_for_good_and_the_change_survives_a_restart(conf
         # The old root cannot take the store back, by either kind of statement.
         back = list_for("A", 3)
         refused("ROOT_RETIRED", gate.rotate_root, rollover(back, "B", "A"), back)
-        refused("ROOT_RETIRED", gate.rotate_root, revocation(back, "B", "A"), back)
+        refused("ROOT_CHANGE_TYPE", gate.rotate_root, revocation(back, "B", "A"), back)
         assert gate.refresh_key_list(new_list) == 2
         assert gate.refresh_key_list(list_for("B", 3)) == 3
 
@@ -137,7 +137,7 @@ def test_a_standby_root_cannot_sign_an_ordinary_list(config):
         assert gate.key_list_version == 1
 
 
-@pytest.mark.parametrize("make", [rollover, revocation], ids=["rollover", "revocation"])
+@pytest.mark.parametrize("make", [rollover], ids=["rollover"])
 def test_an_empty_store_can_apply_a_root_change(config, make):
     new_list = list_for("B", 5)
     with opened(config) as gate:
@@ -160,10 +160,10 @@ def bad_changes():
     revoke = statement("root_revocation", "A", "B", listed)
     return [
         ("rollover-signed-by-new-root", "BAD_SIGNATURE", signed(good, "B")),
-        ("revocation-signed-by-old-root", "BAD_SIGNATURE", signed(revoke, "A")),
+        ("revocation-signed-by-old-root", "ROOT_CHANGE_TYPE", signed(revoke, "A")),
         ("outsider", "BAD_SIGNATURE", signed(good, "X")),
         ("key-list-domain", "BAD_SIGNATURE", signed(good, "A", kl.DOMAIN)),
-        ("type-does-not-match-signer", "ROOT_CHANGE_TYPE", signed(good, "B", kl.REVOCATION_DOMAIN)),
+        ("type-does-not-match-signer", "BAD_SIGNATURE", signed(good, "B", kl.REVOCATION_DOMAIN)),
         ("revocation-type-signed-as-rollover", "ROOT_CHANGE_TYPE", signed(revoke, "A", kl.ROLLOVER_DOMAIN)),
         ("unknown-type", "ROOT_CHANGE_TYPE", signed({**good, "type": "other"}, "A", kl.ROLLOVER_DOMAIN)),
         ("extra-field", "ROOT_CHANGE_FIELDS", signed({**good, "extra": "x"}, "A")),
@@ -210,7 +210,7 @@ def test_history_rules_carry_across_a_root_change(config, code, keys, version):
         gate.refresh_key_list(list_for("A", 3, [online(status="revoked")]))
         before = count(gate)
         listed = list_for("B", version, keys if keys is not None else [online(status="revoked")])
-        refused(code, gate.rotate_root, revocation(listed), listed)
+        refused(code, gate.rotate_root, rollover(listed), listed)
         assert count(gate) == before
 
 
@@ -248,7 +248,7 @@ def test_an_older_gate_stops_admitting_once_another_applies_a_change(config):
     with opened(config) as first, opened(config) as second:
         first.refresh_key_list(list_for("A", 1))
         new_list = list_for("B", 2)
-        second.rotate_root(revocation(new_list), new_list)
+        second.rotate_root(rollover(new_list), new_list)
         refused("KEY_LIST_SUPERSEDED", first.admit, wire, request=request)
         assert consumed(first) == 0
 
@@ -263,7 +263,7 @@ def test_a_root_change_committed_after_the_first_look_is_caught_in_the_transacti
         def race(writer, pinned):
             seen = real(writer, pinned)
             monkeypatch.setattr(kl, "_read_active", real)
-            second.rotate_root(revocation(applied), applied)
+            second.rotate_root(rollover(applied), applied)
             return seen
 
         monkeypatch.setattr(kl, "_read_active", race)

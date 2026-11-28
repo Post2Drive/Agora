@@ -6,32 +6,35 @@ Online receipt keys are trusted only through a list signed by the ACTIVE root: o
 (current and standby). Until a root change is accepted the active root is the configured current one; after
 that it is the root recorded by the newest accepted list in the store. Accepting a list appends a
 ``key_list_accepted`` event to the tenant's anchored audit chain; that history is the rollback state. A list is
-refused when its version is lower than one already accepted, when the same version has different bytes, when
+refused when its version rolls back within the current trust epoch, when the same version has different bytes, when
 a key's status moves backwards (active -> retired -> revoked), or when a key id or public key is re-bound.
 
 ``admit_receipt_with_key_list`` also checks, inside the transaction that consumes the nonce, that the list in
 use is still the newest accepted one and is still fresh, so an older list held in memory cannot admit a receipt
 after a revocation has been accepted in that store.
 
-Root change (``accept_root_change``) moves a store from the active root to the other pinned root. It needs a
-signed statement that names both roots and the exact first list of the new root, and both are accepted as one
-audit event. A rollover statement is signed by the active root; a revocation statement by the other pinned
-root. A root that a store has moved away from is never accepted by that store again, even if configuration
-still pins it or pins it as current.
+Planned root rollover (accept_root_change) moves a store to the other pinned root and requires the active
+root to sign the exact first list of the new root. The old root is then retired for that store. A standby root
+cannot unilaterally revoke or replace the active root; emergency replacement uses accept_root_recovery and an
+independent threshold of recovery authorities.
 
-Known limits of root change. A store that has accepted no list trusts the configured current root, even one
-revoked elsewhere, so configuration must stop pinning a revoked root. A root change is only learnt by the
-stores it is delivered to, within the freshness of its list; a store that missed it needs a new statement with
-a fresh list. List versions only go up, so a compromised active root that issues the maximum version leaves
-that store with no version for recovery, and it must be re-provisioned. The standby root can revoke the active
-root by itself: whoever holds it can take over every store that pins it.
+Threshold recovery (accept_root_recovery) binds the tenant, old and new roots, next trust epoch, and exact
+first key list. The new root signs that first list; at least the configured threshold of independent recovery
+keys signs the short-lived recovery statement. The first list starts at version 1 in the next trust epoch.
+Epoch and list version are recorded in the anchored audit history, so recovery does not erase rollback
+protection or require the compromised root to cooperate. Key identity and revocation history carry across
+epochs.
+
+This remains a local library primitive with test keys. The caller must supply recovery public keys and the
+threshold from an independently protected trust configuration. Not built: a production recovery-key custody
+service, distribution, a re-provisioning/restore workflow, a recovery drill, or a trusted time source (the
+caller passes clock and monotonic). Not a boundary against code in the same process or an owner of both the
+audit database and its external anchor.
 
 Test keys only. Reached by the engine only through ``Simulation(signed_input=...)`` (a signed start).
-Not built: list distribution, re-provisioning, a recovery drill,
-a trusted time source (the caller passes ``clock`` and ``monotonic``). Not a boundary against code in the same
-process (which can append events or call ``admit_receipt`` with its own keys) or an owner of both the audit
-database and the anchor.
-"""
+No production recovery-key custody service, recovery distribution, restore workflow, recovery drill, or trusted
+time source is built. This is not a boundary against code in the same process or an owner of both the audit
+database and its external anchor."""
 from __future__ import annotations
 
 import hashlib
@@ -49,6 +52,10 @@ from agora.security import signed_receipt as sr
 DOMAIN = b"agora.keylist.v1\x00"
 ROLLOVER_DOMAIN = b"agora.rootrollover.v1\x00"
 REVOCATION_DOMAIN = b"agora.rootrevocation.v1\x00"
+RECOVERY_DOMAIN = b"agora.rootrecovery.v1\x00"
+MAX_RECOVERY_LIFETIME_SECONDS = 300
+MAX_RECOVERY_KEYS = 16
+MAX_TRUST_EPOCH = 999999
 ROLLOVER_TYPE = "root_rollover"
 REVOCATION_TYPE = "root_revocation"
 _CHANGE_FIELDS = {"type", "v", "alg", "old_root_key_id", "new_root_key_id", "key_list_hash"}
@@ -202,6 +209,7 @@ class TrustedKeyList:
     signed_bytes: bytes
     verified_at: datetime
     verified_monotonic: float
+    trust_epoch: int = 0
 
     @property
     def list_hash(self) -> str:
@@ -228,8 +236,15 @@ class TrustedKeyList:
         }
 
 
-def _event_id(version: int) -> str:
-    return f"{EVENT_PREFIX}{version:012d}"
+def _event_id(version: int, trust_epoch: int = 0) -> str:
+    # Preserve original epoch-zero IDs; later recovery epochs use a separate namespace.
+    if trust_epoch == 0:
+        return f"{EVENT_PREFIX}{version:012d}"
+    return f"{EVENT_PREFIX}e{trust_epoch:06d}-v{version:012d}"
+
+
+def _current_epoch(records: list[dict[str, Any]]) -> int:
+    return max((record["epoch"] for record in records), default=0)
 
 
 def _history(db: sqlite3.Connection, *, excluding: str | None = None) -> list[dict[str, Any]]:
@@ -246,21 +261,32 @@ def _history(db: sqlite3.Connection, *, excluding: str | None = None) -> list[di
             event = json.loads(raw)
             head, *entries = [json.loads(item) for item in event["resource_ids"]]
             tenant, root_key_id, version = head
-            if event["event_type"] != EVENT_TYPE or _event_id(version) != event_id:
+            epoch = event.get("trust_epoch", 0)
+            if type(epoch) is not int or not 0 <= epoch <= MAX_TRUST_EPOCH:
+                raise ValueError("bad trust epoch")
+            if event["event_type"] != EVENT_TYPE or _event_id(version, epoch) != event_id:
                 raise ValueError("not an acceptance record")
             keys = [(str(i), str(f), _STATUS_RANK[s]) for i, f, s in entries]
-            records.append({"tenant": tenant, "root": root_key_id, "version": version,
+            records.append({"tenant": tenant, "root": root_key_id, "version": version, "epoch": epoch,
                             "hash": event["key_list_hash"], "keys": keys})
         except (ValueError, TypeError, KeyError) as exc:
             raise _refuse("KEY_LIST_HISTORY", "an acceptance record cannot be read") from exc
     return records
 
 
-def _check_against_history(records, *, tenant: str, body: Mapping[str, Any]) -> None:
+def _check_against_history(records, *, tenant: str, body: Mapping[str, Any], trust_epoch: int,
+                           allow_epoch_advance: bool = False) -> None:
     if any(r["tenant"] != tenant for r in records):
         raise _refuse("TENANT_MISMATCH", "this store holds another tenant's key lists")
-    if any(r["version"] >= body["list_version"] for r in records):
-        raise _refuse("KEY_LIST_ROLLBACK", "a list of this or a higher version was already accepted")
+    current_epoch = _current_epoch(records)
+    if allow_epoch_advance:
+        if not records or trust_epoch != current_epoch + 1 or body["list_version"] != 1:
+            raise _refuse("ROOT_RECOVERY_EPOCH", "recovery must advance exactly one epoch and start at list version 1")
+    else:
+        if trust_epoch != current_epoch:
+            raise _refuse("KEY_LIST_EPOCH", "the list is not in the store's current trust epoch")
+        if any(r["epoch"] == trust_epoch and r["version"] >= body["list_version"] for r in records):
+            raise _refuse("KEY_LIST_ROLLBACK", "a list of this or a higher version was already accepted in this epoch")
     seen = [item for r in records for item in r["keys"]]
     for key in body["keys"]:
         public_print = fingerprint(bytes.fromhex(key["public"][8:]))
@@ -273,7 +299,7 @@ def _check_against_history(records, *, tenant: str, body: Mapping[str, Any]) -> 
 
 def _active_root_id(records, current_id: str) -> str:
     """The store's own history decides which root is active; configuration only decides an empty store."""
-    return max(records, key=lambda r: r["version"])["root"] if records else current_id
+    return max(records, key=lambda r: (r["epoch"], r["version"]))["root"] if records else current_id
 
 
 def _check_roots(records, *, old_id: str, new_id: str, body: Mapping[str, Any],
@@ -305,7 +331,7 @@ def _require_newest(db: sqlite3.Connection, tenant: str, list_hash: str) -> None
     records = _history(db)
     if not records:
         raise _refuse("KEY_LIST_NOT_ACCEPTED", "this store has accepted no key list")
-    newest = max(records, key=lambda r: r["version"])
+    newest = max(records, key=lambda r: (r["epoch"], r["version"]))
     if newest["tenant"] != tenant or newest["hash"] != list_hash:
         raise _refuse("KEY_LIST_SUPERSEDED", "not the newest key list accepted in this store")
 
@@ -320,25 +346,33 @@ def _writer(audit: AnchoredAuditChain) -> AnchoredAuditChain:
 def _record_acceptance(
     writer: AnchoredAuditChain, trusted: TrustedKeyList, *, tenant: str, old_id: str, new_id: str,
     pinned: Mapping[str, RootKey], clock: Callable[[], datetime], monotonic: Callable[[], float],
-    change_hash: str | None = None,
+    change_hash: str | None = None, trust_epoch: int = 0, allow_epoch_advance: bool = False,
+    recovery_hash: str | None = None, recovery_signers: list[str] | None = None,
+    recovery_threshold: int | None = None,
 ) -> TrustedKeyList:
     """Append the one acceptance event, with every history check inside its transaction."""
     body = json.loads(trusted.signed_bytes)
-    event_id = _event_id(body["list_version"])
+    event_id = _event_id(body["list_version"], trust_epoch)
     entries = [[tenant, new_id, body["list_version"]]] + [
         [k["key_id"], fingerprint(bytes.fromhex(k["public"][8:])), k["status"]] for k in body["keys"]
     ]
     event = {
         "event_id": event_id, "event_type": EVENT_TYPE, "decision": "allow", "key_list_hash": trusted.list_hash,
         "resource_ids": [json.dumps(item, separators=(",", ":")) for item in entries],
+        "trust_epoch": trust_epoch,
     }
+    if recovery_hash is not None:
+        event["root_recovery_hash"] = recovery_hash
+        event["recovery_signers"] = sorted(recovery_signers or [])
+        event["recovery_threshold"] = recovery_threshold
     if change_hash is not None:
         event["root_change_hash"] = change_hash
 
     def within_transaction(db: sqlite3.Connection) -> None:
         trusted.check_fresh(clock(), monotonic())
         records = _history(db, excluding=event_id)
-        _check_against_history(records, tenant=tenant, body=body)
+        _check_against_history(records, tenant=tenant, body=body, trust_epoch=trust_epoch,
+                               allow_epoch_advance=allow_epoch_advance)
         _check_roots(records, old_id=old_id, new_id=new_id, body=body, pinned=pinned)
 
     try:
@@ -380,9 +414,14 @@ def accept_key_list(
     active = _read_active(writer, pinned)
     first, first_monotonic = clock(), monotonic()
     raw = verify_key_list(envelope, root=active, now=first, allow_test_keys=allow_test_keys)
+    try:
+        records = _history(writer.chain.db)
+    except sqlite3.Error as exc:
+        raise _refuse("KEY_LIST_ERROR", "the accepted history cannot be read") from exc
+    epoch = _current_epoch(records)
     return _record_acceptance(
-        writer, TrustedKeyList(raw, first, first_monotonic), tenant=tenant, old_id=active.key_id,
-        new_id=active.key_id, pinned=pinned, clock=clock, monotonic=monotonic,
+        writer, TrustedKeyList(raw, first, first_monotonic, epoch), tenant=tenant, old_id=active.key_id,
+        new_id=active.key_id, pinned=pinned, clock=clock, monotonic=monotonic, trust_epoch=epoch,
     )
 
 
@@ -417,8 +456,9 @@ def make_root_change(seed: bytes, body: Mapping[str, Any]) -> dict[str, str]:
 def verify_root_change(envelope: Mapping[str, Any], *, old: RootKey, new: RootKey, list_bytes: bytes) -> bytes:
     """Signature, shape and binding only, for a change from ``old`` to ``new``. Returns the signed bytes.
 
-    A rollover must be signed by ``old`` and a revocation by ``new``, each under its own domain tag. This does
-    NOT check any store history; use ``accept_root_change`` before trusting the new root.
+    A planned rollover must be signed by ``old`` under its own domain tag. Standby-only revocation is disabled;
+    emergency recovery uses the independent threshold path. This does NOT check store history; use
+    ``accept_root_change`` before trusting the new root.
     """
     if not isinstance(envelope, Mapping) or set(envelope) != {"root_change", "sig"}:
         raise _refuse("MALFORMED", "envelope must be exactly {root_change, sig}")
@@ -429,15 +469,12 @@ def verify_root_change(envelope: Mapping[str, Any], *, old: RootKey, new: RootKe
         raw, signature = text.encode("ascii"), bytes.fromhex(sig)
     except (UnicodeEncodeError, ValueError) as exc:
         raise _refuse("MALFORMED", "root_change must be ASCII and sig hex") from exc
-    for kind, signer in ((ROLLOVER_TYPE, old), (REVOCATION_TYPE, new)):
-        if sr.verify_signature(signer.public, _change_domain(kind) + raw, signature):
-            break
-    else:
-        raise _refuse("BAD_SIGNATURE")
     body = sr.parse_canonical(raw)
     _validate_change(body)
-    if body["type"] != kind:
-        raise _refuse("ROOT_CHANGE_TYPE", "the statement type does not match its signer")
+    if body["type"] != ROLLOVER_TYPE:
+        raise _refuse("ROOT_CHANGE_TYPE", "standby-only revocation is disabled; use threshold root recovery")
+    if not sr.verify_signature(old.public, ROLLOVER_DOMAIN + raw, signature):
+        raise _refuse("BAD_SIGNATURE")
     if body["old_root_key_id"] != old.key_id or body["new_root_key_id"] != new.key_id:
         raise _refuse("ROOT_CHANGE_ROOTS", "the statement must move the active root to the other pinned root")
     if body["key_list_hash"] != "sha256:" + hashlib.sha256(DOMAIN + list_bytes).hexdigest():
@@ -468,10 +505,175 @@ def accept_root_change(
     list_bytes = verify_key_list(list_envelope, root=new, now=first, allow_test_keys=allow_test_keys)
     change = verify_root_change(change_envelope, old=old, new=new, list_bytes=list_bytes)
     kind = json.loads(change)["type"]
+    try:
+        records = _history(writer.chain.db)
+    except sqlite3.Error as exc:
+        raise _refuse("KEY_LIST_ERROR", "the accepted history cannot be read") from exc
+    epoch = _current_epoch(records)
     return _record_acceptance(
-        writer, TrustedKeyList(list_bytes, first, first_monotonic), tenant=tenant, old_id=old.key_id,
-        new_id=new.key_id, pinned=pinned, clock=clock, monotonic=monotonic,
+        writer, TrustedKeyList(list_bytes, first, first_monotonic, epoch), tenant=tenant, old_id=old.key_id,
+        new_id=new.key_id, pinned=pinned, clock=clock, monotonic=monotonic, trust_epoch=epoch,
         change_hash="sha256:" + hashlib.sha256(_change_domain(kind) + change).hexdigest(),
+    )
+
+
+
+def _validate_recovery(body: Mapping[str, Any]) -> None:
+    fields = {"type", "v", "alg", "tenant", "old_root_key_id", "new_root_key_id",
+              "trust_epoch", "key_list_hash", "issued_at", "expires_at"}
+    if set(body) != fields:
+        raise _refuse("ROOT_RECOVERY_FIELDS")
+    if body["type"] != "root_recovery":
+        raise _refuse("ROOT_RECOVERY_TYPE")
+    if type(body["v"]) is not int or body["v"] != VERSION:
+        raise _refuse("BAD_VERSION")
+    if body["alg"] != sr.ALGORITHM:
+        raise _refuse("BAD_ALGORITHM")
+    if not isinstance(body["tenant"], str) or not sr._TOKEN.fullmatch(body["tenant"]):
+        raise _refuse("ROOT_RECOVERY_FIELDS", "tenant")
+    for name in ("old_root_key_id", "new_root_key_id", "key_list_hash"):
+        if not isinstance(body[name], str) or not sr._HASH.fullmatch(body[name]):
+            raise _refuse("ROOT_RECOVERY_FIELDS", name)
+    if body["old_root_key_id"] == body["new_root_key_id"]:
+        raise _refuse("ROOT_RECOVERY_ROOTS")
+    if type(body["trust_epoch"]) is not int or not 1 <= body["trust_epoch"] <= MAX_TRUST_EPOCH:
+        raise _refuse("ROOT_RECOVERY_EPOCH")
+    issued, expires = sr._parse_time(body["issued_at"]), sr._parse_time(body["expires_at"])
+    if not timedelta(0) < expires - issued <= timedelta(seconds=MAX_RECOVERY_LIFETIME_SECONDS):
+        raise _refuse("ROOT_RECOVERY_LIFETIME")
+
+
+def make_root_recovery(signers: Mapping[str, bytes], body: Mapping[str, Any]) -> dict[str, Any]:
+    """Create a recovery envelope with TEST seeds only; production signing belongs in an independent service."""
+    _validate_recovery(body)
+    raw = sr.canonical_bytes(body)
+    signatures: dict[str, str] = {}
+    for key_id, seed in sorted(signers.items()):
+        if fingerprint(sr.public_key(seed)) != key_id:
+            raise _refuse("ROOT_RECOVERY_SIGNER", "seed does not match its declared recovery key id")
+        signatures[key_id] = sr.sign(seed, RECOVERY_DOMAIN + raw).hex()
+    return {"recovery": raw.decode("ascii"), "signatures": signatures}
+
+
+def verify_root_recovery(
+    envelope: Mapping[str, Any], *, old: RootKey, new: RootKey, tenant: str, trust_epoch: int,
+    list_bytes: bytes, recovery_keys: Mapping[str, RootKey], threshold: int, now: datetime,
+    allow_test_keys: bool = False,
+) -> bytes:
+    """Verify a threshold recovery certificate. Recovery keys must be independently pinned by the worker."""
+    if not isinstance(envelope, Mapping) or set(envelope) != {"recovery", "signatures"}:
+        raise _refuse("MALFORMED", "recovery envelope must contain exactly recovery and signatures")
+    text, signatures = envelope["recovery"], envelope["signatures"]
+    if not isinstance(text, str) or len(text) > MAX_BYTES or not isinstance(signatures, Mapping):
+        raise _refuse("MALFORMED", "recovery statement or signatures have the wrong shape")
+    if not isinstance(recovery_keys, Mapping) or not 2 <= len(recovery_keys) <= MAX_RECOVERY_KEYS:
+        raise _refuse("ROOT_RECOVERY_KEYS", "between 2 and 16 recovery authorities are required")
+    if type(threshold) is not int or threshold < 2 or threshold > len(recovery_keys):
+        raise _refuse("ROOT_RECOVERY_THRESHOLD")
+    if (old.test or new.test) and not allow_test_keys:
+        raise _refuse("TEST_KEY_REFUSED", "test root")
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise _refuse("BAD_CLOCK")
+    try:
+        raw = text.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise _refuse("MALFORMED", "recovery statement must be ASCII") from exc
+    body = sr.parse_canonical(raw)
+    _validate_recovery(body)
+    if body["tenant"] != tenant:
+        raise _refuse("TENANT_MISMATCH")
+    if body["old_root_key_id"] != old.key_id or body["new_root_key_id"] != new.key_id:
+        raise _refuse("ROOT_RECOVERY_ROOTS")
+    if body["trust_epoch"] != trust_epoch:
+        raise _refuse("ROOT_RECOVERY_EPOCH")
+    expected_hash = "sha256:" + hashlib.sha256(DOMAIN + list_bytes).hexdigest()
+    if body["key_list_hash"] != expected_hash:
+        raise _refuse("ROOT_RECOVERY_LIST")
+    issued, expires = sr._parse_time(body["issued_at"]), sr._parse_time(body["expires_at"])
+    if issued > now + timedelta(seconds=sr.CLOCK_SKEW_SECONDS):
+        raise _refuse("ROOT_RECOVERY_NOT_YET_VALID")
+    if now >= expires or now - issued > timedelta(seconds=MAX_RECOVERY_LIFETIME_SECONDS):
+        raise _refuse("ROOT_RECOVERY_STALE")
+
+    trusted: dict[str, bytes] = {}
+    seen_public: set[bytes] = set()
+    for key_id, recovery_root in recovery_keys.items():
+        if not isinstance(key_id, str) or not isinstance(recovery_root, RootKey) or recovery_root.key_id != key_id:
+            raise _refuse("ROOT_RECOVERY_KEYS", "recovery keys must be pinned RootKey values")
+        public = recovery_root.public
+        if recovery_root.test and not allow_test_keys:
+            raise _refuse("TEST_KEY_REFUSED", "test recovery authority")
+        if not _usable_point(public) or public in seen_public or key_id in (old.key_id, new.key_id):
+            raise _refuse("ROOT_RECOVERY_KEYS", "recovery keys must be distinct from roots and one another")
+        trusted[key_id] = public
+        seen_public.add(public)
+    if len(signatures) < threshold or any(key_id not in trusted for key_id in signatures):
+        raise _refuse("ROOT_RECOVERY_THRESHOLD", "not enough known recovery authorities")
+    signed_message = RECOVERY_DOMAIN + raw
+    valid = 0
+    for key_id, signature_hex in signatures.items():
+        if not isinstance(signature_hex, str):
+            raise _refuse("ROOT_RECOVERY_SIGNATURE")
+        try:
+            signature = bytes.fromhex(signature_hex)
+        except ValueError as exc:
+            raise _refuse("ROOT_RECOVERY_SIGNATURE") from exc
+        if not sr.verify_signature(trusted[key_id], signed_message, signature):
+            raise _refuse("ROOT_RECOVERY_SIGNATURE", key_id)
+        valid += 1
+    if valid < threshold:
+        raise _refuse("ROOT_RECOVERY_THRESHOLD")
+    return raw
+
+
+def accept_root_recovery(
+    recovery_envelope: Mapping[str, Any], list_envelope: Mapping[str, Any], *, tenant: str,
+    root: RootKey, new_root: RootKey, recovery_keys: Mapping[str, RootKey], threshold: int,
+    audit: AnchoredAuditChain, clock: Callable[[], datetime], monotonic: Callable[[], float],
+    allow_test_keys: bool = False,
+) -> TrustedKeyList:
+    """Recover a store from a compromised/lost active root using an independent threshold authority.
+
+    The replacement root signs the first list in a new trust epoch. Its list version restarts at 1;
+    the anchored audit history remains monotonic through the separate trust epoch. The compromised root
+    need not sign or cooperate. This is a local verifier/store primitive, not a recovery distribution service.
+    """
+    writer = _writer(audit)
+    if root.key_id == new_root.key_id:
+        raise _refuse("ROOT_RECOVERY_ROOTS")
+    old = _read_active(writer, {root.key_id: root, new_root.key_id: new_root})
+    if old.test and not allow_test_keys:
+        raise _refuse("TEST_KEY_REFUSED", "test root")
+    first, first_monotonic = clock(), monotonic()
+    list_bytes = verify_key_list(list_envelope, root=new_root, now=first, allow_test_keys=allow_test_keys)
+    if not isinstance(recovery_keys, Mapping):
+        raise _refuse("ROOT_RECOVERY_KEYS", "recovery authorities must be supplied as a pinned mapping")
+    try:
+        records = _history(writer.chain.db)
+    except sqlite3.Error as exc:
+        raise _refuse("KEY_LIST_ERROR", "the accepted history cannot be read") from exc
+    if not records:
+        raise _refuse("ROOT_RECOVERY_NO_HISTORY", "recovery is not bootstrap")
+    historical_authorities = {record["root"] for record in records}
+    historical_authorities.update(public_fingerprint
+                                  for record in records for _, public_fingerprint, _ in record["keys"])
+    if new_root.key_id in historical_authorities:
+        raise _refuse("ROOT_RECOVERY_ROOTS", "replacement root was previously used as a root or online key")
+    if any(key_id in historical_authorities for key_id in recovery_keys):
+        raise _refuse("ROOT_RECOVERY_KEYS", "a recovery authority was previously used as a root or online key")
+    epoch = _current_epoch(records) + 1
+    change = verify_root_recovery(
+        recovery_envelope, old=old, new=new_root, tenant=tenant, trust_epoch=epoch,
+        list_bytes=list_bytes, recovery_keys=recovery_keys, threshold=threshold, now=first,
+        allow_test_keys=allow_test_keys,
+    )
+    return _record_acceptance(
+        writer, TrustedKeyList(list_bytes, first, first_monotonic, epoch), tenant=tenant,
+        old_id=old.key_id, new_id=new_root.key_id,
+        pinned={old.key_id: old, new_root.key_id: new_root},
+        clock=clock, monotonic=monotonic, trust_epoch=epoch, allow_epoch_advance=True,
+        recovery_hash="sha256:" + hashlib.sha256(RECOVERY_DOMAIN + change).hexdigest(),
+        recovery_signers=sorted(recovery_envelope["signatures"]), recovery_threshold=threshold,
     )
 
 
@@ -522,4 +724,5 @@ def admit_receipt_with_key_list(
 
 
 __all__ = ["RootKey", "TrustedKeyList", "accept_key_list", "accept_root_change", "admit_receipt_with_key_list", "current_keys",
-           "fingerprint", "make_key_list", "make_root_change", "verify_key_list", "verify_root_change"]
+           "fingerprint", "make_key_list", "make_root_change", "make_root_recovery", "verify_key_list",
+           "verify_root_change", "verify_root_recovery", "accept_root_recovery"]
