@@ -165,7 +165,8 @@ def _sha(value: Any) -> str:
 
 
 def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: StudyState,
-                        cost: int, evidence_hash: str | None = None) -> str:
+                        cost: int, evidence_hash: str | None = None,
+                        held: tuple[InputRef, ...] = ()) -> str:
     """What would actually run. Excludes who asks, their reason, budget and confirmation."""
     action = {
         "project_id": record.project_id, "tenant_id": record.tenant_id, "study_id": study.study_id,
@@ -182,6 +183,9 @@ def _action_fingerprint(request: OptionRequest, record: ProjectRecord, study: St
         action["recheck_at"] = due.isoformat() if due else repr(request.recheck_at)
     if evidence_hash is not None:  # so a second approval lapses when the labels or their evidence change
         action["evidence_hash"] = evidence_hash
+    if held:  # what the source already holds, with the ratings judged; absent otherwise
+        action["held_statements"] = sorted(([i.input_id, i.sensitivity, i.data_owner_subject_id]
+                                            for i in held), key=repr)
     return _sha(action)
 
 
@@ -209,6 +213,7 @@ def evaluate_option(
     evidence_hash: str | None = None,
     labels_required: bool = False,
     item_statements: tuple[InputRef, ...] | None = None,
+    held_statements: tuple[InputRef, ...] = (),
 ) -> GateResult:
     """Evaluate every check and return all failures. Pure apart from calling the snapshot probe."""
     if not isinstance(request, OptionRequest) or not isinstance(request.option, Option):
@@ -347,6 +352,10 @@ def evaluate_option(
     elif request.option in RUN_OPTIONS:  # a run adds every listed statement
         for known in recorded.values():
             require_statement(known)
+    adds_to_a_run = request.option is Option.CHANGE_INPUTS or request.option in RUN_OPTIONS
+    if adds_to_a_run:  # what the source already holds goes into the run too, whatever is chosen now
+        for known in held_statements:
+            require_statement(known)
 
     # -- snapshot ------------------------------------------------------------
     cost = 0
@@ -390,7 +399,8 @@ def evaluate_option(
             if not (type(request.confirmed_cost_units) is int and request.confirmed_cost_units == cost):
                 fail("budget_confirmation_required")
 
-    fingerprint = _action_fingerprint(request, record, study, cost, evidence_hash)
+    fingerprint = _action_fingerprint(request, record, study, cost, evidence_hash,
+                                      held_statements if adds_to_a_run else ())
 
     # -- second approval of this exact action ---------------------------------
     if needs_approver:
