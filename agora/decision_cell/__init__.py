@@ -6,6 +6,9 @@ from .options import (
 from .evidence import (
     ItemEvidence, LabelledGateResult, StatementEvidence, item_evidence, request_labelled_option,
 )
+from .executor import (
+    EventForkResult, ExecutionError, execute_event_fork, fork_branch_cost, read_event_fork,
+)
 from .project_store import (
     ProjectRecordError, StoredProjectRecord, load_project_record, request_project_option,
     write_project_record,
@@ -32,6 +35,7 @@ from .verification import (
 )
 
 __all__ = [
+    "EventForkResult", "ExecutionError", "execute_event_fork", "fork_branch_cost", "read_event_fork",
     "DecisionCellError", "Escalation", "EscalationStatus", "GateResult", "InputGrant", "InputRef",
     "Option", "OptionRequest", "ProjectRecord", "StudyState", "evaluate_option", "request_option",
     "ProjectRecordError", "StoredProjectRecord", "load_project_record", "request_project_option",

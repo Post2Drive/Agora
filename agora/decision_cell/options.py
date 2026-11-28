@@ -18,7 +18,7 @@ import json
 import re
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
@@ -137,6 +137,8 @@ class GateResult:
     cost_units: int
     over_budget: bool
     action_fingerprint: str
+    # The audit entry ``request_option`` wrote for this attempt; empty for a bare ``evaluate_option``.
+    audit_event_id: str = ""
 
 
 def _text(value: Any) -> bool:
@@ -458,4 +460,4 @@ def request_option(principal: Principal | None, request: OptionRequest, *, audit
         raise
     except Exception as exc:
         raise DecisionCellError("the decision-cell attempt could not be recorded") from exc
-    return result
+    return replace(result, audit_event_id=event["event_id"])
