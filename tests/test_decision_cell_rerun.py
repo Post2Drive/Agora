@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 
 import pytest
+import yaml
 
 from agora.decision_cell import (
     BASED_ON_RETRACTED_ITEM,
@@ -155,6 +156,17 @@ def test_a_changed_scenario_is_refused(audit, source, tmp_path):
 def test_a_source_that_records_no_starting_scenario_is_refused(audit, source, tmp_path):
     sql(source / "agora.db", "DELETE FROM meta WHERE key = 'scenario_hash'")
     no_gate(audit, source, tmp_path / "out", "SOURCE_SCENARIO_CHANGED")
+
+
+def test_a_scenario_that_names_a_live_backend_is_refused_before_the_gate(audit, source, tmp_path):
+    scenario = source / "scenario.yaml"
+    data = yaml.safe_load(scenario.read_text(encoding="utf-8"))
+    data["llm"] = {"backend": "ollama", "model": "none"}
+    scenario.write_text(yaml.safe_dump(data), encoding="utf-8")
+    # Recorded as the starting scenario, so only the backend check can refuse it.
+    changed = ex.hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    sql(source / "agora.db", "UPDATE meta SET value = ? WHERE key = 'scenario_hash'", (json.dumps(changed),))
+    no_gate(audit, source, tmp_path / "out", "BACKEND_NOT_DETERMINISTIC")
 
 
 def test_a_scenario_changed_after_the_gate_releases_nothing(audit, source, tmp_path, monkeypatch):

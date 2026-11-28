@@ -169,10 +169,12 @@ def _check_rerun_source(source: Path) -> str:
     Returns the scenario hash the source started with; the rerun project must run exactly that.
     """
     from agora import scenario as scenario_mod
-    from agora.sim.engine import DB_FILE, SCENARIO_FILE
+    from agora.llm import LLMConfig
+    from agora.sim.engine import DB_FILE, SCENARIO_FILE, safe_study_llm
 
     try:
-        raw = scenario_mod.load(source / SCENARIO_FILE).raw
+        sc = scenario_mod.load(source / SCENARIO_FILE)
+        raw, backend = sc.raw, LLMConfig.from_dict(safe_study_llm(sc.llm)).backend.lower()
         scenario_hash = hashlib.sha256(json.dumps(raw, sort_keys=True, default=str).encode()).hexdigest()[:16]
         conn = _read_only(source / DB_FILE)
         try:
@@ -187,6 +189,8 @@ def _check_rerun_source(source: Path) -> str:
         raise ExecutionError("SOURCE_GOVERNED", "rerunning a governed study needs separate approval")
     if started_with != scenario_hash:
         raise ExecutionError("SOURCE_SCENARIO_CHANGED", "the scenario is not the one the source study started with")
+    if backend != "mock":  # refused here so that no gate entry or population is made for it
+        raise ExecutionError("BACKEND_NOT_DETERMINISTIC", "only the mock backend may run a rerun")
     return scenario_hash
 
 

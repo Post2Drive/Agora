@@ -43,6 +43,7 @@ The same gate, staging, record-before-release and kill-switch rules apply. What 
 | Where does the item go? | `request.event_round` is the round the person picks. As for a fork, the statements are added in the round after it. It may not be later than the last committed round. | One meaning for "event round" across options, and the value is already in the action fingerprint a second approval covers. The system has no recorded event time to work it out from. |
 | What if the source has added events? | Refused (`SOURCE_HAS_ADDED_EVENTS`), whatever their round. | A fresh project would drop them. Carrying them over would bring in events whose basis items are not known here. |
 | What about a governed source? | Refused (`SOURCE_GOVERNED`). | The new project would carry no input provenance. Same line as `fork_from`. |
+| What if the scenario names a live model? | Refused before the gate (`BACKEND_NOT_DETERMINISTIC`). | This executor runs the mock backend only. |
 | Is there a baseline? | No. The manifest holds one branch. | A rerun makes no comparison. |
 | What does it cost? | All scenario rounds times agents, once, wherever the event is. `rerun_cost(source)` gives the figure to show. Over budget, the gate needs the exact amount confirmed. | The spec prices it as the full run. |
 
