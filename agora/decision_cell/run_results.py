@@ -23,8 +23,8 @@ Limits. Recording takes no principal: it is the trusted service's record of what
 list. Nothing here checks that a run happened, that ``result_hash`` is the hash of its output, or that the
 other items and parents named are all it used: an omitted one is never stamped. The gate keeps only hashes
 of CHANGE_INPUTS inputs, so they cannot be checked either. A result nobody records is not listed, and an
-unrecorded result id is refused rather than reported as unstamped. No engine, report or screen calls this
-module. Reads perform no caller permission check.
+unrecorded result id is refused rather than reported as unstamped. Only ``executor`` (FORK_FROM_EVENT) calls
+this module; no engine, report or screen does. Reads perform no caller permission check.
 """
 from __future__ import annotations
 
