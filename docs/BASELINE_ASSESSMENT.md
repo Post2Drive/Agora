@@ -86,7 +86,7 @@ The platform component names used in earlier planning conversations (nine system
 |---|---|---|---|---|
 | 1 | ~~Make the calibrator refuse sealed holdout data~~ Withdrawn: already enforced (see section 3 and Corrections). | None | `tests/test_governance.py`, `tests/test_g3_holdout_protocol.py` | None |
 | 2 | Labels in reports. Done at section level on 28 Nov 2026 (computed, simulated, model-written, assumption, estimate). Sentence-level labels would need the writer to tag each claim: not done. | Decide label vocabulary | `tests/test_report_basis.py` | No |
-| 3 | Persist a study lifecycle state and show it in the web UI | Decide the state list | State machine tests | Done (`tests/test_lifecycle.py`); the page itself still needs to show the field |
+| 3 | Persist a study lifecycle state and show it in the web UI | Decide the state list | State machine tests | Done (`tests/test_lifecycle.py`); the home page shows it and lists archived studies apart. No web button archives yet (CLI only) |
 | 4 | Say "any of" in the demo comment and add `requires_any` (keep `requires` working). Approved 28 Nov 2026. | None | Scenario and engine tests | Owner (changes a shipped demo and the schema) |
 | 5 | Record eligibility, trigger and occurrence separately for conversions | Item 4 | Engine tests, report change | No |
 | 6 | Update ROADMAP and docs index for the native layer | None | Doc check | No |
