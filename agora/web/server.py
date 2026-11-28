@@ -24,6 +24,7 @@ import yaml
 
 from .. import __version__, hardware, scenario as scenario_mod, settings
 from ..llm.base import is_private_host
+from ..lifecycle import study_state
 from ..platforms import REGISTRY
 from .jobs import Job, Jobs
 
@@ -216,6 +217,7 @@ class App:
                         "has_scenario": (d / "scenario.yaml").exists(),
                         "has_graph": (d / "graph.html").exists(),
                         "run": self.run_state(d), "job": job.as_dict() if job else None,
+                        "state": study_state(d, job_running=self.jobs.busy(d.name)),
                         "modified": d.stat().st_mtime})
         return out
 
@@ -237,6 +239,7 @@ class App:
     def project(self, pid: str) -> dict:
         d = self.project_dir(pid)
         info = {"id": pid, "title": self._title(d), "prompt": self._prompt(d),
+                "state": study_state(d, job_running=self.jobs.busy(pid)),
                 "has_graph": (d / "graph.html").exists(), "run": self.run_state(d),
                 "job": (j.as_dict() if (j := self.jobs.current(pid)) else None),
                 "sources": sorted(p.name for p in (d / "sources").glob("*")) if (d / "sources").exists() else []}
