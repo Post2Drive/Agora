@@ -55,10 +55,13 @@ def test_each_authorization_event_matches_what_the_policy_was_handed(world):
     before = len(_authorizations(world))
     policy = _Recorder()
     world.store.verify_integrity(policy=policy, audit=world.audit)
-    (event,) = _authorizations(world)[before:]
-    assert policy.asked == [("ontology_read", "ontology_catalog", "project_lifetime")]
-    assert event["purpose_hash"] == _sha("ontology_catalog")
-    assert event["retention_hash"] == _sha("project_lifetime")
+    events = _authorizations(world)[before:]
+    assert len(events) == len(policy.asked) >= 1
+    assert policy.asked[0] == ("ontology_read", "ontology_catalog", "project_lifetime")
+    for event, (_, purpose, retention) in zip(events, policy.asked):
+        # A value that was not given leaves no digest.
+        assert event.get("purpose_hash") == (None if purpose is None else _sha(purpose))
+        assert event.get("retention_hash") == (None if retention is None else _sha(retention))
 
 
 def test_a_record_level_check_records_the_callers_values_as_digests_only(world):
