@@ -17,7 +17,7 @@ Labels used below, from weakest to strongest claim:
 | Study registry (projects) | Implemented | Web routes for list, create, open, delete, fork, compare: `agora/web/server.py` (routes `projects`, `fork`, `compare`) | No persisted lifecycle state (draft, ready, running, completed, validated) was found. A run's progress is reported by the `live` route only. |
 | Structured study creation | Partial | `agora create` and the New Study page take name, question, documents and model settings (`agora/pipeline.py`, ROADMAP phase 2) | No fields for scope, geography, time bounds, intended use, or evidence role at creation. |
 | Model providers | Implemented | `agora/llm/` (Ollama, OpenAI-compatible, Anthropic, mock, reply cache), settings and key routes in `agora/web/server.py` | End-to-end behaviour of each provider **Not checked**. |
-| Settings kept apart from studies | Implemented | `agora/settings.py`, `/settings` routes | A per-run snapshot of the provider and model used **Not checked**. |
+| Settings kept apart from studies | Implemented | `agora/settings.py`, `/settings` routes | Each run now records the provider, model and host (never the key or full address) per stretch of rounds in its run metadata (`llm_segments`); a resume with another model adds a new stretch. |
 | Document ingestion with source records | Implemented | `agora/graph/ingest.py` records each file through `record_source` with data role `context`; `agora/sources/registry.py` | Test coverage of ingestion provenance **Not checked** in this pass. |
 | Knowledge graph | Implemented | `agora/graph/` | Whether each relationship carries a basis (source-backed, user-defined, inferred, synthetic): **Not checked**; none was seen in the files read. |
 | Scenario file (YAML) | Verified, Enforced for unknown fields | `agora/scenario.py` `_pick` raises on any unknown field; `validate` checks segment, space, poll and conversion references (lines 275 to 356) | No schema version field or compatibility check found. |
@@ -92,7 +92,7 @@ The platform component names used in earlier planning conversations (nine system
 | 6 | Update ROADMAP and docs index for the native layer | None | Doc check | No |
 | 7 | Release manifest format and running-release attestation | Hosting provider decision | Test vectors | Owner |
 | 8 | Cross-tenant access tests | Tenant store design | Failing-by-design tests | No |
-| 9 | Record provider and model snapshot per run | None | Run metadata test | No |
+| 9 | Record provider and model snapshot per run | None | Run metadata test | Done (`tests/test_run_llm_record.py`) |
 | 10 | Seeding phase 3 (apply ontology links to a run) | Owner answers on seeding | Engine tests | No |
 
 Unknowns in this pass are listed in the matrix. A second pass should check ingestion provenance tests, graph edge basis, calibration and sensitivity, and the knowledge-transfer module.
