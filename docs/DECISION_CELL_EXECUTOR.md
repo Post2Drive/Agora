@@ -1,4 +1,4 @@
-# Decision cell executor: design note (FORK_FROM_EVENT, CONTINUE and RERUN_FROM_START)
+# Decision cell executor: design note (FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE and RERUN_FROM_START)
 
 Status: library only, 28 Nov 2026. Decided by the Claude session that wrote it, under the owner's instruction of 26 Nov 2026; not independently reviewed. Mock backend only: nothing it produces is a forecast. `VALIDATED_PREDICTION_ENABLED` stays False.
 
@@ -8,7 +8,7 @@ Why: `record_run_result` records what a result rests on only if its caller remem
 
 | Question | Decision | Reason |
 |---|---|---|
-| Which option first? | FORK_FROM_EVENT; CONTINUE and RERUN_FROM_START followed (sections below). All other options are refused before the gate. | The spec's with-and-without comparison, using the existing verified `Simulation.fork_from`. |
+| Which option first? | FORK_FROM_EVENT; CONTINUE, RERUN_FROM_START and FORK_FROM_EARLIER followed (sections below). All other options are refused before the gate. | The spec's with-and-without comparison, using the existing verified `Simulation.fork_from`. |
 | What is added to branch A? | Every listed statement of the item, in its recorded wording, as `news` in the round after the event round, with no opinion shift. The caller chooses nothing. | The gate checks the wording against the recorded list and hashes the labels into the action fingerprint, so a second approval covers what runs. A caller-supplied event or shift would not be covered by either. A subset is a CHANGE_INPUTS matter. |
 | Who works out cost and snapshot status? | The executor, from the source project. The snapshot probe is a real fork into a throwaway directory. | A caller cannot understate the budget or assert that a snapshot verifies. |
 | How is the without-event branch recorded? | It is not recorded on its own. The two branches are one result, the comparison, whose hash covers both final states. | The comparison rests on the item, so stamping it is correct. A stamp on the baseline alone would be false, so the baseline is not offered as a result. |
@@ -51,6 +51,22 @@ On the mock backend, a rerun and the with-event branch of a fork at the same eve
 
 The knowledge graph is copied as it is now. Nothing records what it was when the source started, so a rerun can differ from the source for that reason alone; the manifest holds the copy's hash (`graph_sha256`). A rerun also uses the engine code as it is now, which need not be the code that ran the source, and the source's own model backend is not read. The item cannot be placed in the first round. Nothing compares a rerun with its source.
 
+## FORK_FROM_EARLIER (`execute_earlier_fork`, `read_earlier_fork`)
+
+The same gate, two-branch comparison, staging, record-before-release and kill-switch rules as FORK_FROM_EVENT apply. What differs:
+
+| Question | Decision | Reason |
+|---|---|---|
+| Where do the branches start? | Both from the verified snapshot at `request.from_round`, which the gate requires to be earlier than `request.event_round`. No snapshot there means blocked; nothing is rerun or taken from a nearer round. | The spec: same as a fork from the event, from a chosen earlier snapshot. |
+| In which round are the statements added? | The round after `from_round`, so the item arrives earlier than it did. | The spec's example is "what if we had responded sooner". Adding them after the event round instead would, on a deterministic backend, only repeat FORK_FROM_EVENT at a higher cost. |
+| How is that shown? | The manifest has `event_placement: hypothetical-earlier` with `event_round`, `forked_from_round` and `added_in_round`. It has its own schema and read call (`WRONG_RESULT_KIND` otherwise). | A reader must not take a moved item for the event as it happened. |
+| What does the without-event branch mean? | The study continued from `from_round` with the item never added. It is one half of the comparison, not a result of its own. | Same rule as FORK_FROM_EVENT. |
+| Which event round is accepted? | One the study has reached (`EVENT_ROUND_NOT_REACHED` otherwise). | "Earlier than the event" needs the event to have a round in the study. The system has no recorded event time, so this is the person's choice, as for a rerun. |
+| What if the source has events added after `from_round`? | Refused (`SOURCE_HAS_LATER_EVENTS`), including ones before the event round. | A fork from `from_round` would drop them from both branches. |
+| What does it cost? | Rounds after `from_round` times agents, twice. `fork_branch_cost(source, from_round)` gives one branch. | The spec prices a fork as two branches. |
+
+Only the item's arrival moves. Nothing models a different response by anyone, and the statements keep their recorded wording even where it would not have made sense at the earlier time. Scenario events stay in their own rounds in both branches, so if the scenario already scripts the same news at the event round, the with-event branch holds it twice. On the mock backend an earlier fork's branches are the same as those of a FORK_FROM_EVENT whose event round is `from_round` (a test holds this for one test scenario); the two kinds differ in what the record says they are.
+
 ## Limits
 
 - `source`, `out_dir`, the study state, the kill-switch probe, statement sources and judgments, and any extra basis items or parent results are trusted service inputs. Nothing proves that `source` is the project of that study.
@@ -61,4 +77,4 @@ The knowledge graph is copied as it is now. Nothing records what it was when the
 
 ## Not built
 
-FORK_FROM_EARLIER and CHANGE_INPUTS execution; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).
+CHANGE_INPUTS execution; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).
