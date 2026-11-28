@@ -103,6 +103,8 @@ and any sentence containing a number it was not given is removed, as are citatio
 to posts that don't exist. Add an optional `economics:` section (cost and value per
 action) to get cost per outcome.
 
+Each report section carries a line saying what kind of content it holds: computed by Agora, describes simulated people, wording by a language model, depends on assumptions, or a range from repeated runs. The labels are set by the code for each section, not by the report text, and a legend near the top explains them with a statement of whether real data was used to calibrate the run. They label sections, not individual sentences.
+
 ## Quick start: hand-written scenario
 
 ```bash
