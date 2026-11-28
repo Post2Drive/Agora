@@ -25,7 +25,7 @@ from .registry import (
     SourceBinding,
     parse_domain_pack,
 )
-from .store import OntologyObjectStore
+from .store import OntologyObjectStore, StagedCopyError
 
 __all__ = [
     "APPROVAL_LIFETIME_SECONDS",
@@ -48,6 +48,7 @@ __all__ = [
     "PropertyType",
     "RegistryChange",
     "SourceBinding",
+    "StagedCopyError",
     "admit_approved_action",
     "load_binding",
     "decide_action_proposal",
