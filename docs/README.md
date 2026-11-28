@@ -10,6 +10,7 @@ For the one authoritative statement of what is implemented, read [Rung status](R
 - [Roadmap](../ROADMAP.md): delivery phases. Current.
 - [Platform roadmap](PLATFORM_ROADMAP.md): technical capability roadmap. Current.
 - [Rung status](RUNG_STATUS.md): canonical implementation status. Current.
+- [Baseline assessment](BASELINE_ASSESSMENT.md): capability matrix and enforcement findings with file and test evidence, 28 Nov 2026. Current; read-only, changes no code.
 
 ## 2. Living worlds and communication
 
