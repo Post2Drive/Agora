@@ -14,7 +14,7 @@ For the one authoritative statement of what is implemented, read [Rung status](R
 
 ## 2. Living worlds and communication
 
-- [Native social interaction design](NATIVE_SOCIAL_INTERACTION_DESIGN.md): direct agent-to-agent communication as a core capability, with simulated platforms as optional environments. Design (not implemented).
+- [Native social interaction design](NATIVE_SOCIAL_INTERACTION_DESIGN.md): direct agent-to-agent communication as a core capability, with simulated platforms as optional environments. Phases 1 to 4 and 6 implemented, phase 5 and several extensions not built; the document states which.
 - [Scenario inputs](SCENARIO_INPUTS_SPEC.md): how data and assumptions enter a scenario. Current.
 
 ## 3. Knowledge and ontology
