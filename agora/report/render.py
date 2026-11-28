@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import re
 
+from . import basis as _basis
 from .analysis import label, money, nice, pct
 
 SEG_COLORS = ["#2f6f8f", "#c46b2d", "#7a5aa6", "#3d8b5a", "#b8456b", "#8a7a2e", "#3f7fbf", "#a0522d"]
@@ -90,8 +91,9 @@ def to_markdown(r: dict) -> str:
         mode_banner = "**EXPLORATORY SIMULATION — simulated outputs, not validated real-world predictions.**"
     lines = [mode_banner, ""] + _provenance_markdown(provenance) + ["", f"# {r['title']}", "",
              f"_Agora simulation report · {r['generated']} · model {r['model']}_", ""]
+    lines += _basis.legend_lines(r) + [""]
     for s in r["sections"]:
-        lines += [f"## {s['title']}", "", s["text"], ""]
+        lines += [f"## {s['title']}", "", f"_{_basis.basis_line(s['key'])}_", "", s["text"], ""]
         if s["key"] == "summary" and a.get("choice"):
             c = a["choice"]
             lines += ["| Option | Share | ", "|---|---:|"] + [f"| {o} | {pct(v)} |" for o, v in
@@ -107,7 +109,8 @@ def to_markdown(r: dict) -> str:
                       for g, d in a["opinion"]["segments"].items()]
             lines.append("")
     if r["quotes"]:
-        lines += ["## Quoted posts", ""] + [f"- {q}" for q in r["quotes"].values() if q] + [""]
+        lines += ["## Quoted posts", "", f"_{_basis.basis_line('quotes')}_", ""] + [
+            f"- {q}" for q in r["quotes"].values() if q] + [""]
     lines += ["---", "Numbers come from the simulation; opinion starting points and action likelihoods "
               "are assumptions until calibrated with real data."]
     return "\n".join(lines)
@@ -164,6 +167,17 @@ def _funnel_bars(funnel: list[dict]) -> str:
 
 
 # ------------------------------------------------------------------ html
+def _basis_html(key: str) -> str:
+    return f'<p class="basis small muted">{_e(_basis.basis_line(key))}</p>'
+
+
+def _legend_html(r: dict) -> str:
+    items = "".join(f"<li><b>{_e(label)}</b>: {_e(meaning)}</li>" for label, meaning in _basis.BASIS.values())
+    return (f'<div class="chart legend-box"><h3>How to read this report</h3>'
+            f'<p class="small muted">Each section says what kind of content it holds.</p><ul class="small">{items}</ul>'
+            f'<p class="small">{_e(_basis.calibration_statement(r))}</p></div>')
+
+
 CSS = """
 :root{--bg:#fbfaf7;--fg:#1c1b18;--muted:#6d6a62;--line:#e3e0d8;--card:#fff;--sunk:#f1efe9;--accent:#2f5d50;
 --good:#3d8b5a;--bad:#b84a4a;--mid:#c9c4b8}
@@ -192,6 +206,7 @@ svg{width:100%;height:auto;display:block}.grid{stroke:var(--line)}.tick{font-siz
 .pill{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--sunk)}.pill.ok{color:var(--good)}.pill.bad{color:var(--bad)}
 a.cite{color:var(--accent);text-decoration:none;font-family:system-ui,sans-serif;font-size:.85em}
 .quotes li{margin:8px 0;font-size:14px}.quotes li:target{background:var(--sunk);border-radius:6px}
+.basis{margin:-6px 0 10px}.legend-box ul{margin:6px 0;padding-left:18px}
 .note{font-size:13px;color:var(--muted);border-left:3px solid var(--line);padding-left:12px;margin-top:40px;font-family:system-ui,sans-serif}
 .mode-banner{font:600 13px/1.5 system-ui,sans-serif;padding:12px 14px;margin:0 0 18px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;background:var(--sunk)}
 .mode-banner span{display:block;font-weight:400;color:var(--muted);margin-top:3px}
@@ -284,7 +299,7 @@ def to_html(r: dict) -> str:
             f'<tr><td>{_e(v["name"])}</td><td>{v["vote"]}</td><td class="small">{_e(v["reason"])}</td></tr>'
             for v in d["votes"][:12]) + "</tbody></table>")
     for i, s in enumerate(r["sections"]):
-        body.append(f'<h2 id="{_e(s["key"])}-{i}">{_e(s["title"])}</h2>')
+        body.append(f'<h2 id="{_e(s["key"])}-{i}">{_e(s["title"])}</h2>{_basis_html(s["key"])}')
         body += [f"<p>{_cite_html(p)}</p>" for p in s["text"].split("\n") if p.strip()]
         if i == 0:
             body.append(f'<div class="kpis">{kpis}</div>')
@@ -305,11 +320,11 @@ def to_html(r: dict) -> str:
         elif s["key"] == "decisions":
             body.append(decisions_html)
     if "decisions" not in keys and decisions_html:
-        body.append(f'<h2 id="decision-detail">Decision details</h2>{decisions_html}')
+        body.append(f'<h2 id="decision-detail">Decision details</h2>{_basis_html("decision-detail")}{decisions_html}')
     if "range" not in keys and range_html:
-        body.append(f'<h2 id="range-detail">Range of outcomes</h2>{range_html}')
+        body.append(f'<h2 id="range-detail">Range of outcomes</h2>{_basis_html("range-detail")}{range_html}')
     if "drivers" not in keys and drivers_html:
-        body.append(f'<h2 id="voices-detail">Most influential voices</h2>{drivers_html}')
+        body.append(f'<h2 id="voices-detail">Most influential voices</h2>{_basis_html("voices-detail")}{drivers_html}')
     qualification = r.get("qualification") or {}
     if r.get("mode") == "validated_prediction":
         approved = ", ".join(qualification.get("approved_claims") or [])
@@ -336,9 +351,10 @@ def to_html(r: dict) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Agora report</title><style>{CSS}</style></head>
 <body><main>{mode_banner_html}{provenance_html}<div class="meta">Agora simulation report · {_e(r["generated"])} · model {_e(r["model"])}</div>
 <h1>{_e(r["title"])}</h1>
+{_legend_html(r)}
 <p class="meta">{o["days"]} simulated days · {o["llm_voices"]} AI voices · {o["crowd"]:,} crowd agents · {o["posts"]:,} posts · {o["shares"]:,} shares and forwards</p>
 {"".join(body)}
-{f'<h2 id="quotes">Quoted posts</h2><ol class="quotes">{quotes}</ol>' if quotes else ""}
+{f'<h2 id="quotes">Quoted posts</h2>{_basis_html("quotes")}<ol class="quotes">{quotes}</ol>' if quotes else ""}
 <p class="note">Every number on this page is computed from the simulation. The text is written by a language model from
 those numbers; sentences with numbers it was not given are removed. Starting opinions and action likelihoods are
 assumptions until calibrated with real data — read results as comparisons and directions, not precise real-world outcomes.</p>
