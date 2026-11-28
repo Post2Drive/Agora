@@ -116,7 +116,8 @@ def test_the_budget_is_judged_on_one_branch_from_the_last_round(audit, source, t
 
 
 def test_no_snapshot_at_the_last_round_blocks_and_nothing_is_rerun(audit, source, tmp_path):
-    shutil.rmtree(source / "snapshots")
+    # Moved, not deleted: snapshot files are read-only and Windows will not delete a read-only file.
+    (source / "snapshots").rename(source / "snapshots-moved")
     error = refused("GATE_BLOCKED", lambda: cont(audit, source, tmp_path / "out"))
     assert error.gate.failures == ("snapshot_unavailable",) and left(tmp_path / "out") == []
 
