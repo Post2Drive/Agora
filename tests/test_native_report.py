@@ -113,3 +113,61 @@ def test_empty_store():
     assert r["messages"] == {"total": 0, "senders": 0, "first_round": None, "last_round": None}
     assert r["top_senders"] == [] and r["strongest_ties"] == [] and r["conversations"] == {}
     assert r["relationship_changes"] == {"total": 0, "largest_net_trust_moves": []}
+
+
+def _seeded_store():
+    from agora.society import SocietyStore
+    import sqlite3
+    soc = SocietyStore.attach(sqlite3.connect(":memory:"))
+    soc.adjust_relationship(1, 2, round=0, trust_delta=0.7, familiarity_delta=0.4, cause_message_id=None,
+                            reason="seed: link L1 knows v1.0.0", initial_trust=0.0, initial_familiarity=0.0)
+    soc.adjust_relationship(2, 1, round=0, trust_delta=0.5, familiarity_delta=0.2, cause_message_id=None,
+                            reason="seed: link L2 knows v1.0.0", initial_trust=0.0, initial_familiarity=0.0)
+    cid = soc.direct(1, 3, round=1)
+    mid = soc.post(cid, 1, round=1, text="hello", reason="r")
+    soc.adjust_relationship(1, 3, round=1, familiarity_delta=0.05, cause_message_id=mid, reason="sent a private message")
+    soc.adjust_relationship(1, 2, round=2, familiarity_delta=0.05, cause_message_id=mid, reason="sent a private message")
+    return soc
+
+
+def test_report_has_no_seed_section_when_nothing_was_seeded():
+    from agora.society import SocietyStore, society_report
+    import sqlite3
+    assert "seeded_relationships" not in society_report(SocietyStore.attach(sqlite3.connect(":memory:")))
+
+
+def test_report_counts_seeded_edges_apart_from_ones_formed_in_the_run():
+    from agora.society import society_report
+    s = society_report(_seeded_store())["seeded_relationships"]
+    assert s["edges_seeded"] == 2 and s["seeded_edges_changed_later"] == 1
+    assert s["edges_now"] == 3 and s["edges_formed_during_run"] == 1
+    assert s["basis"].startswith("assumption")
+    assert "seed_hash" not in s
+
+
+def test_report_adds_the_run_record_but_never_link_ids():
+    import json
+    from agora.society import society_report
+    rec = {"seed_hash": "h1", "counts": {"links_read": 4, "links_used": 3, "other_import": 1, "not_mapped": 0,
+                                         "same_agent": 0, "not_active": 0, "junk": 9}}
+    s = society_report(_seeded_store(), seed_record=rec)["seeded_relationships"]
+    assert s["seed_hash"] == "h1" and s["link_counts"]["links_used"] == 3 and "junk" not in s["link_counts"]
+    text = json.dumps(society_report(_seeded_store(), seed_record=rec))
+    assert "L1" not in text and "knows" not in text
+
+
+def test_a_run_record_with_no_edges_still_shows_the_seed_was_applied():
+    from agora.society import SocietyStore, society_report
+    import sqlite3
+    s = society_report(SocietyStore.attach(sqlite3.connect(":memory:")), seed_record={"seed_hash": "h", "counts": {}})
+    assert s["seeded_relationships"]["edges_seeded"] == 0
+
+
+def test_only_a_first_change_with_no_cause_and_the_seed_reason_counts_as_seeded():
+    from agora.society import society_report
+    soc = _seeded_store()
+    cid = soc.direct(4, 5, round=1)
+    mid = soc.post(cid, 4, round=1, text="hi", reason="r")
+    soc.adjust_relationship(4, 5, round=1, familiarity_delta=0.1, cause_message_id=mid, reason="seed: link X t v1")
+    soc.adjust_relationship(6, 7, round=1, familiarity_delta=0.1, cause_message_id=None, reason="seedling contact")
+    assert society_report(soc)["seeded_relationships"]["edges_seeded"] == 2

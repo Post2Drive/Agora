@@ -42,9 +42,38 @@ def _top(value: Any) -> int:
     return value
 
 
+_SEED_COUNTS = ("links_read", "links_used", "other_import", "not_mapped", "same_agent", "not_active")
+
+
+def _seeded(society: SocietyStore, record: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """What the starting relationships were, from the change log; None when the run was not seeded.
+
+    A seeded edge is one whose first change has no causing message and a reason that starts with "seed: ".
+    Link IDs and record keys are never shown. The run record (hash and counts) is added only when passed in."""
+    q = society._q
+    first = {(r["source_id"], r["target_id"]): r for r in q(
+        "SELECT c.source_id, c.target_id, c.cause_message_id, c.reason FROM society_relationship_changes c "
+        "WHERE c.change_id = (SELECT MIN(change_id) FROM society_relationship_changes d "
+        "WHERE d.source_id=c.source_id AND d.target_id=c.target_id)")}
+    seeded = {k for k, r in first.items() if r["cause_message_id"] is None and str(r["reason"]).startswith("seed: ")}
+    if not seeded and record is None:
+        return None
+    later = sum(1 for (a, b) in seeded if q(
+        "SELECT COUNT(*) AS n FROM society_relationship_changes WHERE source_id=? AND target_id=?",
+        (a, b)).fetchone()["n"] > 1)
+    total = q("SELECT COUNT(*) AS n FROM society_relationships").fetchone()["n"]
+    out: dict[str, Any] = {"edges_seeded": len(seeded), "seeded_edges_changed_later": later,
+                           "edges_now": total, "edges_formed_during_run": max(0, total - len(seeded)),
+                           "basis": "assumption: starting trust and familiarity are declared values, not measured"}
+    if record is not None:
+        out["seed_hash"] = record.get("seed_hash")
+        out["link_counts"] = {k: record["counts"][k] for k in _SEED_COUNTS if k in (record.get("counts") or {})}
+    return out
+
+
 def society_report(
     society: SocietyStore, *, top: int = 10, names: Mapping[int, str] | None = None,
-    include_reasons: bool = False, include_text: bool = False,
+    include_reasons: bool = False, include_text: bool = False, seed_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the report. Reads only; the store is not changed."""
     top = _top(top)
@@ -115,6 +144,9 @@ def society_report(
         "strongest_ties": ties,
         "limits": list(LIMITS),
     }
+    seeded = _seeded(society, seed_record)
+    if seeded is not None:
+        report["seeded_relationships"] = seeded
     if include_text:
         report["recent_messages"] = [
             {"message_id": r["message_id"], "round": r["round"], "sender": _label(names, r["sender_id"]),
