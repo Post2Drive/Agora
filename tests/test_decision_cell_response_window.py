@@ -16,7 +16,7 @@ from agora.decision_cell import (
 )
 from agora.decision_cell import UNREVIEWED_EVENT_PENDING, unreviewed_items
 from agora.decision_cell import (
-    Source, StatementEvidence, item_evidence, load_item_statements, register_item_statements,
+    Source, StatementEvidence, StatementRating, item_evidence, load_item_statements, register_item_statements,
 )
 from agora.decision_cell.options import EVIDENCE_DECIDING_OPTIONS
 from agora.decision_cell import response_window as rw
@@ -66,7 +66,8 @@ def ids(item="n1", study="s1", project="p1"):
 def listed(audit, **kw):
     """Record the item's statement list once, as intake would before opening its window."""
     if load_item_statements(audit=audit, **ids(**kw)) is None:
-        register_item_statements(statements={"st1": WORDS}, expected_version=0, audit=audit, **ids(**kw))
+        register_item_statements(statements={"st1": WORDS}, ratings={"st1": StatementRating("internal")},
+                                 expected_version=0, audit=audit, **ids(**kw))
 
 
 def opened(audit, **kw):

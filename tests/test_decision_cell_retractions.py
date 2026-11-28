@@ -17,6 +17,7 @@ from agora.decision_cell import (
     open_response_window,
     record_item_correction,
     register_item_statements,
+    StatementRating,
     respond_to_item,
     retraction_stamps,
     write_project_record,
@@ -45,7 +46,8 @@ SCOPE = dict(tenant_id="t1", project_id="p1", study_id="s1")
 
 
 def new_item(audit, item):
-    register_item_statements(statements={"n1": f"notice from {item}"}, expected_version=0, audit=audit,
+    register_item_statements(statements={"n1": f"notice from {item}"}, ratings={"n1": StatementRating("internal")},
+                             expected_version=0, audit=audit,
                              item_id=item, **SCOPE)
 
 
@@ -151,7 +153,8 @@ def test_the_same_item_ids_in_another_study_are_separate(two_items):
     link(two_items)
     other = dict(tenant_id="t1", project_id="p1", study_id="s2")
     for item in ("e1", "r1"):
-        register_item_statements(statements={"n1": item}, expected_version=0, audit=two_items,
+        register_item_statements(statements={"n1": item}, ratings={"n1": StatementRating("internal")},
+                                 expected_version=0, audit=two_items,
                                  item_id=item, **other)
     assert retraction_stamps(item_ids=("e1",), audit=two_items, **other) == ()
     record_item_correction(OWNER, item_id="e1", correcting_item_id="r1", kind=CorrectionKind.RETRACTION,

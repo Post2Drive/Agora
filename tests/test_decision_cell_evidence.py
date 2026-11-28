@@ -8,7 +8,7 @@ import pytest
 
 from agora.decision_cell import (
     Escalation, EscalationStatus, Option, OptionRequest, ProjectRecord, StatementEvidence, StudyState,
-    StatementSetError, VerificationError, item_evidence, load_item_statements, load_response_window,
+    StatementRating, StatementSetError, VerificationError, item_evidence, load_item_statements, load_response_window,
     open_response_window, register_item_statements, request_labelled_option, request_option,
     request_project_option, respond_to_item, write_project_record,
 )
@@ -24,6 +24,11 @@ PAIR = StatementEvidence("st1", TEXT, (A, B), (judged(),))
 SOLE = StatementEvidence("st2", "a notice was issued", (PRIMARY,))
 WORDING = {"st1": TEXT, "st2": SOLE.statement_text}
 KW = dict(tenant_id="t1", project_id="p1", study_id="s1", item_id="e1")
+INTERNAL = StatementRating("internal")
+
+
+def internal(statements):
+    return {i: INTERNAL for i in statements} if isinstance(statements, dict) else {}
 
 
 def listed(audit, statements=(PAIR,), item="e1"):
@@ -38,8 +43,9 @@ def listed(audit, statements=(PAIR,), item="e1"):
     new = {s.statement_id: s.statement_text for s in statements if s.statement_id not in have}
     if new:
         old = {i: WORDING[i] for i in have}
-        register_item_statements(statements={**old, **new}, expected_version=current.version if current else 0,
-                                 audit=audit, **key)
+        ratings = {**dict(current.ratings if current else ()), **internal(new)}
+        register_item_statements(statements={**old, **new}, ratings=ratings,
+                                 expected_version=current.version if current else 0, audit=audit, **key)
         WORDING.update(new)
 
 
@@ -272,8 +278,8 @@ def options(audit):
 
 
 def register(audit, statements, expected_version, **key):
-    return register_item_statements(statements=statements, expected_version=expected_version,
-                                    audit=audit, **{**KW, **key})
+    return register_item_statements(statements=statements, ratings=internal(statements),
+                                    expected_version=expected_version, audit=audit, **{**KW, **key})
 
 
 @pytest.mark.parametrize("option", [Option.IGNORE, Option.CONTINUE, Option.FORK_FROM_EVENT,

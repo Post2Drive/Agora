@@ -12,10 +12,12 @@ from agora.decision_cell import (
     InputGrant,
     InputRef,
     Option,
+    StatementRating,
     confirm_statement,
     execute_changed_inputs_fork,
     read_changed_inputs_fork,
     read_event_fork,
+    register_item_statements,
     statement_input_id,
 )
 from agora.decision_cell import executor as ex
@@ -183,6 +185,9 @@ def test_the_whole_recorded_list_must_still_be_given(audit, source, tmp_path):
 
 
 def test_a_sensitive_statement_needs_the_grant_for_that_item(audit, source, tmp_path):
+    register_item_statements(statements={"st1": PAIR.statement_text, "st2": SOLE.statement_text},
+                             ratings={"st1": StatementRating("personal", "dana"), "st2": StatementRating("internal")},
+                             expected_version=0, audit=audit, item_id="e1", **SCOPE)
     sensitive = ref("st1", "personal", "dana")
     request = request_for(audit, inputs=(sensitive,))
     missing = (f"data_owner_grant_missing:{sensitive.input_id}",)

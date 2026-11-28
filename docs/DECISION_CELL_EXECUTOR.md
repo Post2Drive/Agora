@@ -85,7 +85,23 @@ The smallest case: the person chooses some, not all, of one item's recorded stat
 
 The choice covers this item's statements only. Everything else the study already reads (scenario events, population, knowledge graph) is the same in both branches. Choosing evidence by source or by trust level, across items, or over another underlying run is not built.
 
-**Sensitivity gap (not closed here).** Each statement's sensitivity and data owner are not stored anywhere. The trusted service must build the `InputRef`s; if it copies them from the person, the grant check can be avoided by under-rating. The other executable options add every statement and consult no sensitivity at all, so a person without a grant for a statement can still run it through a plain fork. A grant check that holds across options needs each statement's sensitivity and data owner recorded with the statement list.
+The sensitivity gap first noted here is closed by the next section.
+
+## Recorded sensitivity and data owner of each statement
+
+Before this, nothing recorded how sensitive a statement was or whose data it was. The grant check ran only for CHANGE_INPUTS, on values in the request, so a plain fork, continuation or rerun could add a sensitive statement with no grant.
+
+| Question | Decision | Reason |
+|---|---|---|
+| Where is it recorded? | In the item's statement list, in the same anchored audit event. `register_item_statements` requires a `StatementRating` (sensitivity, data owner) for every statement. `personal` and `sensitive` need a data owner. | One record, one version number, so the gate's existing "the list changed" commit check also covers a rating change. |
+| Which choices are checked? | Every run option, for every listed statement (all of them are added). CHANGE_INPUTS, for each chosen statement. IGNORE, HOLD, COMPARE and ESCALATE add nothing and need no grant. | The grant is about what enters a run. |
+| Whose values are used? | The recorded ones, read by `request_labelled_option`. No caller of that path or of `request_project_option` can supply them. A CHANGE_INPUTS input that names one of the item's statements with another sensitivity or owner is blocked (`input_rating_mismatch`). | A person must not under-rate their way past the check. The action fingerprint hashes the request's inputs, so they must be true. |
+| Lists recorded before ratings | Every run option that would add an unrated statement is blocked (`statement_unrated`). A later version of the list rates them. | Fail closed: unknown sensitivity is not low sensitivity. |
+| May a later version change a rating? | It may raise one, or name an owner where none was recorded. It may not lower one or replace a recorded owner. A version that only raises ratings is allowed. | Lowering or replacing would let a re-registration remove the need for a grant. A rating set too low must stay fixable. |
+| How does a grant name a statement? | `InputGrant.input_id` is `statement_input_id(item_id, statement_id)` for every option. | One grant means the same statement whichever option runs, and never another item's. |
+| Does a rating change lapse a second approval? | Yes: ratings are part of the evidence hash, which is in the action fingerprint. A list with no ratings keeps its old hash. | The approver approved a view with those ratings. |
+
+A wrong rating that is too high, or a wrong owner, cannot be undone under this item: register the content as a new item, or build an owner-transfer operation with its own authorisation (not built). Ratings are as good as the trusted service that registers them; nothing checks them against the content. The check is made when the gate runs: a rating raised while a run is in progress does not stop that run. It covers the statements being added, not what the source study already holds from earlier runs, and the read calls still perform no permission check.
 
 ## Limits
 
@@ -97,4 +113,4 @@ The choice covers this item's statements only. Everything else the study already
 
 ## Not built
 
-CHANGE_INPUTS beyond the case above; recorded per-statement sensitivity; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).
+CHANGE_INPUTS beyond the case above; data-owner transfer or rating correction downwards; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).
