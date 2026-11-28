@@ -1,6 +1,6 @@
 # Seeding native relationships from ontology links: design
 
-Status: phase 1 built (`agora/society/seed.py`: parse and validate the declaration; nothing reads the ontology or changes a society store yet). Phases 2 to 5 not built. Extends `docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md`. Owner decision (answered): seed starting relationships from ontology links.
+Status: phase 1 built (`agora/society/seed.py`: parse and validate the declaration; nothing reads the ontology or changes a society store yet). Phase 2 built (`agora/society/seed_plan.py`: read the ontology's active links and build a deterministic edge plan; writes nothing). Phases 3 to 5 not built. Extends `docs/NATIVE_SOCIAL_INTERACTION_DESIGN.md`. Owner decision (answered): seed starting relationships from ontology links.
 
 ## 1. Why this is needed
 
@@ -47,7 +47,7 @@ A link that is retracted or superseded at read time is skipped. A link whose rec
 ## 7. Phases and tests
 
 1. Parse and validate `relationship_seed.yaml` (closed field set, 64-hex pack fingerprint, direction, trust and familiarity from 0 to 1, no repeated file keys, no duplicate link types, record keys or agents, agents must exist when the run's agent IDs are given, size limits) and fingerprint it with a SHA-256 over the canonical declaration. **Built**, tests in `tests/test_native_seed.py`. Whether a link type exists in the pack is checked in phase 2, because that needs the ontology store.
-2. Read links from the ontology store, skipping retracted and superseded ones, into a deterministic list.
+2. Read links from the ontology store through its own authorisation and audit, and build a deterministic edge plan. **Built**, tests in `tests/test_native_seed_plan.py`. Only links the store reports as active count (retracted and superseded ones give no edge). Links whose ends are not both in the declared import, not both mapped, or mapped to the same agent are counted, never silently dropped. Where several links give one directed pair the edge takes the largest declared trust and familiarity and lists every contributing link. The link type's version is taken from the pack and an unknown or multi-version link type is refused. Limit: the store returns at most 100 links per link type per call, and a set of 100 or more stops with an error instead of seeding part of it.
 3. Option 1: apply to named agents, record changes, store the seed provenance.
 4. Option 2: segment tie density, seeded draws from the run seed, labelled synthetic.
 5. Report: a seeded-edges section with counts.
