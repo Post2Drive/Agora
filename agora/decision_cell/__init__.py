@@ -7,8 +7,8 @@ from .evidence import (
     ItemEvidence, LabelledGateResult, StatementEvidence, item_evidence, request_labelled_option,
 )
 from .executor import (
-    EventForkResult, ExecutionError, ExecutionResult, execute_continuation, execute_event_fork, fork_branch_cost,
-    read_continuation, read_event_fork,
+    EventForkResult, ExecutionError, ExecutionResult, execute_continuation, execute_event_fork, execute_rerun,
+    fork_branch_cost, read_continuation, read_event_fork, read_rerun, rerun_cost,
 )
 from .project_store import (
     ProjectRecordError, StoredProjectRecord, load_project_record, request_project_option,
@@ -38,6 +38,7 @@ from .verification import (
 __all__ = [
     "EventForkResult", "ExecutionError", "execute_event_fork", "fork_branch_cost", "read_event_fork",
     "ExecutionResult", "execute_continuation", "read_continuation",
+    "execute_rerun", "read_rerun", "rerun_cost",
     "DecisionCellError", "Escalation", "EscalationStatus", "GateResult", "InputGrant", "InputRef",
     "Option", "OptionRequest", "ProjectRecord", "StudyState", "evaluate_option", "request_option",
     "ProjectRecordError", "StoredProjectRecord", "load_project_record", "request_project_option",

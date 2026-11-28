@@ -1,14 +1,16 @@
-"""Run FORK_FROM_EVENT or CONTINUE and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
+"""Run FORK_FROM_EVENT, CONTINUE or RERUN_FROM_START and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
 
 ``execute_event_fork`` forks the study twice from the verified snapshot at the event round (with the item's
 statements added, and without them). ``execute_continuation`` forks it once from the verified snapshot at the
-last committed round, with the statements added at the next round. Both ask the gate immediately before acting,
+last committed round, with the statements added at the next round. ``execute_rerun`` runs the study again from
+the start in a new project, with the statements added in the round after the event round the request names.
+All three ask the gate immediately before acting,
 run on the mock backend, record the result with ``record_run_result`` and only then make the output visible.
-``read_event_fork`` and ``read_continuation`` return a recorded result together with its stamps.
+``read_event_fork``, ``read_continuation`` and ``read_rerun`` return a recorded result together with its stamps.
 
 Rules chosen here:
 
-* Only FORK_FROM_EVENT and CONTINUE, each through its own call. Every other option is refused before the gate.
+* Only FORK_FROM_EVENT, CONTINUE and RERUN_FROM_START, each through its own call. Every other option is refused before the gate.
 * CONTINUE never writes the source: "keep the agents' state" means the same state, restored into a new project
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
@@ -22,6 +24,13 @@ Rules chosen here:
   source project, not taken from the caller. The probe is a real ``fork_from`` into a throwaway directory.
 * The study's current round must equal the source's last committed round. A source holding added events
   after the event round is refused, because a fork would silently drop them from both branches.
+* RERUN_FROM_START needs no snapshot. It takes from the source only the scenario (whose hash must equal the one
+  the source recorded when it was first prepared), the seed in it, and the knowledge graph file if there is one,
+  as it is now (nothing records what it was at the start, so its digest goes in the manifest). No agent state,
+  reply cache or round is copied. It is refused for a governed source, and for a source that holds any added
+  event, which the rerun would silently drop. ``request.event_round`` is the round the person picked for the
+  event, with the same meaning as for a fork: the statements are added in the round after it. It may not be later
+  than the last committed round, and the rerun cannot place the item in the first round.
 * A fork's two branches are ONE result: the comparison. It rests on the item, so a retraction stamps it. The
   without-event branch is not recorded or offered as a result of its own: a stamp on it alone would be false.
 * Output is built in a staging directory. It reaches its final place only after every branch finished, the
@@ -74,11 +83,13 @@ from agora.principal import Principal
 RESULT_FILE = "result.json"
 SCHEMA = "agora.decision-cell.event-fork/1"
 CONTINUATION_SCHEMA = "agora.decision-cell.continuation/1"
+RERUN_SCHEMA = "agora.decision-cell.rerun/1"
 WITH_EVENT = "with-event"
 WITHOUT_EVENT = "without-event"
 CONTINUED = "continued"
+RERUN = "rerun"
 # schema -> the branch directories a result of that kind holds. Code, not the manifest, says what is verified.
-_KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), CONTINUATION_SCHEMA: (CONTINUED,)}
+_KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), CONTINUATION_SCHEMA: (CONTINUED,), RERUN_SCHEMA: (RERUN,)}
 _STAGING_SUFFIX = ".executing"
 
 
@@ -146,6 +157,67 @@ def fork_branch_cost(source: str | Path, event_round: int) -> int:
     return max(rounds - 1 - event_round, 0) * agents
 
 
+def rerun_cost(source: str | Path) -> int:
+    """Agent-rounds a rerun from the start will run: every round of the scenario. Use it to show the cost."""
+    rounds, _, agents, _ = _source_facts(Path(source))
+    return rounds * agents
+
+
+def _check_rerun_source(source: Path) -> str:
+    """Refuse a source whose run a fresh project built from its scenario would not stand for.
+
+    Returns the scenario hash the source started with; the rerun project must run exactly that.
+    """
+    from agora import scenario as scenario_mod
+    from agora.sim.engine import DB_FILE, SCENARIO_FILE
+
+    try:
+        raw = scenario_mod.load(source / SCENARIO_FILE).raw
+        scenario_hash = hashlib.sha256(json.dumps(raw, sort_keys=True, default=str).encode()).hexdigest()[:16]
+        conn = _read_only(source / DB_FILE)
+        try:
+            meta = dict(conn.execute(
+                "SELECT key, value FROM meta WHERE key IN ('scenario_hash', 'input_provenance')").fetchall())
+        finally:
+            conn.close()
+        started_with = json.loads(meta["scenario_hash"]) if "scenario_hash" in meta else None
+    except Exception as exc:
+        raise ExecutionError("SOURCE_UNREADABLE", "the source study could not be read") from exc
+    if "input_provenance" in meta:
+        raise ExecutionError("SOURCE_GOVERNED", "rerunning a governed study needs separate approval")
+    if started_with != scenario_hash:
+        raise ExecutionError("SOURCE_SCENARIO_CHANGED", "the scenario is not the one the source study started with")
+    return scenario_hash
+
+
+def _new_rerun_project(source: Path, project: Path, added: list[dict]) -> dict:
+    """A fresh project at ``project``: the source's scenario and graph, its own population, plus ``added``."""
+    from agora.sim.engine import DB_FILE, SCENARIO_FILE, Simulation, _canon as canon, _file_digest
+
+    project.mkdir()
+    shutil.copyfile(source / SCENARIO_FILE, project / SCENARIO_FILE)
+    graph_digest = None
+    if (source / "graph.db").exists():
+        origin, copy = _read_only(source / "graph.db"), sqlite3.connect(str(project / "graph.db"))
+        try:
+            origin.backup(copy)  # not a file copy: that would miss changes still in the write-ahead log
+        finally:
+            copy.close()
+            origin.close()
+        graph_digest = _file_digest(project / "graph.db")
+    sim = Simulation(project)
+    try:
+        sim.prepare()
+        with sim.store.db:
+            sim.store.db.executemany("INSERT INTO injected (round, event) VALUES (?, ?)",
+                                     [(e["round"], canon(e)) for e in added])
+        scenario_hash = sim.scenario_hash
+    finally:
+        sim.close()
+    return {"scenario_hash": scenario_hash, "graph_sha256": graph_digest,
+            "events_sha256": hashlib.sha256(canon(added).encode("utf-8")).hexdigest()}
+
+
 def _run_branch(project: Path, kill_switch_on: Callable[[], bool]) -> str:
     """Run one forked project to its last round and return the digest of its final state."""
     from agora.sim.engine import Simulation
@@ -178,6 +250,25 @@ def execute_event_fork(
     was itself produced from, or a retraction behind it is not carried into this one.
     """
     return _execute(Option.FORK_FROM_EVENT, SCHEMA, principal, request, statements=statements,
+                    tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
+                    out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+
+
+def execute_rerun(
+    principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
+    tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
+    out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
+    escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
+    parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
+    now: datetime | None = None,
+) -> ExecutionResult:
+    """Gate, run and record one RERUN_FROM_START. Same release rule as ``execute_event_fork``.
+
+    ``request.event_round`` is required: the statements are added in the round after it, in a new project that
+    starts at round 0. No snapshot is needed; the source is only read.
+    """
+    return _execute(Option.RERUN_FROM_START, RERUN_SCHEMA, principal, request, statements=statements,
                     tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
                     out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
                     grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
@@ -216,10 +307,10 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
         raise ExecutionError("INPUT_INVALID", "ids must be exact non-empty strings")
     if not isinstance(parent_result_ids, tuple) or not isinstance(other_item_ids, tuple):
         raise ExecutionError("INPUT_INVALID", "give parent results and other items as tuples")
-    forking = option is Option.FORK_FROM_EVENT
-    if forking and (type(request.event_round) is not int or request.event_round < 0):
-        raise ExecutionError("INPUT_INVALID", "a fork needs the event round")
-    if not forking and request.event_round is not None:
+    forking, rerunning = option is Option.FORK_FROM_EVENT, option is Option.RERUN_FROM_START
+    if (forking or rerunning) and (type(request.event_round) is not int or request.event_round < 0):
+        raise ExecutionError("INPUT_INVALID", "a fork or a rerun needs the event round")
+    if not (forking or rerunning) and request.event_round is not None:
         raise ExecutionError("INPUT_INVALID", "a continuation adds at the next round; give no event round")
     source, out_dir = Path(source), Path(out_dir)
     key = dict(tenant_id=tenant_id, project_id=project_id, study_id=study.study_id)
@@ -227,12 +318,19 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
     rounds, last_round, agents, last_added = _source_facts(source)
     if study.current_round != last_round:
         raise ExecutionError("STUDY_ROUND_MISMATCH", "the study state does not match the source's last round")
-    # The round whose snapshot the branches start from; the statements are added in the one after it.
-    start_round = request.event_round if forking else last_round
+    # The statements are added in the round after this one. A fork or continuation also starts from its snapshot.
+    start_round = request.event_round if forking or rerunning else last_round
+    if rerunning and start_round > last_round:
+        raise ExecutionError("EVENT_ROUND_NOT_REACHED", "the event round is later than the study has reached")
     if start_round + 1 >= rounds:
         raise ExecutionError("NO_ROUND_LEFT", "there is no round left to add the item to")
-    if last_added > start_round:
+    if rerunning:
+        if last_added >= 0:
+            raise ExecutionError("SOURCE_HAS_ADDED_EVENTS", "a rerun would drop events added to the source")
+        started_with = _check_rerun_source(source)
+    elif last_added > start_round:
         raise ExecutionError("SOURCE_HAS_LATER_EVENTS", "a fork would drop events added after its start round")
+    rounds_to_run = rounds if rerunning else max(rounds - 1 - start_round, 0)
     if out_dir.resolve().is_relative_to(source.resolve()):
         raise ExecutionError("OUTPUT_INSIDE_SOURCE", "the source study is never written")
     # Checked before the gate so that a run is not spent on a record that must be refused.
@@ -262,7 +360,7 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
 
         decided = request_labelled_option(
             principal, request, statements=statements, tenant_id=tenant_id, project_id=project_id,
-            audit=writer, study=study, branch_cost_units=max(rounds - 1 - start_round, 0) * agents,
+            audit=writer, study=study, branch_cost_units=rounds_to_run * agents,
             snapshot_verifies=snapshot_verifies, escalation=escalation, grants=grants, now=now)
         gate, evidence = decided.gate, decided.evidence
         if not gate.executable:
@@ -273,12 +371,18 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
         branches = {}
         for name in _KINDS[schema]:
             project = staging / name
+            if rerunning:
+                made = _new_rerun_project(source, project, added)
+                if made["scenario_hash"] != started_with:  # judged on the copy that is about to run
+                    raise ExecutionError("SOURCE_CHANGED", "the scenario changed while the rerun was being built")
+                branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on), **made}
+                continue
             Simulation.fork_from(source, start_round, project, events=[] if name == WITHOUT_EVENT else added)
             forked = json.loads((project / "fork.json").read_text(encoding="utf-8"))
             branches[name] = {"final_state_digest": _run_branch(project, kill_switch_on),
                               "snapshot_meta_digest": forked["snapshot_meta_digest"],
                               "events_sha256": forked["events_sha256"]}
-        if len({branch["snapshot_meta_digest"] for branch in branches.values()}) != 1:
+        if not rerunning and len({branch["snapshot_meta_digest"] for branch in branches.values()}) != 1:
             raise ExecutionError("SOURCE_CHANGED", "the two branches did not start from the same snapshot")
 
         manifest = {
@@ -288,7 +392,7 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             # Labels as the gate judged them: shown beside the result, not updated afterwards.
             "statement_labels": {i: s.label.value for i, s in evidence.statements},
             "primary_source_exception_ids": list(evidence.primary_source_exception_ids),
-            ("event_round" if forking else "continued_from_round"): start_round,
+            ("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round,
             "added_in_round": start_round + 1, "cost_units": gate.cost_units,
             "llm_backend": "mock", "validated_prediction_enabled": False, "branches": branches,
         }
@@ -323,6 +427,13 @@ def read_continuation(*, tenant_id: str, project_id: str, study_id: str, result_
                       out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
     """A recorded continuation with its current stamps; the same refusals as ``read_event_fork``."""
     return _read(CONTINUATION_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
+                 result_id=result_id, out_dir=out_dir, audit=audit)
+
+
+def read_rerun(*, tenant_id: str, project_id: str, study_id: str, result_id: str,
+               out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
+    """A recorded rerun with its current stamps; the same refusals as ``read_event_fork``."""
+    return _read(RERUN_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
                  result_id=result_id, out_dir=out_dir, audit=audit)
 
 
@@ -361,4 +472,4 @@ def _read(schema, *, tenant_id, project_id, study_id, result_id, out_dir, audit)
 
 
 __all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_continuation", "execute_event_fork",
-           "fork_branch_cost", "read_continuation", "read_event_fork"]
+           "execute_rerun", "fork_branch_cost", "read_continuation", "read_event_fork", "read_rerun", "rerun_cost"]
