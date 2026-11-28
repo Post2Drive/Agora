@@ -1144,6 +1144,45 @@ class OntologyObjectStore:
             return {"privacy": (purpose, retention)}
         return {}
 
+    @staticmethod
+    def _stored_sensitivity(conn: sqlite3.Connection) -> str:
+        """Highest classification among the stored object references.
+
+        It runs before integrity verification, so anything it cannot read or does
+        not recognise counts as ``sensitive``.
+        """
+        rank = {"public": 0, "internal": 1, "personal": 2, "sensitive": 3}
+        highest = "internal"
+        try:
+            for row in conn.execute("SELECT property_sensitivity_json FROM ontology_object_refs"):
+                stored = json.loads(row[0])
+                if not isinstance(stored, dict):
+                    return "sensitive"
+                for value in stored.values():
+                    if rank[value] > rank[highest]:
+                        highest = value
+        except (sqlite3.Error, ValueError, TypeError, KeyError):
+            return "sensitive"
+        return highest
+
+    def _authorize_stored_records(
+        self, conn: sqlite3.Connection, operation: str, resource_id: str, *,
+        policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None, retention: str | None,
+    ) -> None:
+        """Second check for a whole-store operation over personal or sensitive records.
+
+        Call it only after a first check has been allowed, so a caller with no
+        grant learns nothing about what the store holds.
+        """
+        sensitivity = self._stored_sensitivity(conn)
+        privacy = self._record_privacy(sensitivity, purpose, retention)
+        if privacy:
+            self._authorize(
+                operation, [resource_id], policy=policy, audit=audit,
+                sensitivity=sensitivity, **privacy,
+            )
+
     def _write_link(
         self, pack_fingerprint: str, link_type_id: str, link_type_version: str,
         source: Mapping[str, Any], target: Mapping[str, Any], valid_from: str | datetime,
@@ -1903,11 +1942,22 @@ class OntologyObjectStore:
 
     def verify_integrity(
         self, *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> dict[str, Any]:
-        """Check the local ontology database; external snapshot files are not opened."""
+        """Check the local ontology database; external snapshot files are not opened.
+
+        If the store holds personal or sensitive records, the policy is also asked
+        about the caller's ``purpose`` and ``retention``; none are assumed.
+        """
         self._authorize("ontology_read", ["store_integrity"], policy=policy, audit=audit)
         conn = self._connect()
         try:
+            # One read transaction: the records verified are the records classified.
+            conn.execute("BEGIN")
+            self._authorize_stored_records(
+                conn, "ontology_read", "store_integrity",
+                policy=policy, audit=audit, purpose=purpose, retention=retention,
+            )
             return self._verify_connection_integrity(conn)
         except OntologyError:
             raise
@@ -1918,12 +1968,15 @@ class OntologyObjectStore:
 
     def backup(
         self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> Path:
         """Create an atomic project-local SQLite backup and verify its local integrity.
 
         Publishes a new file only: an existing destination is never replaced, even one
         created while the backup runs. Names ending like a SQLite sidecar are refused,
         because SQLite may reset or delete such a file beside its database.
+        If the copy holds personal or sensitive records, the policy is also asked
+        about the caller's ``purpose`` and ``retention`` before it is published.
         """
         self._authorize("ontology_read", ["store_backup"], policy=policy, audit=audit)
         destination = Path(path)
@@ -1955,6 +2008,11 @@ class OntologyObjectStore:
             backup_conn.row_factory = sqlite3.Row
             created_temporary = True
             source_conn.backup(backup_conn)
+            # Classified from the private copy, which is exactly what would be published.
+            self._authorize_stored_records(
+                backup_conn, "ontology_read", "store_backup",
+                policy=policy, audit=audit, purpose=purpose, retention=retention,
+            )
             self._verify_connection_integrity(backup_conn)
             backup_conn.close()
             backup_conn = None
@@ -1968,8 +2026,6 @@ class OntologyObjectStore:
             require_safe_path(destination)
             return destination
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
-            if created_temporary:
-                _discard_staged_copy(temporary)
             if isinstance(exc, OntologyError):
                 raise
             raise OntologyError("ontology store backup failed or did not pass verification") from exc
@@ -1978,6 +2034,10 @@ class OntologyObjectStore:
                 backup_conn.close()
             if source_conn is not None:
                 source_conn.close()
+            # Only after the close: Windows cannot delete a file that is still open.
+            # In ``finally``, so an exception not listed above removes the copy too.
+            if created_temporary:
+                _discard_staged_copy(temporary)
 
 
     def _verify_source_snapshot_dependencies(
@@ -2100,17 +2160,24 @@ class OntologyObjectStore:
 
     def _authorize_source_content_read(
         self, *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None, retention: str | None,
     ) -> None:
-        """Digesting row payloads is a write-role operation at the highest sensitivity."""
+        """Digesting row payloads is a write-role operation at the highest sensitivity.
+
+        Whole source rows are read, including columns the ontology never
+        classified, so the caller's purpose and retention are always required.
+        """
         self._authorize(
             "ontology_write", ["store_source_attestation"],
             policy=policy, audit=audit, sensitivity="sensitive",
+            privacy=(purpose, retention),
         )
 
     def restore(
         self, backup_path: str | Path, *,
         dependency_manifest: Mapping[str, Any], expected_manifest_sha256: str,
         policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> Path:
         """Restore an authenticated, project-local backup without overwriting a store.
 
@@ -2169,6 +2236,10 @@ class OntologyObjectStore:
                 raise OntologyError("backup bytes do not match the dependency manifest")
             staged_conn = sqlite3.connect(temporary.resolve().as_uri() + "?mode=rw", uri=True, timeout=30.0)
             staged_conn.row_factory = sqlite3.Row
+            self._authorize_stored_records(
+                staged_conn, "ontology_write", "store_restore",
+                policy=policy, audit=audit, purpose=purpose, retention=retention,
+            )
             self._verify_connection_integrity(staged_conn)
             for table in ("ontology_object_refs", "ontology_links"):
                 foreign_projects = staged_conn.execute(
@@ -2178,7 +2249,8 @@ class OntologyObjectStore:
                     raise OntologyError("backup contains ontology records for a different project")
             actual = self._verify_source_snapshot_dependencies(
                 staged_conn,
-                lambda: self._authorize_source_content_read(policy=policy, audit=audit),
+                lambda: self._authorize_source_content_read(
+                    policy=policy, audit=audit, purpose=purpose, retention=retention),
             )
             if _canonical(actual) != _canonical(attestations):
                 raise OntologyError("tabular source content does not match the dependency manifest")
@@ -2206,6 +2278,7 @@ class OntologyObjectStore:
 
     def create_anchored_backup(
         self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> dict[str, Any]:
         """Back up the live store and record the manifest digest in the anchored audit chain.
 
@@ -2222,9 +2295,11 @@ class OntologyObjectStore:
         # then supersede the last good anchor after the live database was lost.
         if not self.path.is_file():
             raise OntologyError("anchored backup requires an existing live ontology store")
-        destination = self.backup(path, policy=policy, audit=writer)
+        destination = self.backup(
+            path, policy=policy, audit=writer, purpose=purpose, retention=retention)
         try:
-            manifest = self.backup_dependency_manifest(destination, policy=policy, audit=writer)
+            manifest = self.backup_dependency_manifest(
+                destination, policy=policy, audit=writer, purpose=purpose, retention=retention)
             digest = manifest["manifest_sha256"]
             writer.append({
                 "event_id": _BACKUP_ANCHOR_PREFIX + digest,
@@ -2248,6 +2323,7 @@ class OntologyObjectStore:
     def restore_anchored(
         self, backup_path: str | Path, *, dependency_manifest: Mapping[str, Any],
         policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> Path:
         """Restore using the digest recorded in the anchored audit chain.
 
@@ -2275,6 +2351,7 @@ class OntologyObjectStore:
         return self.restore(
             backup_path, dependency_manifest=dependency_manifest,
             expected_manifest_sha256=newest, policy=policy, audit=writer,
+            purpose=purpose, retention=retention,
         )
 
     def _authorize_anchor_operation(
@@ -2323,6 +2400,7 @@ class OntologyObjectStore:
 
     def backup_dependency_manifest(
         self, backup_path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
+        purpose: str | None = None, retention: str | None = None,
     ) -> dict[str, Any]:
         """Describe exact external source dependencies without exporting row values."""
         self._authorize("ontology_read", ["store_backup_dependencies"], policy=policy, audit=audit)
@@ -2343,9 +2421,14 @@ class OntologyObjectStore:
             backup_bytes, backup_digest = _stage_private_copy(backup_file, temporary)
             conn = sqlite3.connect(temporary.resolve().as_uri() + "?mode=rw", uri=True, timeout=30.0)
             conn.row_factory = sqlite3.Row
+            self._authorize_stored_records(
+                conn, "ontology_read", "store_backup_dependencies",
+                policy=policy, audit=audit, purpose=purpose, retention=retention,
+            )
             schema_version = self._verify_connection_integrity(conn)["schema_version"]
             attestations = self._verify_source_snapshot_dependencies(
-                conn, lambda: self._authorize_source_content_read(policy=policy, audit=audit),
+                conn, lambda: self._authorize_source_content_read(
+                    policy=policy, audit=audit, purpose=purpose, retention=retention),
             )
             packs = [
                 {
