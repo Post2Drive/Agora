@@ -1,4 +1,4 @@
-# Decision cell executor: design note (FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE and RERUN_FROM_START)
+# Decision cell executor: design note (FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE, RERUN_FROM_START and a narrow CHANGE_INPUTS)
 
 Status: library only, 28 Nov 2026. Decided by the Claude session that wrote it, under the owner's instruction of 26 Nov 2026; not independently reviewed. Mock backend only: nothing it produces is a forecast. `VALIDATED_PREDICTION_ENABLED` stays False.
 
@@ -8,8 +8,8 @@ Why: `record_run_result` records what a result rests on only if its caller remem
 
 | Question | Decision | Reason |
 |---|---|---|
-| Which option first? | FORK_FROM_EVENT; CONTINUE, RERUN_FROM_START and FORK_FROM_EARLIER followed (sections below). All other options are refused before the gate. | The spec's with-and-without comparison, using the existing verified `Simulation.fork_from`. |
-| What is added to branch A? | Every listed statement of the item, in its recorded wording, as `news` in the round after the event round, with no opinion shift. The caller chooses nothing. | The gate checks the wording against the recorded list and hashes the labels into the action fingerprint, so a second approval covers what runs. A caller-supplied event or shift would not be covered by either. A subset is a CHANGE_INPUTS matter. |
+| Which option first? | FORK_FROM_EVENT; CONTINUE, RERUN_FROM_START, FORK_FROM_EARLIER and CHANGE_INPUTS over FORK_FROM_EVENT followed (sections below). All other options are refused before the gate. | The spec's with-and-without comparison, using the existing verified `Simulation.fork_from`. |
+| What is added to branch A? | Every listed statement of the item, in its recorded wording, as `news` in the round after the event round, with no opinion shift. The caller chooses nothing. | The gate checks the wording against the recorded list and hashes the labels into the action fingerprint, so a second approval covers what runs. A caller-supplied event or shift would not be covered by either. Only CHANGE_INPUTS may leave one out. |
 | Who works out cost and snapshot status? | The executor, from the source project. The snapshot probe is a real fork into a throwaway directory. | A caller cannot understate the budget or assert that a snapshot verifies. |
 | How is the without-event branch recorded? | It is not recorded on its own. The two branches are one result, the comparison, whose hash covers both final states. | The comparison rests on the item, so stamping it is correct. A stamp on the baseline alone would be false, so the baseline is not offered as a result. |
 | What if the run succeeds and recording fails? | No output is released. Branches are built in a staging directory that moves to its final place only after the record is written and the stamps are read. | An unrecorded result could never be stamped. |
@@ -67,6 +67,26 @@ The same gate, two-branch comparison, staging, record-before-release and kill-sw
 
 Only the item's arrival moves. Nothing models a different response by anyone, and the statements keep their recorded wording even where it would not have made sense at the earlier time. Scenario events stay in their own rounds in both branches, so if the scenario already scripts the same news at the event round, the with-event branch holds it twice. On the mock backend an earlier fork's branches are the same as those of a FORK_FROM_EVENT whose event round is `from_round` (a test holds this for one test scenario); the two kinds differ in what the record says they are.
 
+## CHANGE_INPUTS over FORK_FROM_EVENT (`execute_changed_inputs_fork`, `read_changed_inputs_fork`)
+
+The smallest case: the person chooses some, not all, of one item's recorded statements, and the fork from the event runs with those. The gate, comparison, staging, record-before-release and kill-switch rules are those of FORK_FROM_EVENT. What differs:
+
+| Question | Decision | Reason |
+|---|---|---|
+| How is the chosen set bound to what the gate fingerprints? | Each `InputRef.input_id` is `statement_input_id(item_id, statement_id)`: the text `statement:` followed by the JSON list of the two ids. The gate already hashes the inputs (id, sensitivity, data owner) and the underlying option into the action fingerprint, and the evidence hash covers every statement's evidence. | No gate change is needed, and a second approval covers one exact choice. |
+| Why does the id name the item? | A data owner's `InputGrant` names the project, study, input id and person, but no item. Statement ids are only unique within an item. | With a bare statement id, a grant for one item's `st1` would also open another item's `st1`. |
+| What must be given as `statements`? | The item's whole recorded list, as on every labelled path. | Leaving a statement out is a recorded choice in the request, not a shorter list. |
+| Which choices are refused? | An id that is not one of this item's statements (`INPUT_NOT_A_STATEMENT`) and a choice of all of them (`NOTHING_LEFT_OUT`), both before the gate. The gate blocks an empty choice and a repeated id. | Extra inputs would be fingerprinted but never reach the run. With nothing left out the result is a plain fork under another name. |
+| Can the item be left out entirely? | No: an empty choice is blocked. The item is always in the basis (`record_run_result` adds the gate's item). | A retraction stamps the result whatever was left out. This can stamp a result that did not use the retracted wording; it does not clear one that did. |
+| How do sensitive-input grants apply? | As the gate already does: each chosen input rated `personal` or higher needs its data owner's grant to the person. A statement left out needs none, because it does not enter the run. | The spec: sensitive inputs need the data owner's grant. |
+| Which underlying run? | FORK_FROM_EVENT only (`OPTION_NOT_EXECUTABLE` otherwise). | Smallest case first. |
+| What is in the manifest? | Its own schema and read call; `underlying_option`, `included_statement_ids`, `excluded_statement_ids`. `statement_labels` covers the whole view the person decided on; `primary_source_exception_ids` lists only added statements. | A reader must see what was left out. A statement that was not added is not relied on. |
+| What is compared? | The chosen statements against no item. Not against the full item: for that, run a FORK_FROM_EVENT too. | Same two-branch meaning as the underlying run. |
+
+The choice covers this item's statements only. Everything else the study already reads (scenario events, population, knowledge graph) is the same in both branches. Choosing evidence by source or by trust level, across items, or over another underlying run is not built.
+
+**Sensitivity gap (not closed here).** Each statement's sensitivity and data owner are not stored anywhere. The trusted service must build the `InputRef`s; if it copies them from the person, the grant check can be avoided by under-rating. The other executable options add every statement and consult no sensitivity at all, so a person without a grant for a statement can still run it through a plain fork. A grant check that holds across options needs each statement's sensitivity and data owner recorded with the statement list.
+
 ## Limits
 
 - `source`, `out_dir`, the study state, the kill-switch probe, statement sources and judgments, and any extra basis items or parent results are trusted service inputs. Nothing proves that `source` is the project of that study.
@@ -77,4 +97,4 @@ Only the item's arrival moves. Nothing models a different response by anyone, an
 
 ## Not built
 
-CHANGE_INPUTS execution; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).
+CHANGE_INPUTS beyond the case above; recorded per-statement sensitivity; a segment-level comparison view; live model backends; governed or signed-receipt runs (`fork_from` refuses governed sources).

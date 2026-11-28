@@ -1,17 +1,27 @@
-"""Run FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE or RERUN_FROM_START and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
+"""Run FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE, RERUN_FROM_START or a narrow CHANGE_INPUTS and record what the result rests on, as one call (DECISION_CELL_SPEC 3, 3A, 5).
 
 ``execute_event_fork`` forks the study twice from the verified snapshot at the event round (with the item's
 statements added, and without them). ``execute_earlier_fork`` does the same from a snapshot before the event round, with the
 statements added in the round after that earlier one. ``execute_continuation`` forks it once from the verified snapshot at the
 last committed round, with the statements added at the next round. ``execute_rerun`` runs the study again from
 the start in a new project, with the statements added in the round after the event round the request names.
-All four ask the gate immediately before acting,
+``execute_changed_inputs_fork`` is a fork from the event in which the person chose some, not all, of the item's
+statements to add.
+All five ask the gate immediately before acting,
 run on the mock backend, record the result with ``record_run_result`` and only then make the output visible.
-``read_event_fork``, ``read_earlier_fork``, ``read_continuation`` and ``read_rerun`` return a recorded result together with its stamps.
+``read_event_fork``, ``read_earlier_fork``, ``read_continuation``, ``read_rerun`` and
+``read_changed_inputs_fork`` return a recorded result together with its stamps.
 
 Rules chosen here:
 
-* Only FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE and RERUN_FROM_START, each through its own call. Every other option is refused before the gate.
+* Only FORK_FROM_EVENT, FORK_FROM_EARLIER, CONTINUE, RERUN_FROM_START and CHANGE_INPUTS over FORK_FROM_EVENT,
+  each through its own call. Every other option is refused before the gate.
+* CHANGE_INPUTS chooses among ONE item's listed statements. Each ``InputRef.input_id`` must be
+  ``statement_input_id(item, statement)``, which names the item too: a data owner's grant names only the
+  input id, and statement ids repeat across items. The chosen set must leave at least one statement out
+  (the gate blocks an empty set). The gate's action fingerprint holds the chosen ids, so a second approval
+  covers that choice only. The choice changes nothing else the study reads. The item stays in the result's
+  basis, so a retraction stamps the result whichever statements were left out.
 * FORK_FROM_EARLIER places the item EARLIER than it happened: both branches start from the snapshot at
   ``request.from_round`` and the with-event branch gets the statements in the round after it. This is a
   what-if about timing ("what if this had reached people sooner"), and the manifest says so
@@ -23,11 +33,12 @@ Rules chosen here:
   from the snapshot at the last committed round. A request that names an event round is refused, because a
   continuation always adds at the next round and an unused value would still enter the action fingerprint.
   It runs one branch with no baseline, so it shows no difference the item made and claims none.
-* What is added is not chosen by the caller: every listed statement of the item becomes one news event, in
+* Except under CHANGE_INPUTS, what is added is not chosen by the caller: every listed statement of the item
+  becomes one news event, in
   its recorded wording, in the round after the start round (the event round, the chosen earlier round, or for CONTINUE the
   last committed round), with no opinion shift. The gate has checked the
   wording against the recorded list and hashed the labels into the action fingerprint, so a second approval
-  covers what runs. Leaving a statement out is a CHANGE_INPUTS matter and is not built.
+  covers what runs. Only CHANGE_INPUTS may leave a statement out.
 * The cost (remaining rounds times agents, per branch) and the snapshot probe are worked out here from the
   source project, not taken from the caller. The probe is a real ``fork_from`` into a throwaway directory.
 * The study's current round must equal the source's last committed round. A source holding added events
@@ -75,6 +86,7 @@ from agora.decision_cell.options import (
     Escalation,
     GateResult,
     InputGrant,
+    InputRef,
     Option,
     OptionRequest,
     StudyState,
@@ -93,12 +105,14 @@ SCHEMA = "agora.decision-cell.event-fork/1"
 CONTINUATION_SCHEMA = "agora.decision-cell.continuation/1"
 RERUN_SCHEMA = "agora.decision-cell.rerun/1"
 EARLIER_FORK_SCHEMA = "agora.decision-cell.earlier-fork/1"
+CHANGED_INPUTS_SCHEMA = "agora.decision-cell.changed-inputs-fork/1"
 WITH_EVENT = "with-event"
 WITHOUT_EVENT = "without-event"
 CONTINUED = "continued"
 RERUN = "rerun"
 # schema -> the branch directories a result of that kind holds. Code, not the manifest, says what is verified.
 _KINDS = {SCHEMA: (WITH_EVENT, WITHOUT_EVENT), EARLIER_FORK_SCHEMA: (WITH_EVENT, WITHOUT_EVENT),
+          CHANGED_INPUTS_SCHEMA: (WITH_EVENT, WITHOUT_EVENT),
           CONTINUATION_SCHEMA: (CONTINUED,), RERUN_SCHEMA: (RERUN,)}
 _STAGING_SUFFIX = ".executing"
 
@@ -121,6 +135,28 @@ class ExecutionResult:
 
 
 EventForkResult = ExecutionResult           # the name the first executor shipped with
+
+
+def statement_input_id(item_id: str, statement_id: str) -> str:
+    """The ``InputRef.input_id`` of one statement of one item, for CHANGE_INPUTS and data-owner grants."""
+    if not (_identifier(item_id) and _identifier(statement_id)):
+        raise ExecutionError("INPUT_INVALID", "ids must be exact non-empty strings")
+    return "statement:" + _canonical([item_id, statement_id])
+
+
+def _chosen_statements(request: OptionRequest, statements: tuple[StatementEvidence, ...]) -> set[str]:
+    """The input ids a CHANGE_INPUTS request chose: all of them this item's statements, and not every one."""
+    if not (isinstance(statements, tuple) and isinstance(request.inputs, tuple)
+            and all(isinstance(s, StatementEvidence) for s in statements)
+            and all(isinstance(i, InputRef) and isinstance(i.input_id, str) for i in request.inputs)):
+        raise ExecutionError("INPUT_INVALID", "give the statements and the chosen inputs as tuples")
+    available = {statement_input_id(request.event_id, s.statement_id) for s in statements}
+    chosen = {i.input_id for i in request.inputs}
+    if not chosen <= available:
+        raise ExecutionError("INPUT_NOT_A_STATEMENT", "choose only this item's statements, by statement_input_id")
+    if chosen == available:
+        raise ExecutionError("NOTHING_LEFT_OUT", "every statement is chosen; use a fork from the event")
+    return chosen
 
 
 def _result_dir(out_dir: Path, tenant_id: str, project_id: str, study_id: str, result_id: str) -> Path:
@@ -312,6 +348,27 @@ def execute_rerun(
                     grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
 
 
+def execute_changed_inputs_fork(
+    principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
+    tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
+    out_dir: str | Path, kill_switch_on: Callable[[], bool], audit: AnchoredAuditChain,
+    escalation: Escalation = Escalation(), grants: tuple[InputGrant, ...] = (),
+    parent_result_ids: tuple[str, ...] = (), other_item_ids: tuple[str, ...] = (),
+    now: datetime | None = None,
+) -> ExecutionResult:
+    """Gate, fork, run and record one CHANGE_INPUTS over FORK_FROM_EVENT, with some statements left out.
+
+    ``statements`` is still the item's whole list, as the gate requires. ``request.inputs`` names the chosen
+    ones by ``statement_input_id``; the service, not the person, must supply each one's sensitivity and data
+    owner. The with-event branch gets only the chosen statements. Refusals and release rule as for
+    ``execute_event_fork``.
+    """
+    return _execute(Option.CHANGE_INPUTS, CHANGED_INPUTS_SCHEMA, principal, request, statements=statements,
+                    tenant_id=tenant_id, project_id=project_id, study=study, result_id=result_id, source=source,
+                    out_dir=out_dir, kill_switch_on=kill_switch_on, audit=audit, escalation=escalation,
+                    grants=grants, parent_result_ids=parent_result_ids, other_item_ids=other_item_ids, now=now)
+
+
 def execute_continuation(
     principal: Principal | None, request: OptionRequest, *, statements: tuple[StatementEvidence, ...],
     tenant_id: str, project_id: str, study: StudyState, result_id: str, source: str | Path,
@@ -345,7 +402,12 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
         raise ExecutionError("INPUT_INVALID", "ids must be exact non-empty strings")
     if not isinstance(parent_result_ids, tuple) or not isinstance(other_item_ids, tuple):
         raise ExecutionError("INPUT_INVALID", "give parent results and other items as tuples")
-    forking, rerunning = option is Option.FORK_FROM_EVENT, option is Option.RERUN_FROM_START
+    changing = option is Option.CHANGE_INPUTS
+    if changing and request.underlying is not Option.FORK_FROM_EVENT:
+        raise ExecutionError("OPTION_NOT_EXECUTABLE", "changed inputs run only as a fork from the event")
+    chosen = _chosen_statements(request, statements) if changing else None
+    forking = changing or option is Option.FORK_FROM_EVENT
+    rerunning = option is Option.RERUN_FROM_START
     earlier = option is Option.FORK_FROM_EARLIER
     placed = forking or earlier or rerunning  # the options for which the person names the event round
     if placed and (type(request.event_round) is not int or request.event_round < 0):
@@ -408,8 +470,11 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
         if not gate.executable:
             raise ExecutionError("GATE_BLOCKED", ",".join(gate.failures), gate)
 
-        added = [{"type": "news", "text": s.statement_text, "round": start_round + 1}
-                 for s in sorted(statements, key=lambda s: s.statement_id)]
+        ordered = sorted(statements, key=lambda s: s.statement_id)
+        included = [s for s in ordered
+                    if chosen is None or statement_input_id(request.event_id, s.statement_id) in chosen]
+        included_ids = {s.statement_id for s in included}
+        added = [{"type": "news", "text": s.statement_text, "round": start_round + 1} for s in included]
         branches = {}
         for name in _KINDS[schema]:
             project = staging / name
@@ -433,7 +498,13 @@ def _execute(option, schema, principal, request, *, statements, tenant_id, proje
             "evidence_hash": evidence.evidence_hash,
             # Labels as the gate judged them: shown beside the result, not updated afterwards.
             "statement_labels": {i: s.label.value for i, s in evidence.statements},
-            "primary_source_exception_ids": list(evidence.primary_source_exception_ids),
+            # Only for statements that were added: a statement left out is not relied on.
+            "primary_source_exception_ids": [i for i in evidence.primary_source_exception_ids
+                                             if i in included_ids],
+            **({"underlying_option": request.underlying.value,
+                "included_statement_ids": [s.statement_id for s in included],
+                "excluded_statement_ids": [s.statement_id for s in ordered
+                                           if s.statement_id not in included_ids]} if changing else {}),
             **({"event_round": request.event_round, "forked_from_round": start_round,
                 "event_placement": "hypothetical-earlier"} if earlier else
                {("continued_from_round" if option is Option.CONTINUE else "event_round"): start_round}),
@@ -471,6 +542,13 @@ def read_earlier_fork(*, tenant_id: str, project_id: str, study_id: str, result_
                       out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
     """A recorded earlier fork with its current stamps; the same refusals as ``read_event_fork``."""
     return _read(EARLIER_FORK_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
+                 result_id=result_id, out_dir=out_dir, audit=audit)
+
+
+def read_changed_inputs_fork(*, tenant_id: str, project_id: str, study_id: str, result_id: str,
+                             out_dir: str | Path, audit: AnchoredAuditChain) -> ExecutionResult:
+    """A recorded changed-inputs fork with its current stamps; the same refusals as ``read_event_fork``."""
+    return _read(CHANGED_INPUTS_SCHEMA, tenant_id=tenant_id, project_id=project_id, study_id=study_id,
                  result_id=result_id, out_dir=out_dir, audit=audit)
 
 
@@ -522,6 +600,7 @@ def _read(schema, *, tenant_id, project_id, study_id, result_id, out_dir, audit)
                            run_result_stamps(result_id=result_id, audit=audit, **key))
 
 
-__all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_continuation", "execute_earlier_fork",
+__all__ = ["ExecutionError", "ExecutionResult", "EventForkResult", "execute_changed_inputs_fork",
+           "read_changed_inputs_fork", "statement_input_id", "execute_continuation", "execute_earlier_fork",
            "execute_event_fork", "execute_rerun", "fork_branch_cost", "read_continuation", "read_earlier_fork",
            "read_event_fork", "read_rerun", "rerun_cost"]
