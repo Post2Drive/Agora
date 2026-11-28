@@ -10,10 +10,12 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 from typing import Any, Iterable, Mapping
 import uuid
 
@@ -37,6 +39,8 @@ _MAX_LINK_SOURCE_REFS = 100
 _MAX_REPORTED_CONFLICTS = 100
 _BACKUP_ANCHOR_PREFIX = "ontology-backup-anchor-"
 _BACKUP_ANCHOR_TYPE = "ontology_backup_anchored"
+_STAGED_COPY_LEFT_TYPE = "ontology_staged_copy_not_removed"
+_LOGGER = logging.getLogger(__name__)
 # Matches the record numbering tabular ingestion assigns (the CSV header is record 1).
 _ROW_LOCATOR = re.compile(r"row:([1-9][0-9]{0,11})")
 
@@ -542,12 +546,23 @@ def _stage_private_copy(source: Path, destination: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _discard_staged_copy(path: Path) -> None:
+def _discard_staged_copy(path: Path) -> list[Path]:
+    """Delete a staged copy and its SQLite sidecars; return any the system refused to delete."""
+    remaining = []
     for suffix in ("", "-wal", "-shm", "-journal"):
+        candidate = Path(str(path) + suffix)
         try:
-            Path(str(path) + suffix).unlink()
-        except OSError:
+            candidate.unlink()
+        except FileNotFoundError:
             pass
+        except OSError:
+            remaining.append(candidate)
+    return remaining
+
+
+def _not_removed_message(failure: BaseException, remaining: list[Path]) -> str:
+    names = ", ".join(path.name for path in remaining)
+    return (f"{failure}; a copy of ontology records could not be removed and is still on disk: {names}")
 
 
 def _privacy_evidence(privacy: tuple[str | None, str | None]) -> dict[str, str]:
@@ -569,6 +584,17 @@ def _utc_now() -> str:
 
 def _link_created_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+class StagedCopyError(OntologyError):
+    """An operation failed and also left a file holding ontology records on disk.
+
+    ``remaining`` lists the files an operator has to remove.
+    """
+
+    def __init__(self, message: str, remaining: Iterable[Path]) -> None:
+        super().__init__(message)
+        self.remaining = tuple(remaining)
 
 
 class OntologyObjectStore:
@@ -665,6 +691,35 @@ class OntologyObjectStore:
             return decision
         except PolicyEnforcementError as exc:
             raise OntologyError("policy denied ontology catalog access") from exc
+
+    def _discard_and_report(self, path: Path, operation: str, audit: Any | None) -> list[Path]:
+        """Discard a staged copy; log and audit whatever could not be deleted.
+
+        Never raises for a refused deletion or a failed report, so a published
+        result is not reported as failed.
+        """
+        remaining = _discard_staged_copy(path)
+        if not remaining:
+            return remaining
+        _LOGGER.error(
+            "ontology %s could not delete files holding ontology records; remove them: %s",
+            operation, ", ".join(str(item) for item in remaining),
+        )
+        try:
+            writer = require_anchored(audit) if _protection.ANCHOR_REQUIRED else audit
+            writer.append({
+                "event_id": f"ontology-{uuid.uuid4().hex}",
+                "event_type": _STAGED_COPY_LEFT_TYPE,
+                "operation": operation,
+                "decision": "deny",
+                "subject_id": "unknown",
+                "policy_version": "unknown",
+                "resource_ids": [f"project:{self.project_id}"] + [f"file:{item.name}" for item in remaining],
+                "reason": "staged_copy_not_removed",
+            })
+        except Exception:
+            _LOGGER.exception("ontology %s could not record the undeleted files in the audit chain", operation)
+        return remaining
 
     def register_pack(
         self, pack: OntologyPack, *, policy: PolicyCallable | None, audit: Any | None,
@@ -2022,7 +2077,7 @@ class OntologyObjectStore:
             # A hard link fails if the destination now exists; a rename would replace it.
             os.link(temporary, destination)
             created_temporary = False
-            _discard_staged_copy(temporary)
+            self._discard_and_report(temporary, "store_backup", audit)
             require_safe_path(destination)
             return destination
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
@@ -2037,7 +2092,10 @@ class OntologyObjectStore:
             # Only after the close: Windows cannot delete a file that is still open.
             # In ``finally``, so an exception not listed above removes the copy too.
             if created_temporary:
-                _discard_staged_copy(temporary)
+                remaining = self._discard_and_report(temporary, "store_backup", audit)
+                failure = sys.exc_info()[1]
+                if remaining and isinstance(failure, OntologyError):
+                    raise StagedCopyError(_not_removed_message(failure, remaining), remaining) from failure
 
 
     def _verify_source_snapshot_dependencies(
@@ -2263,7 +2321,7 @@ class OntologyObjectStore:
             # Publication has succeeded. A cleanup failure must not report a
             # failed restore while leaving the destination live.
             created_temporary = False
-            _discard_staged_copy(temporary)
+            self._discard_and_report(temporary, "store_restore", audit)
             require_safe_path(self.path)
             return self.path
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, OntologyError) as exc:
@@ -2274,7 +2332,10 @@ class OntologyObjectStore:
             if staged_conn is not None:
                 staged_conn.close()
             if created_temporary:
-                _discard_staged_copy(temporary)
+                remaining = self._discard_and_report(temporary, "store_restore", audit)
+                failure = sys.exc_info()[1]
+                if remaining and isinstance(failure, OntologyError):
+                    raise StagedCopyError(_not_removed_message(failure, remaining), remaining) from failure
 
     def create_anchored_backup(
         self, path: str | Path, *, policy: PolicyCallable | None, audit: Any | None,
@@ -2314,10 +2375,19 @@ class OntologyObjectStore:
                 "reason": "policy_allow",
             })
         except BaseException as exc:
-            _discard_staged_copy(destination)
-            if isinstance(exc, OntologyError) or not isinstance(exc, Exception):
+            remaining = self._discard_and_report(destination, "store_anchored_backup", writer)
+            if not isinstance(exc, Exception):
                 raise
-            raise OntologyError("ontology backup could not be anchored in the audit chain") from exc
+            failure = exc if isinstance(exc, OntologyError) else OntologyError(
+                "ontology backup could not be anchored in the audit chain")
+            if remaining:
+                # Keep any files an inner step already reported.
+                inner = getattr(exc, "remaining", ())
+                raise StagedCopyError(
+                    _not_removed_message(failure, remaining), [*inner, *remaining]) from exc
+            if failure is exc:
+                raise
+            raise failure from exc
         return manifest
 
     def restore_anchored(
@@ -2415,6 +2485,7 @@ class OntologyObjectStore:
             raise OntologyError("dependency manifest requires an existing backup file")
         temporary = backup_file.with_name(backup_file.name + ".attest-" + uuid.uuid4().hex + ".tmp")
         conn = None
+        completed = False
         try:
             require_safe_path(backup_file)
             require_safe_path(temporary)
@@ -2504,6 +2575,7 @@ class OntologyObjectStore:
                 "source_row_values_included": False,
             }
             digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+            completed = True
             return {**payload, "manifest_sha256": digest}
         except (OSError, sqlite3.Error, UnsafePathError, ValueError, TypeError, json.JSONDecodeError) as exc:
             if isinstance(exc, OntologyError):
@@ -2512,4 +2584,7 @@ class OntologyObjectStore:
         finally:
             if conn is not None:
                 conn.close()
-            _discard_staged_copy(temporary)
+            remaining = self._discard_and_report(temporary, "store_backup_dependencies", audit)
+            failure = sys.exc_info()[1]
+            if remaining and not completed and isinstance(failure, OntologyError):
+                raise StagedCopyError(_not_removed_message(failure, remaining), remaining) from failure
