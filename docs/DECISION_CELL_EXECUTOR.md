@@ -101,7 +101,23 @@ Before this, nothing recorded how sensitive a statement was or whose data it was
 | How does a grant name a statement? | `InputGrant.input_id` is `statement_input_id(item_id, statement_id)` for every option. | One grant means the same statement whichever option runs, and never another item's. |
 | Does a rating change lapse a second approval? | Yes: ratings are part of the evidence hash, which is in the action fingerprint. A list with no ratings keeps its old hash. | The approver approved a view with those ratings. |
 
-A wrong rating that is too high, or a wrong owner, cannot be undone under this item: register the content as a new item, or build an owner-transfer operation with its own authorisation (not built). Ratings are as good as the trusted service that registers them; nothing checks them against the content. The check is made when the gate runs: a rating raised while a run is in progress does not stop that run. It covers the statements being added, not what the source study already holds from earlier runs, and the read calls still perform no permission check.
+A wrong rating that is too high, or a wrong owner, cannot be undone under this item: register the content as a new item, or build an owner-transfer operation with its own authorisation (not built). Ratings are as good as the trusted service that registers them; nothing checks them against the content. The check is made when the gate runs: a rating raised while a run is in progress does not stop that run. What the source study already holds is covered by the next section. The read calls still perform no permission check.
+
+## Statements a source study already holds
+
+A run started from a snapshot carries every event added up to that round. Before this, nobody was asked for a grant for them, so a person without one could build on a run that already held a personal statement. This applies to fork from the event, fork from earlier, continuation and changed inputs. A rerun carries nothing: it already refuses a source with added events.
+
+| Question | Decision | Reason |
+|---|---|---|
+| Which events are judged? | Those in a throwaway restore of the snapshot, up to the start round. The snapshot only verifies if a second restore carries the same ones, and each branch is compared again before it runs. | The snapshot, not the live source database, is what goes into the run. |
+| How is an event traced to a statement? | It must be exactly what a run here adds (`type` news, `text`, `round`), with the recorded wording of a statement of an item in the basis of a named parent result. | The source records event text, not statement ids. Requiring a named parent also keeps a later retraction of that item on the new result. |
+| What if one cannot be traced? | The run is refused before the gate (`SOURCE_EVENT_UNTRACED`). This includes events a person added to a project directly. | Unknown sensitivity is not low sensitivity. |
+| What if several statements have the same wording? | Every one recorded in the study is judged, whether or not a parent rests on its item. | The text cannot tell them apart. Otherwise naming a parent whose item rates the words lower would remove the grant. This can ask for more grants than necessary. |
+| Which ratings apply? | The ones in force now. A statement recorded unrated blocks the run. | A rating raised after the source ran is a correction that later runs must respect. |
+| Is it bound to approval and commit? | The held input ids and ratings are in the action fingerprint and the gate's audit entry (`held:<input id>`). Any statement list recorded or changed in the study between the read and the commit stops the entry (`STATEMENTS_CHANGED`). An action with nothing held keeps its old fingerprint. | A second approval must lapse when what it covered changes. |
+| Does the result say so? | The manifest lists `held_statement_ids` when there are any. | A reader should see what was carried in. |
+
+Limits. Only added events are traced: data that reached a source through its scenario, population or knowledge graph is not seen. Nothing proves the source was produced by the named parent, and a parent need only rest on the item, whether or not it added that wording. Held statements get no verification labels or primary-source exception flags in the new result. `request_labelled_option` checks held statements only when it is given them; the executor always does. Someone who can rewrite a source's snapshot and its recorded digests can remove an event from both.
 
 ## Limits
 

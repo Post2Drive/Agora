@@ -6,6 +6,7 @@ from .options import (
 from .evidence import (
     ItemEvidence, LabelledGateResult, StatementEvidence, item_evidence, request_labelled_option,
 )
+from .held import HeldStatements, trace_held_statements
 from .executor import (
     EventForkResult, ExecutionError, ExecutionResult, execute_continuation, execute_earlier_fork,
     execute_event_fork, execute_rerun, fork_branch_cost, read_continuation, read_earlier_fork, read_event_fork,
@@ -37,6 +38,7 @@ from .verification import (
 )
 
 __all__ = [
+    "HeldStatements", "trace_held_statements",
     "execute_changed_inputs_fork", "read_changed_inputs_fork", "statement_input_id",
     "EventForkResult", "ExecutionError", "execute_event_fork", "fork_branch_cost", "read_event_fork",
     "ExecutionResult", "execute_continuation", "read_continuation",
